@@ -52,40 +52,44 @@ export default function MessagesScreen() {
 
       const conversationDetails = await Promise.all(
         (conversationParticipants || []).map(async (cp) => {
-          const { data: otherParticipants, error: opError } = await supabase
-            .from('conversation_participants')
-            .select('user_id, profiles (id, username, full_name, avatar_url)')
-            .eq('conversation_id', cp.conversation_id)
-            .neq('user_id', user.id)
-            .single();
+          try {
+            const { data: otherParticipants, error: opError } = await supabase
+              .from('conversation_participants')
+              .select('user_id, profiles (id, username, full_name, avatar_url)')
+              .eq('conversation_id', cp.conversation_id)
+              .neq('user_id', user.id)
+              .limit(1);
 
-          if (opError) {
-            console.error('Error loading other participant:', opError);
+            if (opError || !otherParticipants || otherParticipants.length === 0) {
+              return null;
+            }
+
+            const { data: lastMessage } = await supabase
+              .from('messages')
+              .select('content, created_at, sender_id')
+              .eq('conversation_id', cp.conversation_id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            const { count: unreadCount } = await supabase
+              .from('messages')
+              .select('*', { count: 'exact', head: true })
+              .eq('conversation_id', cp.conversation_id)
+              .eq('read', false)
+              .neq('sender_id', user.id);
+
+            return {
+              id: cp.conversation_id,
+              updated_at: cp.conversations[0]?.updated_at || new Date().toISOString(),
+              other_user: otherParticipants[0]?.profiles || null,
+              last_message: lastMessage || undefined,
+              unread_count: unreadCount || 0,
+            };
+          } catch (err) {
+            console.error('Error loading conversation detail:', err);
             return null;
           }
-
-          const { data: lastMessage } = await supabase
-            .from('messages')
-            .select('content, created_at, sender_id')
-            .eq('conversation_id', cp.conversation_id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-
-          const { count: unreadCount } = await supabase
-            .from('messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('conversation_id', cp.conversation_id)
-            .eq('read', false)
-            .neq('sender_id', user.id);
-
-          return {
-            id: cp.conversation_id,
-            updated_at: cp.conversations.updated_at,
-            other_user: otherParticipants.profiles,
-            last_message: lastMessage || undefined,
-            unread_count: unreadCount || 0,
-          };
         })
       );
 

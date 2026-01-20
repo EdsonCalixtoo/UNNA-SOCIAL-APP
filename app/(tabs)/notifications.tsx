@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { markNotificationAsRead, markAllNotificationsAsRead, deleteNotification } from '@/lib/notifications';
+import { markNotificationAsRead, markAllNotificationsAsRead, deleteNotification, clearNotificationBadge } from '@/lib/notifications';
 import { Bell, Calendar, UserPlus, UserCheck, Users, CheckCheck, MessageCircle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -48,6 +48,17 @@ export default function Notifications() {
     };
   }, [user]);
 
+  // Marcar todas as notificações como lidas quando a página é exibida
+  useEffect(() => {
+    if (user?.id) {
+      markAllNotificationsAsRead(user.id).then(result => {
+        if (!result.success) {
+          console.log('Could not mark all as read, but continuing...');
+        }
+      });
+    }
+  }, [user?.id]);
+
   const loadNotifications = async () => {
     if (!user) {
       setLoading(false);
@@ -75,32 +86,64 @@ export default function Notifications() {
   };
 
   const handleNotificationPress = async (notification: Notification) => {
-    // Deletar a notificação após clicar
-    await deleteNotification(notification.id);
-    setNotifications(prev => prev.filter(n => n.id !== notification.id));
+    try {
+      console.log('Notification pressed:', notification.type, notification.data);
 
-    // Se for mensagem, navegar para a conversa
-    if (notification.type === 'new_message' && notification.data?.conversation_id) {
-      router.push(`/messages/${notification.data.conversation_id}`);
-    }
-    // Se for evento, navegar para o evento
-    else if (notification.data?.event_id) {
-      router.push(`/event/${notification.data.event_id}`);
-    }
-    // Se for seguir (follow_request, follow_accepted), navegar para o perfil da pessoa
-    else if (notification.type === 'follow_request' || notification.type === 'follow_accepted') {
-      if (notification.data?.user_id) {
-        router.push(`/profile/${notification.data.user_id}`);
+      // Marcar como lida antes de qualquer coisa
+      if (!notification.read) {
+        await markNotificationAsRead(notification.id);
       }
-    }
-    // Fallback para outras situações
-    else if (notification.data?.user_id) {
-      router.push(`/profile/${notification.data.user_id}`);
+
+      // Preparar a navegação ANTES de deletar
+      let navigationPath: string | null = null;
+
+      // Se for mensagem, navegar para a conversa
+      if (notification.type === 'new_message') {
+        // Se tem event_id, é chat de evento
+        if (notification.data?.event_id) {
+          navigationPath = `/event/${notification.data.event_id}/chat`;
+        } 
+        // Se não tem event_id, é chat direto
+        else if (notification.data?.conversation_id) {
+          navigationPath = `/messages/${notification.data.conversation_id}`;
+        }
+      }
+      // Se for evento, navegar para o evento
+      else if (notification.data?.event_id) {
+        navigationPath = `/event/${notification.data.event_id}`;
+      }
+      // Se for seguir (follow_request, follow_accepted), navegar para o perfil da pessoa
+      else if (notification.type === 'follow_request' || notification.type === 'follow_accepted') {
+        if (notification.data?.user_id) {
+          navigationPath = `/profile/${notification.data.user_id}`;
+        }
+      }
+      // Fallback para outras situações
+      else if (notification.data?.user_id) {
+        navigationPath = `/profile/${notification.data.user_id}`;
+      }
+
+      console.log('Navigation path:', navigationPath);
+
+      // Deletar a notificação
+      await deleteNotification(notification.id);
+      setNotifications(prev => prev.filter(n => n.id !== notification.id));
+
+      // Navegar APÓS preparar tudo
+      if (navigationPath) {
+        console.log('Navigating to:', navigationPath);
+        router.push(navigationPath as any);
+      } else {
+        console.warn('No navigation path found for notification:', notification);
+      }
+    } catch (error) {
+      console.error('Error handling notification press:', error);
     }
   };
 
   const handleMarkAllAsRead = async () => {
     await markAllNotificationsAsRead(user?.id!);
+    await clearNotificationBadge();
     setNotifications(prev =>
       prev.map(n => ({ ...n, read: true }))
     );

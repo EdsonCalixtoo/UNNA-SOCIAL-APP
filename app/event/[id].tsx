@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Calendar, Clock, MapPin, Users, DollarSign, ArrowLeft, MessageCircle, Check, X, Circle as HelpCircle, Edit3 } from 'lucide-react-native';
+import { Calendar, Clock, MapPin, Users, DollarSign, ArrowLeft, MessageCircle, Check, X, Circle as HelpCircle, Edit3, Share2 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EventShareModal } from '@/components/EventShareModal';
+import { EventParticipantsModal } from '@/components/EventParticipantsModal';
 
 interface Event {
   id: string;
@@ -43,6 +45,8 @@ export default function EventDetails() {
   const [loading, setLoading] = useState(true);
   const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not_going' | 'maybe' | null>(null);
   const [participantsCount, setParticipantsCount] = useState(0);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
 
   useEffect(() => {
     loadEvent();
@@ -149,6 +153,10 @@ export default function EventDetails() {
     router.push(`/event/${id}/chat`);
   };
 
+  const handleShare = () => {
+    setShareModalVisible(true);
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('pt-BR', {
@@ -181,6 +189,16 @@ export default function EventDetails() {
 
   return (
     <View style={styles.container}>
+      <EventShareModal
+        visible={shareModalVisible}
+        onClose={() => setShareModalVisible(false)}
+        event={event}
+      />
+      <EventParticipantsModal
+        visible={participantsModalVisible}
+        onClose={() => setParticipantsModalVisible(false)}
+        eventId={id as string}
+      />
       <ScrollView contentContainerStyle={styles.scrollViewContent}>
         <View style={styles.imageContainer}>
           {event.image_url ? (
@@ -292,7 +310,11 @@ export default function EventDetails() {
 
             <View style={styles.divider} />
 
-            <View style={styles.infoRow}>
+            <TouchableOpacity 
+              style={styles.infoRow}
+              onPress={() => setParticipantsModalVisible(true)}
+              activeOpacity={0.7}
+            >
               <View style={styles.iconContainer}>
                 <Users size={24} color="#FF9500" strokeWidth={2.5} />
               </View>
@@ -302,7 +324,7 @@ export default function EventDetails() {
                   {participantsCount} {event.max_participants > 0 ? `/ ${event.max_participants}` : ''} confirmados
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
 
             {event.is_paid && (
               <>
@@ -371,6 +393,11 @@ export default function EventDetails() {
         <TouchableOpacity style={styles.chatButton} onPress={handleChat}>
           <MessageCircle size={24} color="#fff" strokeWidth={2.5} />
           <Text style={styles.chatButtonText}>Chat do Evento</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+          <Share2 size={24} color="#00d9ff" strokeWidth={2.5} />
+          <Text style={styles.shareButtonText}>Compartilhar</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -672,6 +699,24 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
     color: '#fff',
+    letterSpacing: 0.5,
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2d2d2d',
+    borderRadius: 16,
+    padding: 18,
+    gap: 10,
+    marginTop: 12,
+    borderWidth: 2,
+    borderColor: '#00d9ff',
+  },
+  shareButtonText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#00d9ff',
     letterSpacing: 0.5,
   },
   scrollViewContent: {

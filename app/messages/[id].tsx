@@ -425,8 +425,8 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
     >
       <LinearGradient
         colors={['#00d9ff', '#ff1493']}
@@ -475,6 +475,8 @@ export default function ChatScreen() {
           ref={scrollViewRef}
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={true}
           onContentSizeChange={scrollToBottom}
         >
           {messages.map((message, index) => {
@@ -643,6 +645,7 @@ const styles = StyleSheet.create({
   },
   messagesContent: {
     padding: 16,
+    paddingBottom: 80,
   },
   dateDivider: {
     alignItems: 'center',
@@ -701,8 +704,8 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
   },
   inputContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     backgroundColor: '#0a0a0a',
     borderTopWidth: 1,
     borderTopColor: '#1a1a1a',
@@ -710,7 +713,8 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 8,
+    gap: 6,
+    paddingBottom: 0,
   },
   input: {
     flex: 1,

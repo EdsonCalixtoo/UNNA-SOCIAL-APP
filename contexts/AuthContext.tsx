@@ -29,20 +29,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadProfile(session.user.id);
-      } else {
-        setLoading(false);
+    let isMounted = true;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const initAuth = async () => {
+      try {
+        // Adicionar timeout de 5 segundos
+        timeoutId = setTimeout(() => {
+          if (isMounted) {
+            console.warn('Session check timeout');
+            setLoading(false);
+          }
+        }, 5000);
+
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (timeoutId) clearTimeout(timeoutId);
+
+        if (!isMounted) return;
+
+        if (error) throw error;
+
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          await loadProfile(session.user.id);
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error getting session:', error);
+        if (isMounted) setLoading(false);
       }
-    }).catch(error => {
-      console.error('Error getting session:', error);
-      setLoading(false);
-    });
+    };
+
+    initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+
       (async () => {
         setSession(session);
         setUser(session?.user ?? null);
@@ -55,7 +81,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })();
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadProfile = async (userId: string) => {

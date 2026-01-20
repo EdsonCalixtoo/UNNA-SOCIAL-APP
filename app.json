@@ -1,13 +1,11 @@
 {
   "expo": {
-    "name": "bolt-expo-starter",
+    "name": "UNNA Social App",
     "slug": "bolt-expo-starter",
-    "version": "1.0.0",
+    "version": "1.2.2",
     "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "backgroundColor": "#1a1a1a"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -34,7 +32,8 @@
       "bundleIdentifier": "com.bolt.starter",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "O aplicativo precisa acessar suas fotos para permitir que você selecione imagens para seu perfil e eventos.",
-        "NSCameraUsageDescription": "O aplicativo precisa acessar sua câmera para permitir que você tire fotos para seu perfil e eventos."
+        "NSCameraUsageDescription": "O aplicativo precisa acessar sua câmera para permitir que você tire fotos para seu perfil e eventos.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -42,11 +41,19 @@
         "backgroundColor": "#1a1a1a"
       },
       "package": "com.bolt.starter",
+      "versionCode": 3,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "softwareKeyboardLayoutMode": "pan",
+      "enableMiniMode": false,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyC6r64NqanwHatrR3M99tg44y3nkRsOW94"
+        }
+      }
     },
     "web": {
       "output": "server",

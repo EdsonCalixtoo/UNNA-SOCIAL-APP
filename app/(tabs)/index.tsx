@@ -89,25 +89,87 @@ export default function Feed() {
     loadUnreadNotifications();
 
     // Escutar mudanças em tempo real nas notificações
-    const subscription = supabase
+    const notificationSubscription = supabase
       .channel('notifications-badge')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'notifications',
           filter: `user_id=eq.${user?.id}`,
         },
         () => {
-          // Recarregar o count quando houver mudanças
+          // Recarregar o count quando há nova notificação
+          loadUnreadNotifications();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user?.id}`,
+        },
+        () => {
+          // Recarregar o count quando notificações são atualizadas (marcadas como lidas)
+          loadUnreadNotifications();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user?.id}`,
+        },
+        () => {
+          // Recarregar o count quando notificações são deletadas
           loadUnreadNotifications();
         }
       )
       .subscribe();
 
+    // Escutar mudanças em tempo real nos eventos
+    const eventsSubscription = supabase
+      .channel('events-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'events',
+        },
+        () => {
+          // Recarregar os posts quando um evento é criado, atualizado ou deletado
+          loadPosts();
+        }
+      )
+      .subscribe();
+
+    // Escutar mudanças em tempo real nos posts
+    const postsSubscription = supabase
+      .channel('posts-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'posts',
+        },
+        () => {
+          // Recarregar os posts quando há mudanças
+          loadPosts();
+        }
+      )
+      .subscribe();
+
     return () => {
-      subscription.unsubscribe();
+      notificationSubscription.unsubscribe();
+      eventsSubscription.unsubscribe();
+      postsSubscription.unsubscribe();
     };
   }, [user]);
 
@@ -126,7 +188,6 @@ export default function Feed() {
   };
 
   useEffect(() => {
-    setCategories([]);
     loadPosts();
     loadCategories();
     loadUserPreferences();

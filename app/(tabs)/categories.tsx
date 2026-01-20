@@ -47,7 +47,8 @@ export default function Categories() {
       const { data, error, count } = await supabase
         .from('categories')
         .select('*', { count: 'exact' })
-        .order('name');
+        .order('order', { ascending: true })
+        .order('name', { ascending: true });
 
       console.log('[Categories] ========================================');
       console.log('[Categories] Query completed!');

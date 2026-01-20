@@ -4,9 +4,11 @@ import { House, MapPin, CirclePlus as PlusCircle, User, Grid3x3 } from 'lucide-r
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
   const { accent, accentAlt } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -17,13 +19,17 @@ export default function TabLayout() {
         tabBarStyle: {
           position: 'absolute',
           bottom: 0,
+          left: 0,
+          right: 0,
           backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(18, 18, 18, 0.95)',
           borderTopWidth: 1,
           borderTopColor: 'rgba(255, 255, 255, 0.08)',
-          paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+          paddingBottom: Platform.OS === 'ios' ? 32 : Math.max(16, insets.bottom),
           paddingTop: 16,
-          height: Platform.OS === 'ios' ? 104 : 88,
-          elevation: 0,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+          height: Platform.OS === 'ios' ? 104 : 88 + Math.max(16, insets.bottom),
+          elevation: 25,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.3,

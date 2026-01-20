@@ -2,35 +2,64 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, Image, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import { X, CircleAlert as AlertCircle } from 'lucide-react-native';
 import { Story } from '@/types/database';
+import { isValidImageUrl } from '@/lib/urlValidator';
 
 interface StoryViewerProps {
   visible: boolean;
   stories: Story[];
+  initialIndex?: number;
   onClose: () => void;
 }
 
 const { width, height } = Dimensions.get('window');
 
-export default function StoryViewer({ visible, stories, onClose }: StoryViewerProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+export default function StoryViewer({ visible, stories, initialIndex = 0, onClose }: StoryViewerProps) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     if (!visible) {
-      setCurrentIndex(0);
+      setCurrentIndex(initialIndex);
       setImageLoading(true);
       setImageError(false);
     } else {
+      setCurrentIndex(initialIndex);
       setImageLoading(true);
       setImageError(false);
     }
-  }, [visible, currentIndex]);
+  }, [visible, initialIndex]);
 
   if (stories.length === 0) return null;
 
   const currentStory = stories[currentIndex];
   const profile = Array.isArray(currentStory.profiles) ? currentStory.profiles[0] : currentStory.profiles;
+
+  // Validar URL de imagem
+  console.log('Current story media_url:', currentStory.media_url);
+  console.log('URL type:', typeof currentStory.media_url);
+  console.log('Is valid?', isValidImageUrl(currentStory.media_url));
+
+  if (!isValidImageUrl(currentStory.media_url)) {
+    return (
+      <Modal visible={visible} animationType="fade" presentationStyle="fullScreen">
+        <View style={styles.container}>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={onClose}
+            activeOpacity={0.8}
+          >
+            <X size={28} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.errorContainer}>
+            <AlertCircle size={48} color="#ff4444" />
+            <Text style={styles.errorText}>URL de imagem inválida</Text>
+            <Text style={styles.errorSubtext}>A imagem desta story não está disponível</Text>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   const handleNext = () => {
     if (currentIndex < stories.length - 1) {
@@ -114,6 +143,7 @@ export default function StoryViewer({ visible, stories, onClose }: StoryViewerPr
           <View style={styles.errorContainer}>
             <AlertCircle size={48} color="#ff4444" />
             <Text style={styles.errorText}>Não foi possível carregar a imagem</Text>
+            <Text style={styles.errorSubtext}>Tente novamente ou passe para a próxima story</Text>
           </View>
         )}
 
@@ -266,5 +296,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     textAlign: 'center',
+  },
+  errorSubtext: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
 });

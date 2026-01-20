@@ -13,6 +13,7 @@ export default function StoriesBar() {
   const [userStories, setUserStories] = useState<Story[]>([]);
   const [showCreator, setShowCreator] = useState(false);
   const [showViewer, setShowViewer] = useState(false);
+  const [selectedStoryIndex, setSelectedStoryIndex] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -65,35 +66,12 @@ export default function StoriesBar() {
     }
   };
 
-  // Modal para criar nova história
-  if (showCreator) {
-    return (
-      <StoryCreator 
-        visible={true}
-        onClose={() => setShowCreator(false)}
-        onSuccess={() => {
-          setShowCreator(false);
-          loadStories();
-        }}
-      />
-    );
-  }
-
-  // Modal para visualizar histórias
-  if (showViewer && (userStories.length > 0 || allStories.length > 0)) {
-    const combinedStories = [...userStories, ...allStories];
-    return (
-      <StoryViewer 
-        visible={true}
-        stories={combinedStories}
-        onClose={() => setShowViewer(false)}
-      />
-    );
-  }
-
   // Render the stories bar
+  const combinedStories = [...userStories, ...allStories];
+
   return (
-    <View style={styles.container}>
+    <>
+      <View style={styles.container}>
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false} 
@@ -104,7 +82,14 @@ export default function StoriesBar() {
         <View style={styles.storyItem}>
           <Pressable
             style={styles.storyThumbContainer}
-            onPress={() => userStories.length > 0 ? setShowViewer(true) : setShowCreator(true)}
+            onPress={() => {
+              if (userStories.length > 0) {
+                setSelectedStoryIndex(0);
+                setShowViewer(true);
+              } else {
+                setShowCreator(true);
+              }
+            }}
           >
             {userStories.length > 0 && userStories[0].media_url ? (
               <Image
@@ -133,13 +118,16 @@ export default function StoriesBar() {
         </View>
 
         {/* Histórias de outros usuários */}
-        {allStories.map((story) => {
+        {allStories.map((story, index) => {
           const profile = Array.isArray(story.profiles) ? story.profiles[0] : story.profiles;
           return (
             <Pressable
               key={story.id}
               style={styles.storyItem}
-              onPress={() => setShowViewer(true)}
+              onPress={() => {
+                setSelectedStoryIndex(userStories.length + index);
+                setShowViewer(true);
+              }}
             >
               {story.media_url ? (
                 <Image
@@ -157,6 +145,24 @@ export default function StoriesBar() {
         })}
       </ScrollView>
     </View>
+
+    {/* Modals */}
+    <StoryCreator 
+      visible={showCreator}
+      onClose={() => setShowCreator(false)}
+      onSuccess={() => {
+        setShowCreator(false);
+        loadStories();
+      }}
+    />
+
+    <StoryViewer 
+      visible={showViewer && (userStories.length > 0 || allStories.length > 0)}
+      stories={combinedStories}
+      initialIndex={selectedStoryIndex}
+      onClose={() => setShowViewer(false)}
+    />
+    </>
   );
 }
 

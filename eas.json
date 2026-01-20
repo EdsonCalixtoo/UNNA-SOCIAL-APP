@@ -1,23 +1,32 @@
 {
+  "cli": {
+    "version": ">= 10.0.0",
+    "promptToConfigurePushNotifications": true,
+    "appVersionSource": "local"
+  },
   "build": {
-    "preview": {
-      "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease"
-      }
-    },
-    "preview2": {
-      "android": {
-        "ndk": "27.0.12077973"
-      }
-    },
-    "preview3": {
-      "developmentClient": true
-    },
     "production": {
+      "ios": {
+        "distribution": "store"
+      },
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "preview": {
+      "ios": {
+        "distribution": "internal"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
     }
+  },
+  "submit": {
+    "production": {}
   }
 }

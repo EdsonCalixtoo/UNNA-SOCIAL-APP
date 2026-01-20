@@ -1,26 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Image, Dimensions, Platform, ScrollView, Linking, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Image, Dimensions, Platform, ScrollView, Linking, Alert, GestureResponderEvent, Modal, Animated } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { Event } from '@/types/database';
 import { MapPin, Calendar, Navigation2, X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { showError } from '@/components/ErrorDisplay';
+import * as Location from 'expo-location';
 
 let MapView: any = null;
 let Marker: any = null;
 let PROVIDER_GOOGLE: any = null;
-let Location: any = null;
 
 if (Platform.OS !== 'web') {
-  try {
-    const maps = require('react-native-maps');
-    MapView = maps.default;
-    Marker = maps.Marker;
-    PROVIDER_GOOGLE = maps.PROVIDER_GOOGLE;
-    Location = require('expo-location');
-  } catch (error) {
-    console.log('react-native-maps not available');
-  }
+  const mapImport = require('react-native-maps');
+  MapView = mapImport.default;
+  Marker = mapImport.Marker;
+  PROVIDER_GOOGLE = mapImport.PROVIDER_GOOGLE;
 }
 
 const { width } = Dimensions.get('window');
@@ -35,37 +31,101 @@ export default function Map() {
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    console.log('📍 Map component mounted');
     if (Platform.OS !== 'web') {
+      console.log('📍 Getting user location...');
       getUserLocation();
     }
+    console.log('📍 Loading categories and events...');
+    loadCategories();
     loadEvents();
+    
+    // Iniciar animação de pulsação contínua
+    const pulsing = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: false,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 1500,
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    pulsing.start();
+    
     const interval = setInterval(loadEvents, 60000);
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      console.log('📍 Map component unmounted');
+      clearInterval(interval);
+      pulsing.stop();
+    };
+  }, [pulseAnim]);
 
   const getUserLocation = async () => {
-    if (Platform.OS === 'web' || !Location) return;
-
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
+      console.log('📍 getUserLocation: Platform check');
+      if (Platform.OS === 'web' || !Location) {
+        console.log('📍 getUserLocation: Web or no Location module');
         return;
       }
 
+      console.log('📍 getUserLocation: Requesting permissions');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      console.log('📍 getUserLocation: Permission status:', status);
+      
+      if (status !== 'granted') {
+        console.log('📍 getUserLocation: Permission denied');
+        return;
+      }
+
+      console.log('📍 getUserLocation: Getting position');
       const location = await Location.getCurrentPositionAsync({});
+      console.log('📍 getUserLocation: Position received:', location.coords);
+      
       setUserLocation({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       });
     } catch (error) {
-      console.error('Error getting location:', error);
+      console.error('❌ Error getting location:', error);
+      showError(`Erro ao obter localização: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      console.log('📍 loadCategories: Starting');
+      const { data, error } = await supabase
+        .from('categories')
+        .select('id, name, icon')
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('❌ Supabase error:', error);
+        return;
+      }
+
+      setCategories(data || []);
+      console.log('📍 loadCategories: Loaded', (data || []).length, 'categories');
+    } catch (error) {
+      console.error('Error loading categories:', error);
     }
   };
 
   const loadEvents = async () => {
     try {
+      console.log('📍 loadEvents: Starting');
+      
       const { data, error } = await supabase
         .from('events')
         .select(`
@@ -90,41 +150,94 @@ export default function Map() {
         .not('latitude', 'is', null)
         .not('longitude', 'is', null)
         .order('event_date', { ascending: true })
-        .limit(100);
+        .limit(50);
 
-      if (error) throw error;
+      console.log('📍 loadEvents: Query complete, rows:', data?.length);
 
-      const eventsData = data || [];
+      if (error) {
+        console.error('❌ Supabase error:', error);
+        showError(`Erro Supabase: ${error.message}`, JSON.stringify(error));
+        throw error;
+      }
+
+      // Filtrar eventos que já terminaram (passaram de 4 horas após início)
+      const now = new Date();
+      const eventsData = (data || []).filter((event) => {
+        try {
+          if (!event.event_date || !event.event_time) return false;
+          
+          const eventDateTime = new Date(`${event.event_date}T${event.event_time}`);
+          if (isNaN(eventDateTime.getTime())) return false;
+          
+          const eventEndTime = new Date(eventDateTime.getTime() + 4 * 60 * 60 * 1000);
+          
+          // Manter apenas eventos que ainda não terminaram
+          return eventEndTime > now;
+        } catch (error) {
+          console.error('Error filtering event:', error);
+          showError(`Erro ao filtrar evento: ${error instanceof Error ? error.message : String(error)}`);
+          return false;
+        }
+      });
+
       setEvents(eventsData);
 
       if (eventsData.length > 0 && mapRef.current && !userLocation) {
-        const coordinates = eventsData.map((event) => ({
-          latitude: event.latitude!,
-          longitude: event.longitude!,
-        }));
+        try {
+          const coordinates = eventsData.slice(0, 10).map((event) => ({
+            latitude: event.latitude!,
+            longitude: event.longitude!,
+          }));
 
-        mapRef.current.fitToCoordinates(coordinates, {
-          edgePadding: { top: 100, right: 50, bottom: 300, left: 50 },
-          animated: true,
-        });
+          if (coordinates.length > 0) {
+            mapRef.current.fitToCoordinates(coordinates, {
+              edgePadding: { top: 100, right: 50, bottom: 300, left: 50 },
+              animated: true,
+            });
+          }
+        } catch (mapError) {
+          console.error('Map error:', mapError);
+          showError(`Erro ao animar mapa: ${mapError instanceof Error ? mapError.message : String(mapError)}`, mapError instanceof Error ? mapError.stack : undefined);
+        }
       }
     } catch (error) {
       console.error('Error loading events:', error);
+      showError(`Erro ao carregar eventos: ${error instanceof Error ? error.message : String(error)}`, error instanceof Error ? error.stack : undefined);
+      Alert.alert('Aviso', 'Erro ao carregar eventos. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
   const getEventStatus = (event: Event): EventStatus => {
-    const now = new Date();
-    const eventDateTime = new Date(`${event.event_date}T${event.event_time}`);
-    const eventEndTime = new Date(eventDateTime.getTime() + 4 * 60 * 60 * 1000);
-    const diff = eventDateTime.getTime() - now.getTime();
-    const diffFromEnd = eventEndTime.getTime() - now.getTime();
+    try {
+      const now = new Date();
+      const eventDate = event.event_date;
+      const eventTime = event.event_time;
+      
+      if (!eventDate || !eventTime) return 'upcoming';
+      
+      const eventDateTime = new Date(`${eventDate}T${eventTime}`);
+      
+      if (isNaN(eventDateTime.getTime())) {
+        console.warn('Invalid event date/time:', eventDate, eventTime);
+        return 'upcoming';
+      }
+      
+      const eventEndTime = new Date(eventDateTime.getTime() + 4 * 60 * 60 * 1000);
+      const diff = eventDateTime.getTime() - now.getTime();
+      const diffFromEnd = eventEndTime.getTime() - now.getTime();
 
-    if (diff < 0 && diffFromEnd > 0) return 'happening';
-    if (diff < 2 * 60 * 60 * 1000) return 'starting-soon';
-    return 'upcoming';
+      // Se o evento já terminou, retornar null como indicador
+      if (diffFromEnd <= 0) return 'upcoming'; // Será filtrado no render
+
+      if (diff < 0 && diffFromEnd > 0) return 'happening';
+      if (diff < 2 * 60 * 60 * 1000) return 'starting-soon';
+      return 'upcoming';
+    } catch (error) {
+      console.error('Error calculating event status:', error);
+      return 'upcoming';
+    }
   };
 
   const getMarkerColor = (status: EventStatus) => {
@@ -135,8 +248,10 @@ export default function Map() {
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return '--/--/--';
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '--/--/--';
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',
@@ -145,68 +260,153 @@ export default function Map() {
   };
 
   const handleMarkerPress = (event: Event) => {
-    setSelectedEvent(event);
-    if (mapRef.current && event.latitude && event.longitude) {
-      mapRef.current.animateToRegion({
-        latitude: event.latitude,
-        longitude: event.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      }, 500);
+    try {
+      // Validações rigorosas
+      if (!event) {
+        console.warn('Event is null or undefined');
+        showError('Evento inválido (nulo ou indefinido)');
+        return;
+      }
+
+      // Validar ID do evento
+      const eventId = event?.id;
+      if (!eventId) {
+        console.warn('Event ID is missing');
+        showError('ID do evento está faltando');
+        return;
+      }
+
+      // Validar que o evento tem dados básicos
+      const isValidEvent = event.title && event.event_date;
+      if (!isValidEvent) {
+        console.warn('Event missing required fields');
+        showError(`Evento incompleto - Título: ${event.title}, Data: ${event.event_date}`);
+        return;
+      }
+
+      // Definir o evento selecionado com segurança
+      setSelectedEvent(event);
+
+      // Animar mapa com proteções e delay
+      if (mapRef?.current) {
+        try {
+          const lat = parseFloat(String(event.latitude));
+          const lng = parseFloat(String(event.longitude));
+
+          if (!isNaN(lat) && !isNaN(lng)) {
+            requestAnimationFrame(() => {
+              mapRef.current?.animateToRegion(
+                {
+                  latitude: lat,
+                  longitude: lng,
+                  latitudeDelta: 0.05,
+                  longitudeDelta: 0.05,
+                },
+                500
+              );
+            });
+          } else {
+            console.warn('Invalid coordinates for animation:', lat, lng);
+            showError(`Coordenadas inválidas: lat=${lat}, lng=${lng}`);
+          }
+        } catch (mapError) {
+          console.error('Map animation error:', mapError);
+          showError(`Erro ao animar mapa: ${mapError instanceof Error ? mapError.message : String(mapError)}`, mapError instanceof Error ? mapError.stack : undefined);
+        }
+      }
+    } catch (error) {
+      console.error('Error in handleMarkerPress:', error);
+      showError(`Erro ao pressionar marcador: ${error instanceof Error ? error.message : String(error)}`, error instanceof Error ? error.stack : undefined);
     }
   };
 
   const openNavigation = (event: Event) => {
-    if (!event.latitude || !event.longitude) {
-      Alert.alert('Erro', 'Localização do evento não disponível');
-      return;
+    try {
+      if (!event || !event.latitude || !event.longitude) {
+        showError('Localização do evento não disponível');
+        Alert.alert('Erro', 'Localização do evento não disponível');
+        return;
+      }
+
+      const lat = Number(event.latitude);
+      const lng = Number(event.longitude);
+      
+      // Validar se os números são válidos
+      if (isNaN(lat) || isNaN(lng)) {
+        showError(`Coordenadas inválidas: lat=${lat}, lng=${lng}`);
+        Alert.alert('Erro', 'Coordenadas inválidas');
+        return;
+      }
+
+      const label = encodeURIComponent(event.title || 'Evento');
+
+      Alert.alert(
+        'Navegar até o evento',
+        'Escolha o aplicativo de navegação:',
+        [
+          {
+            text: 'Google Maps',
+            onPress: () => {
+              try {
+                const url = Platform.select({
+                  ios: `comgooglemaps://?q=${lat},${lng}&center=${lat},${lng}&zoom=14&views=traffic`,
+                  android: `google.navigation:q=${lat},${lng}`,
+                  default: `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
+                });
+                if (url) {
+                  Linking.openURL(url).catch((error) => {
+                    console.error('Google Maps open error:', error);
+                    showError(`Erro ao abrir Google Maps: ${error instanceof Error ? error.message : String(error)}`);
+                    Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
+                  });
+                }
+              } catch (error) {
+                console.error('Google Maps error:', error);
+                showError(`Erro no Google Maps: ${error instanceof Error ? error.message : String(error)}`);
+                Alert.alert('Erro', 'Não foi possível abrir o Google Maps');
+              }
+            },
+          },
+          {
+            text: 'Waze',
+            onPress: () => {
+              try {
+                const url = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes&z=10`;
+                Linking.openURL(url).catch((error) => {
+                  console.error('Waze open error:', error);
+                  showError(`Erro ao abrir Waze: ${error instanceof Error ? error.message : String(error)}`);
+                  Alert.alert('Erro', 'Waze não está instalado');
+                });
+              } catch (error) {
+                console.error('Waze error:', error);
+                showError(`Erro no Waze: ${error instanceof Error ? error.message : String(error)}`);
+                Alert.alert('Erro', 'Não foi possível abrir o Waze');
+              }
+            },
+          },
+          {
+            text: 'Cancelar',
+            style: 'cancel',
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Navigation error:', error);
+      showError(`Erro na navegação: ${error instanceof Error ? error.message : String(error)}`, error instanceof Error ? error.stack : undefined);
+      Alert.alert('Erro', 'Erro ao abrir navegação');
     }
-
-    const lat = event.latitude;
-    const lng = event.longitude;
-    const label = encodeURIComponent(event.title);
-
-    Alert.alert(
-      'Navegar até o evento',
-      'Escolha o aplicativo de navegação:',
-      [
-        {
-          text: 'Google Maps',
-          onPress: () => {
-            const url = Platform.select({
-              ios: `comgooglemaps://?q=${lat},${lng}&center=${lat},${lng}&zoom=14&views=traffic`,
-              android: `google.navigation:q=${lat},${lng}`,
-              default: `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
-            });
-            Linking.openURL(url!).catch(() => {
-              Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
-            });
-          },
-        },
-        {
-          text: 'Waze',
-          onPress: () => {
-            const url = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes&z=10`;
-            Linking.openURL(url).catch(() => {
-              Alert.alert('Erro', 'Waze não está instalado');
-            });
-          },
-        },
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-      ]
-    );
   };
 
   if (loading) {
+    console.log('📍 render: Loading...');
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#00d9ff" />
       </View>
     );
   }
+
+  console.log('📍 render: Rendering map, platform:', Platform.OS, 'MapView:', !!MapView);
 
   const initialRegion = userLocation
     ? {
@@ -244,6 +444,14 @@ export default function Map() {
 
       <View style={styles.eventsGrid}>
         {events.map((event) => {
+          // Filtrar eventos finalizados
+          const now = new Date();
+          if (event.event_date && event.event_time) {
+            const eventDateTime = new Date(`${event.event_date}T${event.event_time}`);
+            const eventEndTime = new Date(eventDateTime.getTime() + 4 * 60 * 60 * 1000);
+            if (eventEndTime <= now) return null; // Evento finalizado, não renderizar
+          }
+
           const status = getEventStatus(event);
           const markerColor = getMarkerColor(status);
 
@@ -279,7 +487,7 @@ export default function Map() {
                 <View style={styles.webEventMeta}>
                   <Calendar size={14} color="#fff" />
                   <Text style={styles.webEventMetaText}>
-                    {new Date(event.event_date).toLocaleDateString('pt-BR')}
+                    {event.event_date ? new Date(event.event_date).toLocaleDateString('pt-BR') : '--/--/--'}
                   </Text>
                 </View>
                 <View style={styles.webEventMeta}>
@@ -297,43 +505,236 @@ export default function Map() {
   );
 
   const renderNativeMap = () => {
-    if (!MapView) return renderListView();
+    console.log('📍 renderNativeMap: Rendering map');
+    
+    try {
+      // Filtrar eventos por categoria selecionada
+      const filteredEvents = selectedCategory 
+        ? events.filter(e => e.category_id === selectedCategory)
+        : events;
 
-    return (
-      <>
-        <MapView
-          ref={mapRef}
-          style={styles.map}
-          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-          initialRegion={initialRegion}
-          showsUserLocation={true}
-          showsMyLocationButton={true}
-          showsCompass={true}
-          showsScale={true}
-          customMapStyle={darkMapStyle}
+      console.log('📍 Events filtered:', filteredEvents.length, 'from', events.length);
+
+      return (
+        <>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+            initialRegion={initialRegion}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
+            showsCompass={true}
+            showsScale={true}
+            customMapStyle={darkMapStyle}
+            onPress={() => {
+              try {
+                setSelectedEvent(null);
+              } catch (error) {
+                console.error('Error handling map press:', error);
+                showError(`Erro ao pressionar mapa: ${error instanceof Error ? error.message : String(error)}`);
+              }
+            }}
+          >
+            {filteredEvents.map((event) => {
+              try {
+                if (!event || !event.id) {
+                  console.warn('Event or event ID missing');
+                  return null;
+                }
+                
+                // Validar coordenadas de forma segura
+                const lat = parseFloat(String(event.latitude));
+                const lng = parseFloat(String(event.longitude));
+                
+                if (isNaN(lat) || isNaN(lng)) {
+                  console.warn('Invalid coordinates for event:', event.id, 'lat:', event.latitude, 'lng:', event.longitude);
+                  return null;
+                }
+
+                // Verificar se o evento já terminou
+                const now = new Date();
+                if (event.event_date && event.event_time) {
+                  try {
+                    const eventDateTime = new Date(`${event.event_date}T${event.event_time}`);
+                    if (!isNaN(eventDateTime.getTime())) {
+                      const eventEndTime = new Date(eventDateTime.getTime() + 4 * 60 * 60 * 1000);
+                      if (eventEndTime <= now) return null;
+                    }
+                  } catch (dateError) {
+                    console.warn('Error parsing event date:', dateError);
+                    showError(`Erro ao parsear data do evento: ${dateError instanceof Error ? dateError.message : String(dateError)}`);
+                  }
+                }
+
+                const status = getEventStatus(event);
+                const markerColor = getMarkerColor(status);
+
+                const pulseScale = pulseAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 1.4],
+                });
+                const pulseOpacity = pulseAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.7, 0.1],
+                });
+
+                return (
+                  <Marker
+                    key={`marker-${event.id}`}
+                    coordinate={{
+                      latitude: lat,
+                      longitude: lng,
+                    }}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                    title={event.title || 'Evento'}
+                    description={event.location_name || 'Local não especificado'}
+                    onPress={() => {
+                      try {
+                        console.log('🎯 Marker pressed:', event.id, event.title);
+                        handleMarkerPress(event);
+                      } catch (error) {
+                        console.error('Marker press error:', error);
+                        showError(`Erro ao pressionar marcador: ${error instanceof Error ? error.message : String(error)}`, error instanceof Error ? error.stack : undefined);
+                      }
+                    }}
+                  >
+                    <View style={styles.markerWrapper}>
+                      {/* Anel de pulsação */}
+                      <Animated.View
+                        style={[
+                          styles.markerPulse,
+                          {
+                            backgroundColor: markerColor,
+                            transform: [{ scale: pulseScale }],
+                            opacity: pulseOpacity,
+                          },
+                        ]}
+                      />
+                      
+                      {/* Círculo redondo */}
+                      <View style={[styles.markerCircle, { backgroundColor: markerColor }]}>
+                        <Text style={styles.markerIcon}>{event?.categories?.icon || '📍'}</Text>
+                      </View>
+                    </View>
+                  </Marker>
+                );
+              } catch (markerError) {
+                console.error('Error rendering marker for event:', event?.id, markerError);
+                showError(`Erro ao renderizar marcador do evento ${event?.id}: ${markerError instanceof Error ? markerError.message : String(markerError)}`, markerError instanceof Error ? markerError.stack : undefined);
+                return null;
+              }
+            })}
+          </MapView>
+
+        {/* Botão de Filtro Flutuante */}
+        <TouchableOpacity
+          style={styles.filterButtonFloating}
+          onPress={() => {
+            console.log('🔧 Filter button pressed');
+            setShowFilterModal(true);
+          }}
+          activeOpacity={0.8}
         >
-          {events.map((event) => {
-            if (!event.latitude || !event.longitude) return null;
-            const status = getEventStatus(event);
-            const markerColor = getMarkerColor(status);
+          <Text style={styles.filterButtonFloatingIcon}>⚙️</Text>
+          <Text style={styles.filterButtonFloatingText}>Filtros</Text>
+        </TouchableOpacity>
 
-            return (
-              <Marker
-                key={event.id}
-                coordinate={{
-                  latitude: event.latitude,
-                  longitude: event.longitude,
-                }}
-                onPress={() => handleMarkerPress(event)}
+        {/* Modal de Filtro */}
+        <Modal
+          visible={showFilterModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowFilterModal(false)}
+        >
+          <View style={styles.filterModalOverlay}>
+            <View style={styles.filterModalContainer}>
+              {/* Header */}
+              <View style={styles.filterModalHeader}>
+                <Text style={styles.filterModalTitle}>Filtrar Eventos</Text>
+                <TouchableOpacity
+                  style={styles.filterModalClose}
+                  onPress={() => setShowFilterModal(false)}
+                >
+                  <X size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Conteúdo */}
+              <ScrollView
+                style={styles.filterModalContent}
+                showsVerticalScrollIndicator={false}
               >
-                <View style={[styles.markerContainer, { backgroundColor: markerColor }]}>
-                  <Text style={styles.markerIcon}>{event.categories?.icon || '📍'}</Text>
-                  {status === 'happening' && <View style={styles.pulseRing} />}
-                </View>
-              </Marker>
-            );
-          })}
-        </MapView>
+                {/* Botão Todos */}
+                <TouchableOpacity
+                  style={[
+                    styles.filterModalOption,
+                    selectedCategory === null && styles.filterModalOptionActive
+                  ]}
+                  onPress={() => {
+                    setSelectedCategory(null);
+                    setShowFilterModal(false);
+                  }}
+                >
+                  <View style={styles.filterModalOptionContent}>
+                    <Text style={styles.filterModalOptionIcon}>🌍</Text>
+                    <Text style={[
+                      styles.filterModalOptionText,
+                      selectedCategory === null && styles.filterModalOptionTextActive
+                    ]}>
+                      Todos os Eventos
+                    </Text>
+                  </View>
+                  {selectedCategory === null && (
+                    <Text style={styles.filterModalCheckmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+
+                {/* Categorias */}
+                {categories.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[
+                      styles.filterModalOption,
+                      selectedCategory === cat.id && styles.filterModalOptionActive
+                    ]}
+                    onPress={() => {
+                      console.log('📌 Category selected:', cat.id, cat.name);
+                      setSelectedCategory(cat.id);
+                      setShowFilterModal(false);
+                    }}
+                  >
+                    <View style={styles.filterModalOptionContent}>
+                      <Text style={styles.filterModalOptionIcon}>{cat.icon}</Text>
+                      <Text style={[
+                        styles.filterModalOptionText,
+                        selectedCategory === cat.id && styles.filterModalOptionTextActive
+                      ]}>
+                        {cat.name}
+                      </Text>
+                    </View>
+                    {selectedCategory === cat.id && (
+                      <Text style={styles.filterModalCheckmark}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Footer */}
+              <View style={styles.filterModalFooter}>
+                <TouchableOpacity
+                  style={styles.filterModalClearButton}
+                  onPress={() => {
+                    setSelectedCategory(null);
+                    setShowFilterModal(false);
+                  }}
+                >
+                  <Text style={styles.filterModalClearButtonText}>Limpar Filtros</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <View style={styles.mapLegend}>
           <View style={styles.legendItem}>
@@ -350,25 +751,42 @@ export default function Map() {
           </View>
         </View>
 
-        {selectedEvent && (
-          <View style={styles.selectedEventCard}>
+        {selectedEvent && selectedEvent?.id && (
+          <TouchableOpacity 
+            style={styles.selectedEventCard}
+            activeOpacity={0.95}
+            onPress={() => {
+              console.log('📱 Card pressed, selectedEvent:', selectedEvent?.id);
+              const eventId = selectedEvent?.id;
+              if (eventId) {
+                console.log('✅ Pushing to event:', `/event/${eventId}`);
+                router.push(`/event/${eventId}`);
+              } else {
+                console.warn('❌ Event ID is missing');
+              }
+            }}
+          >
             <TouchableOpacity
               style={styles.closeButton}
-              onPress={() => setSelectedEvent(null)}
+              onPress={() => {
+                console.log('🔄 Closing event');
+                setSelectedEvent(null);
+              }}
+              activeOpacity={0.6}
             >
               <X size={24} color="#fff" />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.cardTouchable}
-              onPress={() => router.push(`/event/${selectedEvent.id}`)}
-              activeOpacity={0.95}
-            >
+            <View style={styles.cardTouchable}>
               {selectedEvent.image_url && (
                 <Image
                   source={{ uri: selectedEvent.image_url }}
                   style={styles.selectedEventImage}
                   resizeMode="cover"
+                  onError={(error) => {
+                    console.warn('Error loading event image:', error);
+                    showError(`Erro ao carregar imagem: ${JSON.stringify(error)}`);
+                  }}
                 />
               )}
 
@@ -388,21 +806,21 @@ export default function Map() {
 
               <View style={styles.selectedEventContent}>
                 <Text style={styles.selectedEventTitle} numberOfLines={2}>
-                  {selectedEvent.title}
+                  {selectedEvent.title || 'Evento sem título'}
                 </Text>
 
                 <View style={styles.selectedEventInfo}>
                   <View style={styles.selectedEventInfoItem}>
                     <Calendar size={16} color="#fff" />
                     <Text style={styles.selectedEventInfoText}>
-                      {formatDate(selectedEvent.event_date)} às {selectedEvent.event_time.slice(0, 5)}
+                      {selectedEvent.event_date ? formatDate(selectedEvent.event_date) : '--/--/--'} às {selectedEvent.event_time ? selectedEvent.event_time.slice(0, 5) : '--:--'}
                     </Text>
                   </View>
 
                   <View style={styles.selectedEventInfoItem}>
                     <MapPin size={16} color="#fff" />
                     <Text style={styles.selectedEventInfoText} numberOfLines={1}>
-                      {selectedEvent.location_name}
+                      {selectedEvent.location_name || 'Local não especificado'}
                     </Text>
                   </View>
                 </View>
@@ -410,9 +828,15 @@ export default function Map() {
                 <View style={styles.buttonRow}>
                   <TouchableOpacity
                     style={styles.navButton}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      openNavigation(selectedEvent);
+                    onPress={() => {
+                      try {
+                        console.log('🗺️ Opening navigation');
+                        openNavigation(selectedEvent);
+                      } catch (error) {
+                        console.error('Navigation button error:', error);
+                        showError(`Erro ao abrir navegação: ${error instanceof Error ? error.message : String(error)}`);
+                        Alert.alert('Erro', 'Não foi possível abrir navegação');
+                      }
                     }}
                   >
                     <Navigation2 size={18} color="#fff" />
@@ -423,11 +847,16 @@ export default function Map() {
                   </View>
                 </View>
               </View>
-            </TouchableOpacity>
-          </View>
+            </View>
+          </TouchableOpacity>
         )}
       </>
-    );
+      );
+    } catch (error) {
+      console.error('❌ Error rendering native map:', error);
+      showError(`Erro ao renderizar mapa: ${error instanceof Error ? error.message : String(error)}`, error instanceof Error ? error.stack : undefined);
+      return renderListView();
+    }
   };
 
   return (
@@ -440,7 +869,7 @@ export default function Map() {
         <Text style={styles.headerSubtitle}>{events.length} eventos disponíveis</Text>
       </LinearGradient>
 
-      {Platform.OS === 'web' || !MapView ? renderListView() : renderNativeMap()}
+      {Platform.OS === 'web' ? renderListView() : renderNativeMap()}
 
     </View>
   );
@@ -563,31 +992,165 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
-  markerContainer: {
+  filterButtonFloating: {
+    position: 'absolute',
+    top: 130,
+    right: 20,
+    backgroundColor: '#00d9ff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#00d9ff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 50,
+    zIndex: 1000,
+  },
+  filterButtonFloatingIcon: {
+    fontSize: 18,
+  },
+  filterButtonFloatingText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  filterModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  filterModalContainer: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: '#1a1a1a',
+    maxHeight: '80%',
+    overflow: 'hidden',
+  },
+  filterModalGradient: {
+    flex: 1,
+  },
+  filterModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: '#2d2d2d',
+  },
+  filterModalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  filterModalClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterModalContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#1a1a1a',
+  },
+  filterModalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  filterModalOptionActive: {
+    backgroundColor: 'rgba(0, 217, 255, 0.15)',
+    borderColor: '#00d9ff',
+  },
+  filterModalOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  filterModalOptionIcon: {
+    fontSize: 28,
+  },
+  filterModalOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ccc',
+  },
+  filterModalOptionTextActive: {
+    color: '#00d9ff',
+    fontWeight: '700',
+  },
+  filterModalCheckmark: {
+    fontSize: 20,
+    color: '#00d9ff',
+    fontWeight: '700',
+  },
+  filterModalFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: '#2d2d2d',
+  },
+  filterModalClearButton: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterModalClearButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  markerWrapper: {
     width: 50,
     height: 50,
     borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
+    elevation: 15,
+  },
+  markerCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
     borderColor: '#fff',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowRadius: 10,
   },
   markerIcon: {
-    fontSize: 24,
+    fontSize: 20,
+    lineHeight: 20,
   },
-  pulseRing: {
+  markerPulse: {
     position: 'absolute',
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    borderWidth: 3,
-    borderColor: '#34C759',
-    opacity: 0.3,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
   mapLegend: {
     position: 'absolute',

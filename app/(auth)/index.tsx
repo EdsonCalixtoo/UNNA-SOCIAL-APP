@@ -2,10 +2,12 @@ import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTranslation } from '@/lib/i18n';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function AuthIndex() {
   const { session, loading, profile } = useAuth();
+  const { t } = useTranslation();
   const router = useRouter();
 
   useEffect(() => {
@@ -32,9 +34,10 @@ export default function AuthIndex() {
       style={styles.container}
     >
       <View style={styles.logoContainer}>
-        <Text style={styles.logoText}>App de Eventos</Text>
+        <Text style={styles.logoText}>UNNA</Text>
       </View>
       <ActivityIndicator size="large" color="#00d9ff" style={styles.loader} />
+      <Text style={styles.loadingText}>{t('common.loading')}</Text>
     </LinearGradient>
   );
 }
@@ -52,6 +55,11 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
     color: '#00d9ff',
+  },
+  loadingText: {
+    color: '#888',
+    marginTop: 16,
+    fontSize: 14,
   },
   loader: {
     marginTop: 16,

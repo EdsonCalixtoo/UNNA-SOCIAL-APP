@@ -58,20 +58,83 @@ export default function StoryCreator({ visible, onClose, onSuccess }: StoryCreat
 
     setUploading(true);
     try {
+      let mediaUrl: string | null = null;
+      
+      // Upload OBRIGATÓRIO para o Storage
+      console.log('Iniciando upload da imagem para Storage...');
+      
+      try {
+        const fileName = `${user.id}/${Date.now()}.jpg`;
+        console.log('Buscando imagem:', selectedImage);
+        
+        const response = await fetch(selectedImage);
+        const blob = await response.blob();
+        console.log('Blob criado, tamanho:', blob.size, 'bytes');
+
+        console.log('Enviando para Storage...');
+        const { error: uploadError, data: uploadData } = await supabase.storage
+          .from('stories')
+          .upload(fileName, blob, {
+            contentType: 'image/jpeg',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error('❌ Erro ao fazer upload:', uploadError.message);
+          throw new Error(`Erro no upload: ${uploadError.message}`);
+        }
+
+        if (!uploadData) {
+          console.error('❌ Upload retornou sem dados');
+          throw new Error('Upload falhou: nenhum dado retornado');
+        }
+
+        console.log('✅ Upload bem-sucedido!', uploadData);
+        
+        // Obter URL pública
+        const { data: urlData } = supabase.storage
+          .from('stories')
+          .getPublicUrl(fileName);
+        
+        mediaUrl = urlData.publicUrl;
+        console.log('📸 URL Pública gerada:', mediaUrl);
+
+        if (!mediaUrl) {
+          throw new Error('Não foi possível gerar URL pública');
+        }
+        
+      } catch (storageError: any) {
+        console.error('❌ Erro durante upload:', storageError);
+        Alert.alert(
+          'Erro ao fazer upload', 
+          `${storageError.message || 'Não foi possível fazer upload da imagem'}`
+        );
+        return;
+      }
+
+      // Criar registro da story apenas se o upload foi bem-sucedido
+      if (!mediaUrl) {
+        Alert.alert('Erro', 'URL da imagem não foi gerada corretamente');
+        return;
+      }
+
+      console.log('Salvando story no banco de dados com URL:', mediaUrl);
+
       const { data: storyData_, error: storyError } = await supabase
         .from('stories')
         .insert({
           user_id: user.id,
-          media_url: selectedImage,
+          media_url: mediaUrl,
           media_type: 'image',
         })
         .select('id')
         .single();
 
       if (storyError || !storyData_?.id) {
-        throw storyError || new Error('Failed to create story');
+        throw storyError || new Error('Falha ao criar o story');
       }
 
+      Alert.alert('Sucesso', 'Story criado com sucesso!');
       setSelectedImage(null);
       onSuccess();
       onClose();

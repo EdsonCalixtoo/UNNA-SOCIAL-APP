@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Image, SafeAreaView, Dimensions, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { User, AtSign, Mail, Lock, CircleAlert as AlertCircle } from 'lucide-react-native';
@@ -29,6 +29,9 @@ export default function Register() {
   const [error, setError] = useState('');
   const { signUp } = useAuth();
   const router = useRouter();
+  const { height, width } = useWindowDimensions();
+  const isSmallScreen = height < 650;
+  const isTinyScreen = width < 375;
 
   const passwordStrength = password ? getPasswordStrength(password) : null;
 
@@ -153,158 +156,189 @@ export default function Register() {
   }, [username, fullName]);
 
   return (
-    <LinearGradient
-      colors={['#1a1a1a', '#2d2d2d', '#1a1a1a']}
-      style={styles.container}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+    <SafeAreaView style={styles.safeArea}>
+      <LinearGradient
+        colors={['#0a0a0a', '#1a1a1a', '#0a0a0a']}
+        style={styles.gradient}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
         >
-          <View style={styles.logoContainer}>
-            <View style={styles.logoCircle}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+          {/* Header com Gradient e Animação */}
+          <View style={styles.header}>
+            <LinearGradient
+              colors={['#00d9ff', '#ff1493']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.headerGradient}
+            >
               <Image
                 source={require('@/assets/images/icone.jpg')}
-                style={styles.logoImage}
+                style={styles.headerImage}
               />
-            </View>
-            <Text style={styles.welcomeText}>Criar Conta</Text>
-            <Text style={styles.subtitle}>Junte-se a nós e descubra eventos incríveis</Text>
+            </LinearGradient>
+            
+            <Text style={styles.headerTitle}>Bem-vindo!</Text>
+            <Text style={styles.headerSubtitle}>Crie sua conta e descubra eventos incríveis</Text>
           </View>
 
+          {/* Form Container com Glassmorphism */}
           <View style={styles.formContainer}>
             {error ? (
-              <View style={styles.errorContainer}>
+              <View style={styles.errorBanner}>
+                <AlertCircle size={18} color="#ff4444" />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             ) : null}
 
-            <View style={styles.inputWrapper}>
-              <View style={styles.inputIconContainer}>
+            {/* Full Name Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Nome Completo</Text>
+              <View style={styles.inputContainer}>
                 <User size={20} color="#00d9ff" />
-              </View>
-              <TextInput
-                style={styles.input}
-                placeholder="Nome Completo"
-                placeholderTextColor="#888"
-                value={fullName}
-                onChangeText={setFullName}
-                editable={!loading}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <View style={styles.inputIconContainer}>
-                <AtSign size={20} color="#ff1493" />
-              </View>
-              <TextInput
-                style={styles.input}
-                placeholder="Nome de Usuário"
-                placeholderTextColor="#888"
-                value={username}
-                onChangeText={(txt) => setUsername(sanitize(txt))}
-                autoCapitalize="none"
-                editable={!loading}
-              />
-            </View>
-
-            {/* Username status and suggestions */}
-            <View style={styles.usernameStatusRow}>
-              {checkingUsername ? (
-                <Text style={styles.usernameChecking}>Verificando disponibilidade...</Text>
-              ) : usernameAvailable === true ? (
-                <Text style={styles.usernameAvailable}>@{username} disponível</Text>
-              ) : usernameAvailable === false ? (
-                <Text style={styles.usernameTaken}>@{username} já está em uso</Text>
-              ) : null}
-            </View>
-
-            {suggestions.length > 0 && (
-              <View style={styles.suggestionsRow}>
-                <Text style={styles.suggestionsLabel}>Sugestões:</Text>
-                <View style={styles.suggestionsList}>
-                  {suggestions.map((s) => (
-                    <TouchableOpacity key={s} style={styles.suggestionChip} onPress={() => setUsername(s)}>
-                      <Text style={styles.suggestionText}>{s}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            <View style={styles.inputWrapper}>
-              <View style={styles.inputIconContainer}>
-                <Mail size={20} color="#00d9ff" />
-              </View>
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                placeholderTextColor="#888"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                editable={!loading}
-              />
-            </View>
-
-            <View>
-              <View style={styles.inputWrapper}>
-                <View style={styles.inputIconContainer}>
-                  <Lock size={20} color="#ff1493" />
-                </View>
                 <TextInput
                   style={styles.input}
-                  placeholder="Senha (mínimo 6 caracteres)"
-                  placeholderTextColor="#888"
+                  placeholder="João Silva"
+                  placeholderTextColor="#666"
+                  value={fullName}
+                  onChangeText={setFullName}
+                  editable={!loading}
+                />
+              </View>
+            </View>
+
+            {/* Username Input */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Text style={styles.inputLabel}>Nome de Usuário</Text>
+                {checkingUsername && (
+                  <Text style={styles.checkingText}>Verificando...</Text>
+                )}
+                {!checkingUsername && usernameAvailable === true && username && (
+                  <Text style={styles.availableText}>✓ Disponível</Text>
+                )}
+                {!checkingUsername && usernameAvailable === false && username && (
+                  <Text style={styles.takenText}>✗ Em uso</Text>
+                )}
+              </View>
+              <View style={[
+                styles.inputContainer,
+                usernameAvailable === true && styles.inputSuccess,
+                usernameAvailable === false && styles.inputError,
+              ]}>
+                <AtSign size={20} color={
+                  usernameAvailable === true ? '#34C759' :
+                  usernameAvailable === false ? '#ff4444' :
+                  '#ff1493'
+                } />
+                <TextInput
+                  style={styles.input}
+                  placeholder="joaosilva"
+                  placeholderTextColor="#666"
+                  value={username}
+                  onChangeText={(txt) => setUsername(sanitize(txt))}
+                  autoCapitalize="none"
+                  editable={!loading}
+                />
+              </View>
+
+              {/* Suggestions */}
+              {suggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <Text style={styles.suggestionsTitle}>Sugestões disponíveis:</Text>
+                  <View style={styles.suggestionsList}>
+                    {suggestions.map((s) => (
+                      <TouchableOpacity
+                        key={s}
+                        style={styles.suggestionChip}
+                        onPress={() => setUsername(s)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.suggestionText}>@{s}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Email Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Email</Text>
+              <View style={styles.inputContainer}>
+                <Mail size={20} color="#00d9ff" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="seu@email.com"
+                  placeholderTextColor="#666"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  editable={!loading}
+                />
+              </View>
+            </View>
+
+            {/* Password Input */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Text style={styles.inputLabel}>Senha</Text>
+                {password && (
+                  <Text style={[
+                    styles.strengthLabel,
+                    passwordStrength === 'weak' && styles.strengthLabelWeak,
+                    passwordStrength === 'medium' && styles.strengthLabelMedium,
+                    passwordStrength === 'strong' && styles.strengthLabelStrong,
+                  ]}>
+                    {passwordStrength === 'weak' ? '🔴 Fraca' :
+                     passwordStrength === 'medium' ? '🟡 Média' :
+                     '🟢 Forte'}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.inputContainer}>
+                <Lock size={20} color="#ff1493" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Mínimo 6 caracteres"
+                  placeholderTextColor="#666"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
                   editable={!loading}
                 />
               </View>
-              {passwordStrength && (
-                <View style={styles.passwordStrengthContainer}>
+              {password && (
+                <View style={styles.strengthBarsContainer}>
                   <View style={styles.strengthBars}>
                     <View style={[
                       styles.strengthBar,
                       passwordStrength === 'weak' && styles.strengthBarWeak,
-                      passwordStrength === 'medium' && styles.strengthBarMedium,
+                      (passwordStrength === 'medium' || passwordStrength === 'strong') && styles.strengthBarActive,
                       passwordStrength === 'strong' && styles.strengthBarStrong,
                     ]} />
                     <View style={[
                       styles.strengthBar,
-                      (passwordStrength === 'medium' || passwordStrength === 'strong') && styles.strengthBarMedium,
+                      (passwordStrength === 'medium' || passwordStrength === 'strong') && styles.strengthBarActive,
                       passwordStrength === 'strong' && styles.strengthBarStrong,
                     ]} />
                     <View style={[
                       styles.strengthBar,
                       passwordStrength === 'strong' && styles.strengthBarStrong,
                     ]} />
-                  </View>
-                  <View style={styles.strengthTextContainer}>
-                    <AlertCircle size={14} color={
-                      passwordStrength === 'weak' ? '#ff4444' :
-                      passwordStrength === 'medium' ? '#ffaa00' :
-                      '#34C759'
-                    } />
-                    <Text style={[
-                      styles.strengthText,
-                      passwordStrength === 'weak' && styles.strengthTextWeak,
-                      passwordStrength === 'medium' && styles.strengthTextMedium,
-                      passwordStrength === 'strong' && styles.strengthTextStrong,
-                    ]}>
-                      Senha {passwordStrength === 'weak' ? 'Fraca' : passwordStrength === 'medium' ? 'Média' : 'Forte'}
-                    </Text>
                   </View>
                 </View>
               )}
             </View>
 
+            {/* Register Button */}
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleRegister}
@@ -312,7 +346,7 @@ export default function Register() {
               activeOpacity={0.8}
             >
               <LinearGradient
-                colors={['#00d9ff', '#ff1493']}
+                colors={loading ? ['#666', '#555'] : ['#00d9ff', '#ff1493']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.buttonGradient}
@@ -323,20 +357,31 @@ export default function Register() {
               </LinearGradient>
             </TouchableOpacity>
 
-            <View style={styles.footer}>
+            {/* Footer */}
+            <View style={styles.footerContainer}>
               <Text style={styles.footerText}>Já tem uma conta? </Text>
               <TouchableOpacity onPress={() => router.back()}>
-                <Text style={styles.link}>Entre</Text>
+                <Text style={styles.footerLink}>Entre</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </LinearGradient>
+
+          <View style={styles.spacer} />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+  },
+  gradient: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
@@ -345,192 +390,249 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-    paddingTop: 60,
-    paddingBottom: 40,
+    paddingHorizontal: Math.max(16, Dimensions.get('window').width * 0.05),
+    paddingTop: Math.max(20, Dimensions.get('window').height * 0.04),
+    paddingBottom: Math.max(20, Dimensions.get('window').height * 0.03),
   },
-  logoContainer: {
+  
+  // Header Styles
+  header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: Math.max(20, Dimensions.get('window').height * 0.05),
   },
-  logoCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
+  headerGradient: {
+    width: Math.max(100, Dimensions.get('window').width * 0.25),
+    height: Math.max(100, Dimensions.get('window').width * 0.25),
+    borderRadius: Math.max(25, Dimensions.get('window').width * 0.07),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: '#00d9ff',
-    overflow: 'hidden',
+    marginBottom: Math.max(16, Dimensions.get('window').height * 0.03),
+    shadowColor: '#00d9ff',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 12,
   },
-  logoImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 16,
+  headerImage: {
+    width: Math.max(80, Dimensions.get('window').width * 0.2),
+    height: Math.max(80, Dimensions.get('window').width * 0.2),
+    borderRadius: Math.max(20, Dimensions.get('window').width * 0.05),
   },
-  welcomeText: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  headerTitle: {
+    fontSize: Math.max(28, Dimensions.get('window').width * 0.09),
+    fontWeight: '900',
     color: '#fff',
-    marginBottom: 8,
-    textAlign: 'center',
+    marginBottom: Math.max(4, Dimensions.get('window').height * 0.01),
+    letterSpacing: -0.5,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#aaa',
+  headerSubtitle: {
+    fontSize: Math.max(13, Dimensions.get('window').width * 0.035),
+    color: '#8E8E93',
     textAlign: 'center',
+    fontWeight: '500',
   },
+
+  // Form Container
   formContainer: {
     width: '100%',
   },
-  errorContainer: {
-    backgroundColor: 'rgba(255, 20, 147, 0.1)',
-    borderWidth: 1,
-    borderColor: '#ff1493',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-  },
-  errorText: {
-    color: '#ff1493',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  inputWrapper: {
+
+  // Error Banner
+  errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 16,
-    marginBottom: 16,
+    backgroundColor: 'rgba(255, 68, 68, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: '#ff4444',
+    borderRadius: Math.max(12, Dimensions.get('window').width * 0.03),
+    padding: Math.max(12, Dimensions.get('window').width * 0.03),
+    marginBottom: Math.max(16, Dimensions.get('window').height * 0.03),
+    gap: 12,
   },
-  inputIconContainer: {
-    padding: 16,
+  errorText: {
+    color: '#ff4444',
+    fontSize: Math.max(12, Dimensions.get('window').width * 0.035),
+    fontWeight: '600',
+    flex: 1,
+  },
+
+  // Input Group
+  inputGroup: {
+    marginBottom: Math.max(16, Dimensions.get('window').height * 0.03),
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Math.max(6, Dimensions.get('window').height * 0.01),
+  },
+  inputLabel: {
+    fontSize: Math.max(13, Dimensions.get('window').width * 0.035),
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
+  checkingText: {
+    fontSize: Math.max(11, Dimensions.get('window').width * 0.03),
+    color: '#FF9500',
+    fontWeight: '600',
+  },
+  availableText: {
+    fontSize: 12,
+    color: '#34C759',
+    fontWeight: '600',
+  },
+  takenText: {
+    fontSize: 12,
+    color: '#ff4444',
+    fontWeight: '600',
+  },
+  strengthLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  strengthLabelWeak: {
+    color: '#ff4444',
+  },
+  strengthLabelMedium: {
+    color: '#FF9500',
+  },
+  strengthLabelStrong: {
+    color: '#34C759',
+  },
+
+  // Input Container
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: Math.max(12, Dimensions.get('window').width * 0.03),
+    paddingLeft: Math.max(12, Dimensions.get('window').width * 0.03),
+    paddingRight: 4,
+    height: Math.max(48, Dimensions.get('window').height * 0.07),
+    transition: 'all 0.3s ease',
+  },
+  inputSuccess: {
+    borderColor: '#34C759',
+    backgroundColor: 'rgba(52, 199, 89, 0.08)',
+  },
+  inputError: {
+    borderColor: '#ff4444',
+    backgroundColor: 'rgba(255, 68, 68, 0.08)',
   },
   input: {
     flex: 1,
-    padding: 16,
-    paddingLeft: 0,
-    fontSize: 16,
+    marginLeft: Math.max(8, Dimensions.get('window').width * 0.02),
+    fontSize: Math.max(14, Dimensions.get('window').width * 0.04),
     color: '#fff',
+    fontWeight: '500',
+    padding: 0,
   },
-  button: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginTop: 8,
+
+  // Suggestions
+  suggestionsContainer: {
+    marginTop: Math.max(8, Dimensions.get('window').height * 0.01),
+    paddingHorizontal: Math.max(10, Dimensions.get('window').width * 0.03),
+    paddingVertical: Math.max(8, Dimensions.get('window').height * 0.01),
+    backgroundColor: 'rgba(0, 217, 255, 0.08)',
+    borderRadius: Math.max(10, Dimensions.get('window').width * 0.03),
+    borderWidth: 1,
+    borderColor: 'rgba(0, 217, 255, 0.2)',
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonGradient: {
-    padding: 18,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 32,
-  },
-  footerText: {
-    fontSize: 15,
-    color: '#aaa',
-  },
-  link: {
-    fontSize: 15,
+  suggestionsTitle: {
+    fontSize: Math.max(11, Dimensions.get('window').width * 0.03),
+    fontWeight: '700',
     color: '#00d9ff',
-    fontWeight: 'bold',
+    marginBottom: Math.max(6, Dimensions.get('window').height * 0.01),
   },
-  passwordStrengthContainer: {
-    marginTop: -8,
-    marginBottom: 16,
+  suggestionsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Math.max(6, Dimensions.get('window').width * 0.02),
+  },
+  suggestionChip: {
+    backgroundColor: 'rgba(0, 217, 255, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 217, 255, 0.3)',
+    paddingHorizontal: Math.max(10, Dimensions.get('window').width * 0.03),
+    paddingVertical: Math.max(6, Dimensions.get('window').height * 0.01),
+    borderRadius: Math.max(10, Dimensions.get('window').width * 0.02),
+  },
+  suggestionText: {
+    color: '#00d9ff',
+    fontSize: Math.max(11, Dimensions.get('window').width * 0.03),
+    fontWeight: '700',
+  },
+
+  // Password Strength
+  strengthBarsContainer: {
+    marginTop: Math.max(6, Dimensions.get('window').height * 0.01),
   },
   strengthBars: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
+    gap: Math.max(4, Dimensions.get('window').width * 0.01),
   },
   strengthBar: {
     flex: 1,
-    height: 4,
+    height: Math.max(4, Dimensions.get('window').height * 0.005),
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 2,
   },
   strengthBarWeak: {
     backgroundColor: '#ff4444',
   },
-  strengthBarMedium: {
-    backgroundColor: '#ffaa00',
+  strengthBarActive: {
+    backgroundColor: '#FF9500',
   },
   strengthBarStrong: {
     backgroundColor: '#34C759',
   },
-  strengthTextContainer: {
-    flexDirection: 'row',
+
+  // Button
+  button: {
+    borderRadius: Math.max(14, Dimensions.get('window').width * 0.04),
+    overflow: 'hidden',
+    marginTop: Math.max(8, Dimensions.get('window').height * 0.02),
+    marginBottom: Math.max(16, Dimensions.get('window').height * 0.03),
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonGradient: {
+    paddingVertical: Math.max(14, Dimensions.get('window').height * 0.02),
+    paddingHorizontal: Math.max(16, Dimensions.get('window').width * 0.04),
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
   },
-  strengthText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  strengthTextWeak: {
-    color: '#ff4444',
-  },
-  strengthTextMedium: {
-    color: '#ffaa00',
-  },
-  strengthTextStrong: {
-    color: '#34C759',
-  },
-  usernameStatusRow: {
-    marginBottom: 8,
-  },
-  usernameChecking: {
-    color: '#aaa',
-    fontSize: 13,
-  },
-  usernameAvailable: {
-    color: '#34C759',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  usernameTaken: {
-    color: '#ff4444',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  suggestionsRow: {
-    marginBottom: 12,
-  },
-  suggestionsLabel: {
-    color: '#aaa',
-    marginBottom: 6,
-  },
-  suggestionsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  suggestionChip: {
-    backgroundColor: '#111',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  suggestionText: {
+  buttonText: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: Math.max(15, Dimensions.get('window').width * 0.04),
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  // Footer
+  footerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Math.max(12, Dimensions.get('window').height * 0.02),
+    paddingVertical: Math.max(8, Dimensions.get('window').height * 0.01),
+  },
+  footerText: {
+    fontSize: Math.max(13, Dimensions.get('window').width * 0.035),
+    color: '#8E8E93',
+    fontWeight: '500',
+  },
+  footerLink: {
+    fontSize: Math.max(13, Dimensions.get('window').width * 0.035),
+    color: '#00d9ff',
+    fontWeight: '800',
+  },
+
+  spacer: {
+    height: Math.max(12, Dimensions.get('window').height * 0.02),
   },
 });

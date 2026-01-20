@@ -1,0 +1,48 @@
+# Backup and temporary files
+*.bak
+*.old
+*.orig
+*.changes.txt
+*.instructions.md
+*.new
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# SQL migration backups
+fix_*.sql
+
+# Node
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-error.log*
+
+# Build artifacts
+dist/
+build/
+.expo/
+.expo-shared/
+
+# Native builds (EAS will regenerate)
+ios/
+android/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+*.log.bak
