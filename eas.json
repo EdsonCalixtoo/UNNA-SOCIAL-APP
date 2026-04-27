@@ -1,0 +1,32 @@
+{
+  "cli": {
+    "version": ">= 10.0.0",
+    "promptToConfigurePushNotifications": true,
+    "appVersionSource": "local"
+  },
+  "build": {
+    "production": {
+      "ios": {
+        "distribution": "store"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "preview": {
+      "ios": {
+        "distribution": "internal"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
