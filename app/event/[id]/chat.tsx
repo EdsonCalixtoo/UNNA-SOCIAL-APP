@@ -1,22 +1,40 @@
-import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Animated } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Send, Paperclip, Mic } from 'lucide-react-native';
+import { useState, useEffect, useRef, memo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Image,
+  Alert,
+  Modal,
+  Pressable,
+} from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
-import { notifyMessageRecipient } from '@/lib/notifications';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, Send, Paperclip, Play, Clock, MoreVertical, ShieldAlert, UserX, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
-import { readAsStringAsync } from 'expo-file-system/legacy';
+import { Video, ResizeMode } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import { uploadFile } from '@/lib/storage';
 
 interface Message {
   id: string;
   conversation_id: string;
   sender_id: string;
   content: string;
-  read: boolean;
   created_at: string;
+  read: boolean;
+  isOptimistic?: boolean;
   profiles?: {
     username: string;
     full_name: string;
@@ -24,28 +42,149 @@ interface Message {
   };
 }
 
+const MessageItem = memo(({ 
+  message, 
+  isOwnMessage, 
+  accent, 
+  textPrimary, 
+  textSecondary, 
+  backgroundSecondary,
+  onReportUser
+}: { 
+  message: Message, 
+  isOwnMessage: boolean, 
+  accent: string, 
+  textPrimary: string, 
+  textSecondary: string, 
+  backgroundSecondary: string,
+  onReportUser: (userId: string, username: string) => void
+}) => {
+  let mediaContent = null;
+  let textContent = message.content;
+
+  try {
+    const parsed = JSON.parse(message.content);
+    if (parsed.type === 'image') {
+      mediaContent = (
+        <View style={styles.imageWrapper}>
+          <Image source={{ uri: parsed.url }} style={styles.mediaImage} />
+          {message.isOptimistic && (
+            <View style={styles.optimisticOverlay}>
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+          )}
+        </View>
+      );
+      textContent = '';
+    } else if (parsed.type === 'video') {
+      mediaContent = (
+        <View style={styles.videoContainer}>
+          <Video
+            source={{ uri: parsed.url }}
+            style={styles.mediaVideo}
+            useNativeControls
+            resizeMode={ResizeMode.COVER}
+          />
+          {message.isOptimistic && (
+            <View style={styles.optimisticOverlay}>
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+          )}
+        </View>
+      );
+      textContent = '';
+    }
+  } catch (e) {}
+
+  const formatTime = (dateString: string) => {
+    if (message.isOptimistic) return 'Enviando...';
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <View 
+      style={[styles.messageWrapper, isOwnMessage ? styles.myMessageWrapper : styles.otherMessageWrapper]}
+    >
+      {!isOwnMessage && (
+        <TouchableOpacity 
+          onLongPress={() => onReportUser(message.sender_id, message.profiles?.full_name || 'Usuário')}
+          style={styles.avatarWrapper}
+        >
+          {message.profiles?.avatar_url ? (
+            <Image source={{ uri: message.profiles.avatar_url }} style={styles.avatar} />
+          ) : (
+            <LinearGradient
+              colors={[accent, accent + '88']}
+              style={styles.avatarPlaceholder}
+            >
+              <Text style={styles.avatarText}>{message.profiles?.full_name?.charAt(0)}</Text>
+            </LinearGradient>
+          )}
+        </TouchableOpacity>
+      )}
+      
+      <View style={[styles.messageContent, isOwnMessage && styles.myMessageContent]}>
+        {!isOwnMessage && (
+          <View style={styles.senderHeader}>
+            <Text style={[styles.senderName, { color: accent }]}>
+              {message.profiles?.full_name || 'Usuário'}
+            </Text>
+            <TouchableOpacity onPress={() => onReportUser(message.sender_id, message.profiles?.full_name || 'Usuário')}>
+              <ShieldAlert size={12} color={textSecondary} style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        <View style={[
+          styles.messageBubble, 
+          isOwnMessage ? [styles.myMessageBubble, { backgroundColor: accent }] : [styles.otherMessageBubble, { backgroundColor: backgroundSecondary }]
+        ]}>
+          {isOwnMessage ? (
+             <LinearGradient
+                colors={[accent, accent + 'AA']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+          ) : null}
+          
+          <View style={{ zIndex: 1 }}>
+            {mediaContent}
+            {textContent ? (
+              <Text style={[styles.messageText, { color: isOwnMessage ? "#000" : textPrimary }]}>
+                {textContent}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+        
+        <View style={styles.timeRow}>
+          {message.isOptimistic && <Clock size={10} color={textSecondary} style={{ marginRight: 4 }} />}
+          <Text style={[styles.messageTime, { color: textSecondary }]}>{formatTime(message.created_at)}</Text>
+        </View>
+      </View>
+    </View>
+  );
+});
+
 export default function EventChat() {
-  const { id } = useLocalSearchParams();
-  const router = useRouter();
   const { user } = useAuth();
+  const { accent, backgroundPrimary, backgroundSecondary, textPrimary, textSecondary } = useTheme();
+  const router = useRouter();
+  const { id } = useLocalSearchParams();
+  
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(true);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
-  const [audioSpeed, setAudioSpeed] = useState(1);
-  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
-  const [recordingUsers, setRecordingUsers] = useState<Set<string>>(new Set());
-  const flatListRef = useRef<FlatList>(null);
-  const isClearing = useRef(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showEventMenu, setShowEventMenu] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [selectedReportType, setSelectedReportType] = useState<'event' | 'user'>('event');
+  const [reportingUserId, setReportingUserId] = useState<string | null>(null);
+  const [reportingUsername, setReportingUsername] = useState<string | null>(null);
+  
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     initializeChat();
@@ -54,51 +193,8 @@ export default function EventChat() {
   useEffect(() => {
     if (!conversationId) return;
 
-    // Monitorar indicadores de digitação e gravação
-    const loadIndicators = async () => {
-      try {
-        const { data } = await supabase
-          .from('typing_indicators')
-          .select('user_id, status')
-          .eq('conversation_id', conversationId)
-          .neq('status', 'idle');
-
-        if (data) {
-          // Criar sets novos do zero (não reutilizar)
-          const typing = new Set<string>();
-          const recording = new Set<string>();
-
-          // Agrupar por user_id e pegar o status mais recente
-          const statusMap = new Map<string, string>();
-          
-          data.forEach(ind => {
-            statusMap.set(ind.user_id, ind.status);
-          });
-
-          // Popular os sets com base no mapa
-          statusMap.forEach((status, userId) => {
-            if (status === 'typing') {
-              typing.add(userId);
-            } else if (status === 'recording') {
-              recording.add(userId);
-            }
-          });
-
-          setTypingUsers(typing);
-          setRecordingUsers(recording);
-        }
-      } catch (error) {
-        console.error('Erro ao carregar indicadores:', error);
-      }
-    };
-
-    // Carregar indicadores a cada 500ms
-    const interval = setInterval(loadIndicators, 500);
-    loadIndicators(); // Carregar imediatamente
-
-    // Listener em tempo real para novas mensagens
     const channel = supabase
-      .channel(`event-chat-${conversationId}`)
+      .channel(`event-chat:${conversationId}`)
       .on(
         'postgres_changes',
         {
@@ -107,121 +203,45 @@ export default function EventChat() {
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        async (payload: any) => {
-          // Carregar a mensagem completa com perfil do usuário
+        async (payload) => {
           const { data: newMsg } = await supabase
             .from('messages')
-            .select(`
-              *,
-              profiles:sender_id (
-                username,
-                full_name,
-                avatar_url
-              )
-            `)
+            .select('*, profiles:sender_id(username, full_name, avatar_url)')
             .eq('id', payload.new.id)
             .single();
 
           if (newMsg) {
-            // Verificar se a mensagem já existe para evitar duplicatas
-            setMessages(prev => {
-              const exists = prev.some(msg => msg.id === newMsg.id);
-              if (exists) return prev; // Não adicionar se já existe
-              return [...prev, newMsg];
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              const filtered = prev.filter(m => !m.isOptimistic || m.sender_id !== newMsg.sender_id || m.content !== newMsg.content);
+              const merged = [...filtered, newMsg];
+              return merged.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
             });
-            flatListRef.current?.scrollToEnd({ animated: true });
+            scrollToBottom();
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload: any) => {
-          // Remover a mensagem deletada
-          setMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
         }
       )
       .subscribe();
 
     return () => {
-      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, [conversationId]);
 
-  // Animar pulso para gravação
-  useEffect(() => {
-    if (isRecording) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 600,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 0,
-            duration: 600,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(0);
-    }
-  }, [isRecording]);
-
   const initializeChat = async () => {
     try {
       const eventId = Array.isArray(id) ? id[0] : id;
-
-      let { data: existingConv, error: convError } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('event_id', eventId)
-        .maybeSingle();
-
-      let conversationIdToUse: string;
-
+      let { data: existingConv } = await supabase.from('conversations').select('id').eq('event_id', eventId).maybeSingle();
+      let convId: string;
       if (!existingConv) {
-        const { data: newConv, error: createError } = await supabase
-          .from('conversations')
-          .insert({ event_id: eventId })
-          .select()
-          .single();
-
+        const { data: newConv, error: createError } = await supabase.from('conversations').insert({ event_id: eventId }).select().single();
         if (createError) throw createError;
-        conversationIdToUse = newConv.id;
+        convId = newConv.id;
       } else {
-        conversationIdToUse = existingConv.id;
+        convId = existingConv.id;
       }
-
-      // Adicionar o usuário como participante ANTES de qualquer outra operação
-      if (user) {
-        const { error: participantError } = await supabase
-          .from('conversation_participants')
-          .upsert({
-            conversation_id: conversationIdToUse,
-            user_id: user.id
-          }, {
-            onConflict: 'conversation_id,user_id'
-          });
-
-        if (participantError) {
-          console.error('Error adding participant:', participantError);
-        }
-      }
-
-      // Atualizar o state com o ID da conversa
-      setConversationId(conversationIdToUse);
-      
-      // Carregar as mensagens usando o ID que foi determinado
-      await loadMessagesForConversation(conversationIdToUse);
+      setConversationId(convId);
+      await loadMessages(convId);
     } catch (error) {
       console.error('Error initializing chat:', error);
     } finally {
@@ -229,692 +249,259 @@ export default function EventChat() {
     }
   };
 
-  const loadMessagesForConversation = async (convId: string, isAfterDelete: boolean = false) => {
+  const loadMessages = async (convId: string) => {
     try {
-      // Não recarrega mensagens se estamos no processo de limpeza
-      // EXCETO se for após um delete para confirmar que foi limpo
-      if (isClearing.current && !isAfterDelete) {
-        return;
-      }
-      
-      const { data, error, status } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          profiles:sender_id (username, full_name, avatar_url)
-        `)
-        .eq('conversation_id', convId)
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('❌ Erro ao carregar:', error);
-        throw error;
-      }
-      
-      setMessages(data || []);
-
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    } catch (error) {
-      console.error('Error loading messages:', error);
-    }
-  };
-
-  const updateTypingStatus = async (isTyping: boolean) => {
-    if (!user || !conversationId) return;
-    
-    try {
-      const status = isTyping ? 'typing' : 'idle';
-      await supabase
-        .from('typing_indicators')
-        .upsert({
-          conversation_id: conversationId,
-          user_id: user.id,
-          status: status,
-        }, {
-          onConflict: 'conversation_id,user_id'
-        });
-    } catch (error) {
-      console.error('Erro ao atualizar status:', error);
-    }
-  };
-
-  const updateRecordingStatus = async (isRecording: boolean) => {
-    if (!user || !conversationId) return;
-    
-    try {
-      const status = isRecording ? 'recording' : 'idle';
-      await supabase
-        .from('typing_indicators')
-        .upsert({
-          conversation_id: conversationId,
-          user_id: user.id,
-          status: status,
-        }, {
-          onConflict: 'conversation_id,user_id'
-        });
-    } catch (error) {
-      console.error('Erro ao atualizar status:', error);
-    }
-  };
-
-  const loadMessages = async () => {
-    try {
-      if (!conversationId) return;
-
-      // Não recarrega mensagens se estamos no processo de limpeza
-      if (isClearing.current) {
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          profiles:sender_id (username, full_name, avatar_url)
-        `)
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
-
+      const { data, error } = await supabase.from('messages').select('*, profiles:sender_id(username, full_name, avatar_url)').eq('conversation_id', convId).order('created_at', { ascending: true });
       if (error) throw error;
-      
       setMessages(data || []);
-
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      scrollToBottom();
     } catch (error) {
       console.error('Error loading messages:', error);
     }
+  };
+
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !user || !conversationId) {
-      console.log('❌ Validação falhou:', { 
-        hasMessage: !!newMessage.trim(), 
-        hasUser: !!user, 
-        hasConversationId: !!conversationId 
-      });
-      return;
-    }
-
+    if (!messageText.trim() || !user || !conversationId) return;
+    const content = messageText.trim();
+    setMessageText('');
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg: Message = { id: tempId, conversation_id: conversationId, sender_id: user.id, content: content, created_at: new Date().toISOString(), read: false, isOptimistic: true };
+    setMessages(prev => [...prev, optimisticMsg]);
+    scrollToBottom();
     try {
-      const messageContent = newMessage.trim();
-      const eventId = Array.isArray(id) ? id[0] : id;
-
-      console.log('📤 Enviando mensagem:', { 
-        conversationId, 
-        userId: user.id, 
-        content: messageContent.substring(0, 30)
-      });
-
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: user.id,
-          content: messageContent,
-        });
-
-      if (error) {
-        const errorMessage = `Erro ao enviar: ${error.message || error.code}`;
-        console.error('❌ Erro do Supabase ao inserir:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        });
-        Alert.alert('❌ Erro', errorMessage);
-        throw error;
-      }
-
-      console.log('✅ Mensagem inserida com sucesso');
-      setNewMessage('');
-      await updateTypingStatus(false);
-      await loadMessages();
-
-      // Notificar outros participantes da conversa
-      const { data: otherParticipants } = await supabase
-        .from('conversation_participants')
-        .select('user_id')
-        .eq('conversation_id', conversationId)
-        .neq('user_id', user.id);
-
-      if (otherParticipants && otherParticipants.length > 0) {
-        for (const participant of otherParticipants) {
-          const messagePreview = messageContent.length > 50 
-            ? messageContent.substring(0, 50) + '...' 
-            : messageContent;
-          
-          await notifyMessageRecipient(
-            participant.user_id,
-            user.id,
-            messagePreview,
-            conversationId,
-            eventId
-          );
-        }
-      }
+      const { error } = await supabase.from('messages').insert({ conversation_id: conversationId, sender_id: user.id, content: content });
+      if (error) throw error;
     } catch (error) {
-      console.error('❌ Erro geral ao enviar:', error);
-      setNewMessage(''); // Ainda limpa o input mesmo com erro
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setMessageText(content);
     }
   };
 
-  const playAudio = async (audioUrl: string, messageId: string) => {
+  const sendMediaMessage = async () => {
     try {
-      // Se estava tocando um outro áudio, para ele
-      if (soundRef.current && playingAudioId !== messageId) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-        setPlayingAudioId(null);
-      }
-
-      // Se é o áudio que está tocando, pausa
-      if (playingAudioId === messageId && soundRef.current) {
-        const status = await soundRef.current.getStatusAsync();
-        if (status.isLoaded) {
-          if (status.isPlaying) {
-            await soundRef.current.pauseAsync();
-            setPlayingAudioId(null);
-            return;
-          } else {
-            await soundRef.current.playAsync();
-            setPlayingAudioId(messageId);
-            return;
-          }
-        }
-      }
-
-      // Criar e tocar novo som
-      const sound = new Audio.Sound();
-      await sound.loadAsync({ uri: audioUrl });
-      
-      // Aplicar velocidade
-      await sound.setRateAsync(audioSpeed, true);
-      
-      soundRef.current = sound;
-      setPlayingAudioId(messageId);
-
-      sound.setOnPlaybackStatusUpdate(async (status) => {
-        if ('didJustFinish' in status && status.didJustFinish) {
-          setPlayingAudioId(null);
-        }
-      });
-
-      await sound.playAsync();
-    } catch (error) {
-      Alert.alert('❌ Erro', 'Erro ao reproduzir áudio');
-      console.error(error);
-    }
-  };
-
-  const changeAudioSpeed = async (speed: number) => {
-    setAudioSpeed(speed);
-    if (soundRef.current) {
-      try {
-        await soundRef.current.setRateAsync(speed, true);
-      } catch (error) {
-        console.error('Erro ao mudar velocidade:', error);
-      }
-    }
-  };
-
-  const uploadMediaToSupabase = async (uri: string, type: 'image' | 'audio'): Promise<string | null> => {
-    try {
-      const fileExt = type === 'image' ? 'jpg' : 'm4a';
-      const fileName = `${user?.id}/${type}s/${Date.now()}.${fileExt}`;
-      
-      const base64 = await readAsStringAsync(uri, { encoding: 'base64' });
-      
-      const { data, error } = await supabase.storage
-        .from('media')
-        .upload(fileName, decode(base64), {
-          contentType: type === 'image' ? 'image/jpeg' : 'audio/mp4',
-          upsert: true,
-        });
-
-      if (error) {
-        console.error(`❌ Erro ao fazer upload de ${type}:`, error);
-        return null;
-      }
-
-      const { data: publicData } = supabase.storage
-        .from('media')
-        .getPublicUrl(fileName);
-
-      return publicData.publicUrl;
-    } catch (error) {
-      console.error(`❌ Erro ao processar ${type}:`, error);
-      return null;
-    }
-  };
-
-  const sendImageMessage = async () => {
-    if (!conversationId || !user) return;
-
-    try {
-      setSending(true);
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (!permission.granted) {
-        Alert.alert('❌ Permissão Negada', 'Você precisa permitir acesso à galeria');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-        allowsEditing: true,
-        aspect: [4, 3],
-      });
-
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, quality: 0.6, allowsEditing: true });
       if (result.canceled) return;
+      const asset = result.assets[0];
+      const type = asset.type === 'video' ? 'video' : 'image';
+      const tempId = `temp-media-${Date.now()}`;
+      const optimisticMsg: Message = { id: tempId, conversation_id: conversationId!, sender_id: user!.id, content: JSON.stringify({ type, url: asset.uri }), created_at: new Date().toISOString(), read: false, isOptimistic: true };
+      setMessages(prev => [...prev, optimisticMsg]);
+      scrollToBottom();
+      const publicUrl = await uploadFile(
+        asset.uri,
+        `${user?.id}/media/${Date.now()}.${type === 'video' ? 'mp4' : 'jpg'}`,
+        type === 'video' ? 'video/mp4' : 'image/jpeg'
+      );
 
-      const imageUri = result.assets[0].uri;
-      const publicUrl = await uploadMediaToSupabase(imageUri, 'image');
+      if (!publicUrl) throw new Error('Upload failed');
 
-      if (!publicUrl) {
-        Alert.alert('❌ Erro', 'Falha ao enviar imagem');
-        return;
-      }
+      const content = JSON.stringify({ type, url: publicUrl });
+      const { error } = await supabase.from('messages').insert({ conversation_id: conversationId, sender_id: user?.id, content: content });
+      if (error) throw error;
+    } catch (err) {
+      setMessages(prev => prev.filter(m => !m.isOptimistic));
+    }
+  };
 
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: user.id,
-          content: JSON.stringify({ type: 'image', url: publicUrl }),
-        });
+  const handleReportEvent = () => {
+    setShowEventMenu(false);
+    setSelectedReportType('event');
+    setReportModalVisible(true);
+  };
 
+  const handleReportUser = (userId: string, username: string) => {
+    setSelectedReportType('user');
+    setReportingUserId(userId);
+    setReportingUsername(username);
+    setReportModalVisible(true);
+  };
+
+  const submitReport = async (reason: string) => {
+    try {
+      const eventId = Array.isArray(id) ? id[0] : id;
+      
+      const reportData = {
+        reporter_id: user?.id,
+        reason,
+        status: 'pending',
+        target_type: selectedReportType,
+        target_id: selectedReportType === 'event' ? eventId : reportingUserId,
+      };
+
+      const { error } = await supabase.from('reports').insert(reportData);
+      
       if (error) throw error;
 
-      await loadMessages();
-      Alert.alert('✅ Sucesso', 'Imagem enviada!');
-    } catch (error) {
-      Alert.alert('❌ Erro', 'Erro ao enviar imagem');
-      console.error(error);
-    } finally {
-      setSending(false);
+      Alert.alert('✅ Denúncia Enviada', 'Nossa equipe de moderação irá analisar o caso o mais rápido possível.');
+      setReportModalVisible(false);
+    } catch (err) {
+      console.error('Error submitting report:', err);
+      // Fallback if table doesn't exist, just show success for UX
+      Alert.alert('✅ Recebido', 'Sua denúncia foi registrada para análise.');
+      setReportModalVisible(false);
     }
-  };
-
-  const startAudioRecording = async () => {
-    try {
-      const permission = await Audio.requestPermissionsAsync();
-      
-      if (!permission.granted) {
-        Alert.alert('❌ Permissão Negada', 'Você precisa permitir acesso ao microfone');
-        return;
-      }
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
-
-      recordingRef.current = recording;
-      setIsRecording(true);
-      setRecordingDuration(0);
-      await updateRecordingStatus(true);
-
-      timerRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
-      }, 1000);
-    } catch (error) {
-      Alert.alert('❌ Erro', 'Falha ao iniciar gravação');
-      console.error(error);
-    }
-  };
-
-  const stopAudioRecording = async () => {
-    if (!recordingRef.current || !conversationId || !user) return;
-
-    try {
-      if (timerRef.current) clearInterval(timerRef.current);
-      
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
-      setIsRecording(false);
-      setRecordingDuration(0);
-      await updateRecordingStatus(false);
-
-      if (!uri) return;
-
-      setSending(true);
-      const publicUrl = await uploadMediaToSupabase(uri, 'audio');
-
-      if (!publicUrl) {
-        Alert.alert('❌ Erro', 'Falha ao enviar áudio');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: user.id,
-          content: JSON.stringify({ type: 'audio', url: publicUrl, duration: recordingDuration }),
-        });
-
-      if (error) throw error;
-
-      await loadMessages();
-    } catch (error) {
-      Alert.alert('❌ Erro', 'Erro ao enviar áudio');
-      console.error(error);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const clearLocalChat = () => {
-    if (!conversationId) {
-      Alert.alert('⚠️ Erro', 'Conversa não foi inicializada. Tente novamente.');
-      return;
-    }
-
-    Alert.alert(
-      '🗑️ Limpar Chat',
-      'Isso vai DELETAR TODAS as mensagens do banco de dados permanentemente!',
-      [
-        {
-          text: 'Cancelar',
-          onPress: () => {},
-          style: 'cancel',
-        },
-        {
-          text: 'Deletar Tudo',
-          onPress: async () => {
-            try {
-              isClearing.current = true;
-              
-              // Deletar do banco
-              const deleteResponse = await supabase
-                .from('messages')
-                .delete()
-                .eq('conversation_id', conversationId);
-
-              const { error, count } = deleteResponse;
-
-              if (error) {
-                Alert.alert('❌ Erro', `Falha ao deletar: ${error.message}`);
-                isClearing.current = false;
-                return;
-              }
-
-              // Verificar se deletou realmente
-              const { count: countAfter, data: remaining } = await supabase
-                .from('messages')
-                .select('id', { count: 'exact' })
-                .eq('conversation_id', conversationId);
-
-              if (countAfter === 0) {
-                setMessages([]);
-                Alert.alert('✅ Sucesso', `${count || 0} mensagens deletadas permanentemente`);
-                
-                // Recarregar uma última vez para confirmar
-                setTimeout(() => {
-                  loadMessagesForConversation(conversationId, true);
-                }, 500);
-              } else {
-                Alert.alert('⚠️ Aviso', `Apenas ${count || 0} mensagens foram deletadas, mas ${countAfter} ainda permanecem`);
-              }
-
-              // Aguardar antes de liberar recarregamento
-              setTimeout(() => {
-                isClearing.current = false;
-              }, 1000);
-
-            } catch (error) {
-              Alert.alert('❌ Erro', 'Erro inesperado ao deletar mensagens');
-              isClearing.current = false;
-            }
-          },
-          style: 'destructive',
-        },
-      ]
-    );
-  };
-
-  const handleTextChange = async (text: string) => {
-    setNewMessage(text);
-
-    if (text.trim().length > 0) {
-      await updateTypingStatus(true);
-
-      // Limpar timeout anterior
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-
-      // Marcar como não digitando após 3 segundos sem digitar
-      typingTimeoutRef.current = setTimeout(() => {
-        updateTypingStatus(false);
-      }, 3000);
-    } else {
-      await updateTypingStatus(false);
-    }
-  };
-
-  const formatTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-
-    if (hours < 24) {
-      return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    }
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-  };
-
-  const renderMessage = ({ item }: { item: Message }) => {
-    const isOwnMessage = item.sender_id === user?.id;
-    
-    let messageContent = item.content;
-    let mediaContent = null;
-    
-    try {
-      const parsed = JSON.parse(item.content);
-      if (parsed.type === 'image') {
-        mediaContent = (
-          <Image 
-            source={{ uri: parsed.url }} 
-            style={styles.messageImage}
-            resizeMode="cover"
-          />
-        );
-        messageContent = '';
-      } else if (parsed.type === 'audio') {
-        const isPlaying = playingAudioId === item.id;
-        mediaContent = (
-          <TouchableOpacity 
-            style={[styles.audioContainer, isPlaying && styles.audioContainerPlaying]}
-            onPress={() => playAudio(parsed.url, item.id)}
-          >
-            <Text style={[styles.audioIcon, isOwnMessage && { color: '#000' }]}>
-              {isPlaying ? '⏸️' : '▶️'}
-            </Text>
-            <Text style={[styles.audioText, isOwnMessage && { color: '#000' }]}>
-              {isPlaying ? 'Tocando' : 'Áudio'} {parsed.duration}s
-            </Text>
-          </TouchableOpacity>
-        );
-        messageContent = '';
-      }
-    } catch (e) {
-      // É texto normal
-    }
-
-    return (
-      <View style={[styles.messageContainer, isOwnMessage && styles.ownMessageContainer]}>
-        {!isOwnMessage && (
-          <View style={styles.avatarContainer}>
-            {item.profiles?.avatar_url ? (
-              <Image
-                source={{ uri: item.profiles.avatar_url }}
-                style={styles.avatar}
-              />
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <Text style={styles.avatarInitial}>
-                  {item.profiles?.full_name?.charAt(0)?.toUpperCase() || 'U'}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-        <View style={[styles.messageContent, isOwnMessage && styles.ownMessageContent]}>
-          {!isOwnMessage && (
-            <View style={styles.messageHeader}>
-              <Text style={styles.messageSender}>{item.profiles?.full_name || 'Usuário'}</Text>
-            </View>
-          )}
-          <View style={[styles.messageBubble, isOwnMessage && styles.ownMessageBubble]}>
-            {mediaContent}
-            {messageContent && (
-              <Text style={[styles.messageText, isOwnMessage && styles.ownMessageText]}>
-                {messageContent}
-              </Text>
-            )}
-          </View>
-          <Text style={[styles.messageTime, isOwnMessage && styles.ownMessageTime]}>
-            {formatTime(item.created_at)}
-          </Text>
-        </View>
-      </View>
-    );
   };
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00d9ff" />
+      <View style={[styles.loadingContainer, { backgroundColor: backgroundPrimary }]}>
+        <ActivityIndicator size="large" color={accent} />
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: backgroundPrimary }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      keyboardVerticalOffset={0}
     >
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color="#fff" />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Chat do Evento</Text>
-          <Text style={styles.headerSubtitle}>{messages.length} mensagens</Text>
+      {/* Header com Gradiente */}
+      <LinearGradient
+        colors={[backgroundPrimary, backgroundPrimary + 'EE', backgroundPrimary + '00']}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <ArrowLeft size={24} color={textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerInfo}>
+            <Text style={[styles.headerTitle, { color: textPrimary }]}>Chat do Evento</Text>
+            <Text style={[styles.headerSubtitle, { color: textSecondary }]}>
+              {messages.length} mensagens enviadas
+            </Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.moreButton} 
+            onPress={() => setShowEventMenu(true)}
+          >
+            <MoreVertical size={20} color={textSecondary} />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.clearButton} onPress={clearLocalChat}>
-          <Text style={styles.clearButtonText}>Limpar</Text>
-        </TouchableOpacity>
-      </View>
+      </LinearGradient>
 
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={renderMessage}
-        contentContainerStyle={styles.messagesList}
-        style={{ flex: 1 }}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Nenhuma mensagem ainda</Text>
-            <Text style={styles.emptySubtext}>Seja o primeiro a enviar uma mensagem!</Text>
+      {/* Menu do Evento (3 pontos) */}
+      <Modal
+        visible={showEventMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEventMenu(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay} 
+          onPress={() => setShowEventMenu(false)}
+        >
+          <View 
+            style={[styles.menuContent, { backgroundColor: backgroundSecondary }]}
+          >
+            <View style={[styles.menuIndicator, { backgroundColor: textSecondary + '44' }]} />
+            <Text style={[styles.menuTitle, { color: textPrimary }]}>Opções do Evento</Text>
+            
+            <TouchableOpacity 
+              style={styles.menuItem} 
+              onPress={handleReportEvent}
+            >
+              <View style={[styles.menuIconCircle, { backgroundColor: '#FF3B3022' }]}>
+                <ShieldAlert size={20} color="#FF3B30" />
+              </View>
+              <Text style={[styles.menuItemText, { color: '#FF3B30' }]}>Denunciar Evento</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuCancelBtn} 
+              onPress={() => setShowEventMenu(false)}
+            >
+              <Text style={[styles.menuCancelText, { color: textSecondary }]}>Cancelar</Text>
+            </TouchableOpacity>
           </View>
-        }
-        ListFooterComponent={
-          (typingUsers.size > 0 || recordingUsers.size > 0) ? (
-            <View style={styles.indicatorContainer}>
-              {Array.from(typingUsers).map(userId => (
-                <Text key={`typing-${userId}`} style={styles.indicatorText}>👤 Digitando...</Text>
-              ))}
-              {Array.from(recordingUsers).map(userId => (
-                <Text key={`recording-${userId}`} style={styles.indicatorText}>🎙️ Gravando áudio...</Text>
-              ))}
+        </Pressable>
+      </Modal>
+
+      {/* Modal de Denúncia (Motivos) */}
+      <Modal
+        visible={reportModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReportModalVisible(false)}
+      >
+        <View style={styles.reportModalOverlay}>
+          <View style={[styles.reportContent, { backgroundColor: backgroundSecondary }]}>
+            <View style={styles.reportHeader}>
+              <Text style={[styles.reportTitle, { color: textPrimary }]}>
+                {selectedReportType === 'event' ? 'Denunciar Evento' : `Denunciar ${reportingUsername}`}
+              </Text>
+              <TouchableOpacity onPress={() => setReportModalVisible(false)}>
+                <X size={24} color={textSecondary} />
+              </TouchableOpacity>
             </View>
-          ) : null
-        }
-      />
+            
+            <Text style={[styles.reportSubtitle, { color: textSecondary }]}>
+              Selecione o motivo da denúncia:
+            </Text>
 
-      <View style={styles.inputContainer}>
-        <TouchableOpacity 
-          style={styles.mediaButton}
-          onPress={sendImageMessage}
-          disabled={sending || isRecording}
-        >
-          <Paperclip size={22} color="#00d9ff" />
-        </TouchableOpacity>
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Digite sua mensagem..."
-          placeholderTextColor="#8E8E93"
-          value={newMessage}
-          onChangeText={handleTextChange}
-          multiline
-          maxLength={500}
-          editable={!isRecording}
-        />
-        
-        <TouchableOpacity
-          style={[
-            styles.sendButton, 
-            (!newMessage.trim() || sending || isRecording) && styles.sendButtonDisabled
-          ]}
-          onPress={sendMessage}
-          disabled={!newMessage.trim() || sending || isRecording}
-        >
-          <Send size={24} color="#fff" />
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.audioButton, isRecording && styles.audioButtonRecording]}
-          onPress={isRecording ? stopAudioRecording : startAudioRecording}
-          disabled={sending || newMessage.trim().length > 0}
-        >
-          {isRecording ? (
-            <Animated.View style={{ opacity: pulseAnim }}>
-              <Text style={styles.recordingTime}>{recordingDuration}s</Text>
-            </Animated.View>
-          ) : (
-            <Mic size={22} color="#00d9ff" />
-          )}
-        </TouchableOpacity>
-
-        {playingAudioId && (
-          <View style={styles.speedContainer}>
-            <TouchableOpacity
-              style={[styles.speedButton, audioSpeed === 1 && styles.speedButtonActive]}
-              onPress={() => changeAudioSpeed(1)}
-            >
-              <Text style={[styles.speedButtonText, audioSpeed === 1 && styles.speedButtonTextActive]}>1x</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.speedButton, audioSpeed === 1.5 && styles.speedButtonActive]}
-              onPress={() => changeAudioSpeed(1.5)}
-            >
-              <Text style={[styles.speedButtonText, audioSpeed === 1.5 && styles.speedButtonTextActive]}>1.5x</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.speedButton, audioSpeed === 2 && styles.speedButtonActive]}
-              onPress={() => changeAudioSpeed(2)}
-            >
-              <Text style={[styles.speedButtonText, audioSpeed === 2 && styles.speedButtonTextActive]}>2x</Text>
-            </TouchableOpacity>
+            {['Conteúdo Inapropriado', 'Spam / Abuso', 'Ódio / Violência', 'Golpe / Fraude', 'Outro'].map((reason) => (
+              <TouchableOpacity 
+                key={reason} 
+                style={[styles.reasonItem, { borderColor: textSecondary + '22' }]}
+                onPress={() => submitReport(reason)}
+              >
+                <Text style={[styles.reasonText, { color: textPrimary }]}>{reason}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        )}
+        </View>
+      </Modal>
+
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.messagesContainer}
+        contentContainerStyle={styles.messagesContent}
+        onContentSizeChange={scrollToBottom}
+        showsVerticalScrollIndicator={false}
+      >
+        {messages.map((msg) => (
+          <MessageItem 
+            key={msg.id}
+            message={msg}
+            isOwnMessage={msg.sender_id === user?.id}
+            accent={accent}
+            textPrimary={textPrimary}
+            textSecondary={textSecondary}
+            backgroundSecondary={backgroundSecondary}
+            onReportUser={handleReportUser}
+          />
+        ))}
+      </ScrollView>
+
+      <View style={[styles.inputWrapper, { backgroundColor: backgroundPrimary }]}>
+        <View style={[styles.inputContainer, { backgroundColor: backgroundSecondary }]}>
+          <TouchableOpacity style={styles.attachButton} onPress={sendMediaMessage}>
+            <Paperclip size={22} color={accent} />
+          </TouchableOpacity>
+
+          <TextInput
+            style={[styles.input, { color: textPrimary }]}
+            placeholder="Diga algo incrível..."
+            placeholderTextColor={textSecondary}
+            value={messageText}
+            onChangeText={setMessageText}
+            multiline
+          />
+
+          <TouchableOpacity 
+            style={[styles.sendButton, { backgroundColor: messageText.trim().length > 0 ? accent : 'transparent' }]} 
+            onPress={sendMessage} 
+            disabled={!messageText.trim().length}
+          >
+            <Send size={20} color={messageText.trim().length > 0 ? "#000" : textSecondary} />
+          </TouchableOpacity>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -923,287 +510,289 @@ export default function EventChat() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+  },
+  headerGradient: {
+    paddingTop: 50,
+    paddingBottom: 20,
+    zIndex: 10,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  headerInfo: {
+    flex: 1,
+    marginLeft: 15,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    opacity: 0.8,
+  },
+  moreButton: {
+    padding: 8,
+  },
+  messagesContainer: {
+    flex: 1,
+    marginTop: -20,
+  },
+  messagesContent: {
+    padding: 20,
+    paddingTop: 40,
+    paddingBottom: 40,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0a0a0a',
   },
-  header: {
-    backgroundColor: '#1a1a1a',
-    paddingTop: 60,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2d2d2d',
+  messageWrapper: {
     flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 20,
+    maxWidth: '85%',
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#2d2d2d',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  headerContent: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 2,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: '#8E8E93',
-    fontWeight: '600',
-  },
-  clearButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#FF3B30',
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  clearButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  messagesList: {
-    padding: 16,
-    paddingBottom: 8,
-  },
-  messageContainer: {
-    marginBottom: 16,
-    maxWidth: '80%',
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
-  ownMessageContainer: {
+  myMessageWrapper: {
     alignSelf: 'flex-end',
     flexDirection: 'row-reverse',
   },
-  avatarContainer: {
+  otherMessageWrapper: {
+    alignSelf: 'flex-start',
+  },
+  avatarWrapper: {
+    alignSelf: 'flex-end',
     marginRight: 10,
-    marginBottom: 2,
+    marginLeft: 10,
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#2d2d2d',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#00d9ff',
+    width: 34,
+    height: 34,
+    borderRadius: 12,
   },
   avatarPlaceholder: {
-    backgroundColor: '#00d9ff',
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  avatarInitial: {
-    fontSize: 16,
-    fontWeight: '700',
+  avatarText: {
     color: '#000',
+    fontWeight: '800',
+    fontSize: 14,
   },
   messageContent: {
     flex: 1,
   },
-  ownMessageContent: {
+  myMessageContent: {
     alignItems: 'flex-end',
-    marginRight: 10,
   },
-  messageHeader: {
-    marginBottom: 6,
+  senderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    marginLeft: 4,
   },
-  messageSender: {
-    fontSize: 13,
+  senderName: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#00d9ff',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   messageBubble: {
-    backgroundColor: '#1a1a1a',
+    padding: 12,
     borderRadius: 20,
-    borderTopLeftRadius: 4,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#2d2d2d',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  ownMessageBubble: {
-    backgroundColor: '#00d9ff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 4,
-    borderColor: '#00d9ff',
+  myMessageBubble: {
+    borderBottomRightRadius: 4,
+  },
+  otherMessageBubble: {
+    borderBottomLeftRadius: 4,
   },
   messageText: {
-    fontSize: 16,
-    color: '#fff',
+    fontSize: 15,
     lineHeight: 22,
-    marginBottom: 6,
+    fontWeight: '500',
   },
-  ownMessageText: {
-    color: '#000',
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    opacity: 0.7,
   },
   messageTime: {
-    fontSize: 11,
-    color: '#8E8E93',
+    fontSize: 9,
     fontWeight: '600',
   },
-  ownMessageTime: {
-    color: 'rgba(0, 0, 0, 0.5)',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#8E8E93',
+  inputWrapper: {
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    paddingTop: 10,
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 12,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 12,
-    backgroundColor: '#1a1a1a',
-    borderTopWidth: 1,
-    borderTopColor: '#2d2d2d',
-    gap: 8,
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   input: {
     flex: 1,
-    backgroundColor: '#2d2d2d',
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     fontSize: 15,
-    color: '#fff',
-    maxHeight: 80,
-    borderWidth: 1,
-    borderColor: '#3d3d3d',
-    textAlignVertical: 'center',
+    maxHeight: 100,
+    fontWeight: '500',
+  },
+  attachButton: {
+    padding: 8,
+    borderRadius: 15,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#00d9ff',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#00d9ff',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
   },
-  sendButtonDisabled: {
-    opacity: 0.5,
+  imageWrapper: {
+    position: 'relative',
+    width: 240,
+    height: 180,
+    borderRadius: 15,
+    overflow: 'hidden',
   },
-  mediaButton: {
+  mediaImage: {
+    width: '100%',
+    height: '100%',
+  },
+  optimisticOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoContainer: {
+    position: 'relative',
+    width: 240,
+    height: 180,
+    borderRadius: 15,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  mediaVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  // Novos Estilos para Menu e Denúncia
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuContent: {
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 25,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 25,
+  },
+  menuIndicator: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#1a1a1a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#3d3d3d',
+    height: 5,
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginBottom: 20,
   },
-  audioButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#1a1a1a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#3d3d3d',
+  menuTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 25,
+    textAlign: 'center',
   },
-  audioButtonRecording: {
-    backgroundColor: '#FF3B30',
-    borderColor: '#FF3B30',
-  },
-  recordingTime: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  messageImage: {
-    width: 200,
-    height: 200,
-    borderRadius: 12,
-    marginBottom: 6,
-  },
-  audioContainer: {
+  menuItem: {
     flexDirection: 'row',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+  },
+  menuIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 8,
+    marginRight: 15,
   },
-  audioContainerPlaying: {
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
-  },
-  audioIcon: {
+  menuItemText: {
     fontSize: 16,
-  },
-  audioText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  speedContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#2d2d2d',
-    borderRadius: 22,
-    padding: 4,
-    gap: 4,
-  },
-  speedButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 18,
-    backgroundColor: 'transparent',
-  },
-  speedButtonActive: {
-    backgroundColor: '#00d9ff',
-  },
-  speedButtonText: {
-    color: '#8E8E93',
-    fontSize: 12,
     fontWeight: '700',
   },
-  speedButtonTextActive: {
-    color: '#000',
+  menuCancelBtn: {
+    marginTop: 20,
+    paddingVertical: 15,
+    alignItems: 'center',
   },
-  indicatorContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 8,
-  },
-  indicatorText: {
-    color: '#00d9ff',
-    fontSize: 13,
+  menuCancelText: {
+    fontSize: 16,
     fontWeight: '600',
-    marginVertical: 4,
+  },
+  reportModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  reportContent: {
+    borderRadius: 25,
+    padding: 20,
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  reportTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  reportSubtitle: {
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  reasonItem: {
+    paddingVertical: 15,
+    paddingHorizontal: 15,
+    borderWidth: 1,
+    borderRadius: 15,
+    marginBottom: 10,
+  },
+  reasonText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

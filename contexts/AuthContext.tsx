@@ -2,6 +2,8 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types/database';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 
 interface AuthContextType {
   session: Session | null;
@@ -10,6 +12,7 @@ interface AuthContextType {
   loading: boolean;
   signUp: (email: string, password: string, username: string, fullName: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
+  signInWithGoogle: () => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -34,7 +37,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initAuth = async () => {
       try {
-        // Adicionar timeout de 5 segundos
         timeoutId = setTimeout(() => {
           if (isMounted) {
             console.warn('Session check timeout');
@@ -47,7 +49,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (timeoutId) clearTimeout(timeoutId);
 
         if (!isMounted) return;
-
         if (error) throw error;
 
         setSession(session);
@@ -97,7 +98,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
 
       if (error) throw error;
-      console.log('Profile loaded:', data);
       setProfile(data);
     } catch (error) {
       console.error('Error loading profile:', error);
@@ -114,65 +114,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, username: string, fullName: string) => {
     try {
-      if (!supabase) {
-        return { error: { message: 'Supabase não está configurado. Verifique suas credenciais.' } };
-      }
-
+      if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            username,
-            full_name: fullName,
-          }
-        }
+        options: { data: { username, full_name: fullName } }
       });
-
-      if (authError) {
-        console.error('Auth error:', authError);
-        return { error: authError };
-      }
-
-      if (!authData.user) {
-        return { error: { message: 'Falha ao criar usuário' } };
-      }
-
-      // Profile will be created automatically by the trigger
-      // No need to manually insert it here
-
+      if (authError) return { error: authError };
       return { error: null };
     } catch (error: any) {
-      console.error('SignUp catch error:', error);
-      if (error?.message?.includes('Failed to fetch') || error?.message?.includes('fetch')) {
-        return { error: { message: 'Erro de conexão. Verifique suas credenciais do Supabase.' } };
-      }
       return { error: { message: error?.message || 'Erro ao criar conta' } };
     }
   };
 
   const signIn = async (email: string, password: string) => {
     try {
-      if (!supabase) {
-        return { error: { message: 'Supabase não está configurado. Verifique suas credenciais.' } };
-      }
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        console.error('SignIn error:', error);
-      }
-
+      if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       return { error };
     } catch (error: any) {
-      console.error('SignIn catch error:', error);
-      if (error?.message?.includes('Failed to fetch') || error?.message?.includes('fetch')) {
-        return { error: { message: 'Erro de conexão. Verifique suas credenciais do Supabase.' } };
-      }
       return { error: { message: error?.message || 'Erro ao fazer login' } };
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    try {
+      if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
+
+      const redirectUrl = Linking.createURL('(auth)/login');
+      console.log('--- LOGIN GOOGLE INICIADO ---');
+      console.log('URL de Redirecionamento esperada:', redirectUrl);
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: true,
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        console.log('Abrindo navegador para:', data.url);
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+
+        console.log('Resultado do WebBrowser:', result.type);
+
+        if (result.type === 'success' && result.url) {
+          console.log('URL de retorno recebida:', result.url);
+          
+          // Extrair tokens da URL (formato fragmento # ou query ?)
+          const url = result.url.replace('#', '?');
+          const params = Linking.parse(url);
+          
+          const accessToken = params.queryParams?.access_token as string;
+          const refreshToken = params.queryParams?.refresh_token as string;
+
+          if (accessToken && refreshToken) {
+            console.log('Tokens encontrados! Definindo sessão...');
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (sessionError) throw sessionError;
+            console.log('Sessão definida com sucesso!');
+          } else {
+            console.warn('Nenhum token encontrado na URL de retorno.');
+          }
+        } else if (result.type === 'cancel') {
+          console.log('Usuário cancelou o login.');
+        }
+      }
+
+      return { error: null };
+    } catch (error: any) {
+      console.error('ERRO CRÍTICO NO LOGIN GOOGLE:', error);
+      return { error: { message: error?.message || 'Erro ao fazer login com Google' } };
     }
   };
 
@@ -189,6 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         signUp,
         signIn,
+        signInWithGoogle,
         signOut,
         refreshProfile,
       }}
@@ -200,8 +219,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }

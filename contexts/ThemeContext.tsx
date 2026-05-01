@@ -1,4 +1,5 @@
 import React, { createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 
 type Theme = {
@@ -21,6 +22,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth();
   const [isDark, setIsDark] = useState(true);
 
+  // Carregar o tema salvo ao iniciar
+  useEffect(() => {
+    const loadTheme = async () => {
+      try {
+        const savedTheme = await AsyncStorage.getItem('user-theme-mode');
+        if (savedTheme !== null) {
+          setIsDark(savedTheme === 'dark');
+        }
+      } catch (e) {
+        console.error('Erro ao carregar tema:', e);
+      }
+    };
+    loadTheme();
+  }, []);
+
   const theme = useMemo<Theme>(() => {
     const accent = profile?.accent_color || '#00d9ff';
     
@@ -36,18 +52,26 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       };
     } else {
       return {
-        backgroundPrimary: '#f8f9fa',
-        backgroundSecondary: '#ffffff',
+        backgroundPrimary: '#F8F9FA', 
+        backgroundSecondary: '#FFFFFF', 
         accent,
         accentAlt: '#00bcd4',
-        textPrimary: '#1a1a1a',
-        textSecondary: '#666666',
+        textPrimary: '#111111', 
+        textSecondary: '#555555', 
         isDark: false,
       };
     }
   }, [profile, isDark]);
 
-  const toggleTheme = () => setIsDark(prev => !prev);
+  const toggleTheme = async () => {
+    const newMode = !isDark;
+    setIsDark(newMode);
+    try {
+      await AsyncStorage.setItem('user-theme-mode', newMode ? 'dark' : 'light');
+    } catch (e) {
+      console.error('Erro ao salvar tema:', e);
+    }
+  };
 
   const value = {
     ...theme,

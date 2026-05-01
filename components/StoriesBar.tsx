@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Text, Image, ActivityIndicator } from 'react-native';
 import { Plus } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { Story } from '@/types/database';
 import StoryCreator from './StoryCreator';
@@ -9,6 +10,7 @@ import StoryViewer from './StoryViewer';
 
 export default function StoriesBar() {
   const { user, profile } = useAuth();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const [allStories, setAllStories] = useState<Story[]>([]);
   const [userStories, setUserStories] = useState<Story[]>([]);
   const [showCreator, setShowCreator] = useState(false);
@@ -26,6 +28,36 @@ export default function StoriesBar() {
     try {
       setLoading(true);
       
+      // Tenta carregar via Edge Function otimizada
+      const { data, error } = await supabase.functions.invoke('get-stories-feed');
+      
+      if (error || !data) {
+        console.warn('Edge Function falhou ou não implantada, usando query direta...');
+        return await loadStoriesDirect();
+      }
+
+      // Separa stories do usuário dos demais
+      const myStories = data.filter((s: any) => s.user_id === user?.id);
+      const otherStories = data.filter((s: any) => s.user_id !== user?.id);
+      
+      setUserStories(myStories);
+      setAllStories(otherStories);
+
+      // Pré-carrega as primeiras 3 mídias para abertura instantânea
+      const firstOnes = data.slice(0, 3);
+      firstOnes.forEach((s: any) => {
+        if (s.type === 'image') Image.prefetch(s.main_url);
+      });
+    } catch (error) {
+      console.error('Erro ao carregar stories:', error);
+      await loadStoriesDirect();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStoriesDirect = async () => {
+    try {
       // Carregar histórias do usuário
       const { data: myStories, error: myError } = await supabase
         .from('stories')
@@ -43,7 +75,7 @@ export default function StoriesBar() {
       if (myError) throw myError;
       setUserStories(myStories || []);
 
-      // Carregar histórias de outros usuários (que o usuário segue ou públicas)
+      // Carregar histórias de outros usuários
       const { data: otherStories, error: otherError } = await supabase
         .from('stories')
         .select(`
@@ -59,10 +91,8 @@ export default function StoriesBar() {
 
       if (otherError) throw otherError;
       setAllStories(otherStories || []);
-    } catch (error) {
-      console.error('Error loading stories:', error);
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error('Fallback load failed:', err);
     }
   };
 
@@ -71,7 +101,7 @@ export default function StoriesBar() {
 
   return (
     <>
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: backgroundPrimary, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false} 
@@ -94,27 +124,27 @@ export default function StoriesBar() {
             {userStories.length > 0 && userStories[0].media_url ? (
               <Image
                 source={{ uri: userStories[0].media_url }}
-                style={styles.storyThumb}
+                style={[styles.storyThumb, { borderColor: accent }]}
               />
             ) : profile?.avatar_url ? (
               <Image
                 source={{ uri: profile.avatar_url }}
-                style={[styles.storyThumb, styles.avatarThumb]}
+                style={[styles.storyThumb, styles.avatarThumb, { borderColor: accent, backgroundColor: backgroundSecondary }]}
               />
             ) : (
-              <View style={[styles.storyThumb, styles.storyPlaceholder]}>
-                <Text style={styles.placeholderText}>Sem story</Text>
+              <View style={[styles.storyThumb, styles.storyPlaceholder, { borderColor: accent, backgroundColor: backgroundSecondary }]}>
+                <Text style={[styles.placeholderText, { color: textSecondary }]}>Sem story</Text>
               </View>
             )}
             {/* Botão flutuante de criar story */}
             <Pressable
-              style={styles.addButtonOverlay}
+              style={[styles.addButtonOverlay, { backgroundColor: accent, borderColor: backgroundPrimary }]}
               onPress={() => setShowCreator(true)}
             >
               <Plus size={16} color="#fff" strokeWidth={3} />
             </Pressable>
           </Pressable>
-          <Text style={styles.storyLabel}>Seu Story</Text>
+          <Text style={[styles.storyLabel, { color: textPrimary }]}>Seu Story</Text>
         </View>
 
         {/* Histórias de outros usuários */}
@@ -132,12 +162,12 @@ export default function StoriesBar() {
               {story.media_url ? (
                 <Image
                   source={{ uri: story.media_url }}
-                  style={styles.storyThumb}
+                  style={[styles.storyThumb, { borderColor: accent }]}
                 />
               ) : (
-                <View style={[styles.storyThumb, styles.storyPlaceholder]} />
+                <View style={[styles.storyThumb, styles.storyPlaceholder, { backgroundColor: backgroundSecondary, borderColor: accent }]} />
               )}
-              <Text style={styles.storyLabel} numberOfLines={1}>
+              <Text style={[styles.storyLabel, { color: textPrimary }]} numberOfLines={1}>
                 {profile?.username || 'Usuário'}
               </Text>
             </Pressable>

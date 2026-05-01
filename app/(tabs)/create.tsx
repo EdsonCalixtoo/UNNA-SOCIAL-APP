@@ -13,16 +13,13 @@ import {
   Platform, 
   KeyboardAvoidingView,
   Dimensions,
-  SafeAreaView,
   Pressable,
   Modal
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { s, vs, ms } from '@/utils/responsive';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { useAuth } from '@/contexts/AuthContext';
-import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { Category, Subcategory } from '@/types/database';
 import { 
@@ -34,15 +31,18 @@ import {
   Camera, 
   ArrowRight, 
   ArrowLeft, 
-  Check, 
   X,
   Plus,
   ChevronRight,
   Info,
   Layers,
-  Flag
+  Sparkles,
+  Search,
+  Flag,
+  Check
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { uploadFile } from '@/lib/storage';
 import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -50,6 +50,8 @@ import { decode } from 'base64-arraybuffer';
 import { Video, ResizeMode } from 'expo-av';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import StoryCameraModal from '@/components/StoryCameraModal';
+import StoryAdvancedEditor from '@/components/StoryAdvancedEditor';
 import Animated, { 
   FadeInRight, 
   FadeOutLeft, 
@@ -57,18 +59,26 @@ import Animated, {
   useAnimatedStyle, 
   withSpring,
   useSharedValue,
-  withTiming
+  withTiming,
+  interpolate,
+  Extrapolation
 } from 'react-native-reanimated';
 
-
-import StoryCameraModal from '@/components/StoryCameraModal';
-import StoryAdvancedEditor from '@/components/StoryAdvancedEditor';
 import SuccessModal from '@/components/SuccessModal';
+import { useTheme } from '@/contexts/ThemeContext';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const STEPS = ['Capa', 'Detalhes', 'Regras', 'Publicar'];
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const STEPS = [
+  { id: 'media', title: 'A identidade', subtitle: 'Escolha uma capa impactante' },
+  { id: 'details', title: 'O que é?', subtitle: 'Dê um nome e descreva seu evento' },
+  { id: 'logistics', title: 'Onde e quando?', subtitle: 'Defina o local e horário' },
+  { id: 'settings', title: 'Regras', subtitle: 'Preços e limites de convidados' },
+  { id: 'review', title: 'Revisão', subtitle: 'Confira se tudo está perfeito' }
+];
 
 export default function CreateEvent() {
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -78,7 +88,7 @@ export default function CreateEvent() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
 
-  // PASSO 1: Mídia, Título, Descrição
+  // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
@@ -86,8 +96,6 @@ export default function CreateEvent() {
   const [showCamera, setShowCamera] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [capturedMedia, setCapturedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
-
-  // PASSO 2: Categoria, Data, Hora, Local
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedSubcategory, setSelectedSubcategory] = useState('');
   const [eventDate, setEventDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -95,23 +103,45 @@ export default function CreateEvent() {
   const [locationName, setLocationName] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-
-  // PASSO 3: Financeiro e Idade
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState('');
   const [minAge, setMinAge] = useState('0');
   const [maxParticipants, setMaxParticipants] = useState('');
-
-  // SUCESSO
+  const [showSubcatModal, setShowSubcatModal] = useState(false);
+  const [showCatModal, setShowCatModal] = useState(false);
+  const [subcatSearch, setSubcatSearch] = useState('');
+  const [catSearch, setCatSearch] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
 
-  const progress = useSharedValue(0.25);
+  const resetForm = () => {
+    setCurrentStep(0);
+    setTitle('');
+    setDescription('');
+    setMediaUrl('');
+    setMediaType('image');
+    setCapturedMedia(null);
+    setSelectedCategory('');
+    setSelectedSubcategory('');
+    setEventDate(new Date().toISOString().split('T')[0]);
+    setEventTime(`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`);
+    setLocationName('');
+    setLat(null);
+    setLng(null);
+    setIsPaid(false);
+    setPrice('');
+    setMinAge('0');
+    setMaxParticipants('');
+    setSubcatSearch('');
+    setCatSearch('');
+  };
+
+  const progress = useSharedValue(0);
 
   useEffect(() => {
-    progress.value = withSpring((currentStep + 1) / STEPS.length);
+    progress.value = withSpring((currentStep + 1) / STEPS.length, { damping: 15 });
   }, [currentStep]);
 
   useEffect(() => { loadCategories(); }, []);
@@ -119,11 +149,38 @@ export default function CreateEvent() {
   const loadSubcategories = async (categoryId: string) => { const { data } = await supabase.from('subcategories').select('*').eq('category_id', categoryId).order('name'); if (data) setSubcategories(data); };
   useEffect(() => { if (selectedCategory) loadSubcategories(selectedCategory); }, [selectedCategory]);
 
-  const handleCapture = (uri: string, type: 'image' | 'video') => { setCapturedMedia({ uri, type }); setShowCamera(false); setShowEditor(true); };
+  const handleCapture = (uri: string, type: 'image' | 'video') => { 
+    setCapturedMedia({ uri, type }); 
+    setShowCamera(false); 
+    setShowEditor(true); 
+  };
+  
   const handleSaveEditor = (finalUri: string) => { 
     setMediaUrl(finalUri); 
-    setMediaType('image'); 
+    if (capturedMedia) {
+      setMediaType(capturedMedia.type);
+    }
     setShowEditor(false); 
+  };
+
+  const nextStep = () => {
+    if (currentStep === 0 && !mediaUrl) return Alert.alert('Atenção', 'Escolha uma imagem ou vídeo para o seu evento.');
+    if (currentStep === 1 && (!title || !selectedCategory)) return Alert.alert('Atenção', 'Dê um título e escolha uma categoria.');
+    if (currentStep === 2 && !locationName) return Alert.alert('Atenção', 'Defina um local para o evento.');
+    
+    if (currentStep < STEPS.length - 1) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const prevStep = () => {
+    if (currentStep > 0) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setCurrentStep(currentStep - 1);
+    } else {
+      router.push('/(tabs)');
+    }
   };
 
   const handleCreate = async () => {
@@ -132,20 +189,19 @@ export default function CreateEvent() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       const extension = mediaType === 'video' ? 'mp4' : 'jpg';
-      const fileName = `${user.id}/${Date.now()}.${extension}`;
+      const storagePath = `events/${user.id}/${Date.now()}.${extension}`;
       
-      const base64 = await FileSystem.readAsStringAsync(mediaUrl, { encoding: FileSystem.EncodingType.Base64 });
+      console.log('🚀 Iniciando upload para R2:', storagePath);
       
-      const { error: uploadError } = await supabase.storage
-        .from('media')
-        .upload(`events/${fileName}`, decode(base64), { 
-          contentType: mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
-          upsert: true
-        });
+      const publicUrl = await uploadFile(
+        mediaUrl,
+        storagePath,
+        mediaType === 'video' ? 'video/mp4' : 'image/jpeg'
+      );
 
-      if (uploadError) throw new Error(`Falha no upload: ${uploadError.message}`);
-
-      const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(`events/${fileName}`);
+      if (!publicUrl) throw new Error('Falha no upload para o R2');
+      
+      console.log('✅ Upload concluído com sucesso!');
 
       const { data: eventData, error } = await supabase.from('events').insert({
         creator_id: user.id, 
@@ -169,583 +225,545 @@ export default function CreateEvent() {
 
       if (error) throw error;
 
-      await supabase.from('posts').insert({
+      // IMPORTANTE: Criar um POST para esse evento aparecer no Feed
+      console.log('📝 Tentando criar post no feed para o evento:', eventData.id);
+      const { error: postError } = await supabase.from('posts').insert({
         user_id: user.id,
-        content: description,
-        image_url: publicUrl,
-        event_id: eventData.id
+        content: `Criei um novo evento: ${title}`,
+        event_id: eventData.id,
+        image_url: publicUrl
       });
+
+      if (postError) {
+        console.error('❌ Erro ao criar post no feed:', postError);
+      } else {
+        console.log('✅ Post do feed criado com sucesso!');
+      }
 
       setCreatedEventId(eventData.id);
       setShowSuccessModal(true);
     } catch (e: any) { 
-      Alert.alert('Erro', e.message); 
+      Alert.alert('Erro ao publicar', e.message); 
     } finally { 
       setLoading(false); 
     }
   };
 
-  const nextStep = () => {
-    if (currentStep === 0 && (!title || !mediaUrl)) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return Alert.alert('Aviso', 'Título e Capa são obrigatórios');
-    }
-    if (currentStep === 1 && !selectedCategory) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return Alert.alert('Aviso', 'Escolha uma categoria');
-    }
-    if (currentStep < 3) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const prevStep = () => {
-    if (currentStep > 0) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const renderHeader = () => (
-    <View style={[styles.header, { paddingTop: insets.top + vs(10) }]}>
-      <View style={styles.headerTop}>
-        <View>
-          <Text style={styles.headerSubtitle}>Passo {currentStep + 1} de {STEPS.length}</Text>
-          <Text style={styles.headerTitle}>{STEPS[currentStep]}</Text>
-        </View>
-        <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
-          <X size={ms(24)} color={Colors.text.tertiary} />
-        </TouchableOpacity>
+  // Components
+  const StepHeader = () => (
+    <View style={[styles.stepHeader, { paddingTop: insets.top + vs(20), backgroundColor: backgroundPrimary }]}>
+      <TouchableOpacity onPress={prevStep} style={[styles.backCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+        <ArrowLeft size={24} color={textPrimary} />
+      </TouchableOpacity>
+      
+      <View style={styles.stepInfo}>
+        <Text style={[styles.stepTitle, { color: textPrimary }]}>{STEPS[currentStep].title}</Text>
+        <Text style={[styles.stepSubtitle, { color: textSecondary }]}>{STEPS[currentStep].subtitle}</Text>
       </View>
-      <View style={styles.progressWrapper}>
-        {STEPS.map((_, index) => (
-          <View key={index} style={styles.progressStepContainer}>
-            <View 
-              style={[
-                styles.progressStep, 
-                index <= currentStep && { backgroundColor: Colors.accent.cyan },
-                index < currentStep && { opacity: 0.5 }
-              ]} 
-            />
-          </View>
-        ))}
+
+      <View style={[styles.progressBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+        <Animated.View style={[styles.progressBarFill, { width: `${(currentStep + 1) * 20}%`, backgroundColor: accent }]} />
       </View>
     </View>
   );
 
   return (
-    <View style={styles.container}>
-      {renderHeader()}
-
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+    <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
+      <LinearGradient colors={isDark ? ['#050505', '#101018'] : ['#f5f5f7', '#ffffff']} style={StyleSheet.absoluteFill} />
+      
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         <ScrollView 
-          style={styles.content} 
-          contentContainerStyle={{ paddingBottom: vs(40) }} 
-          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + vs(100) }]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
+          <StepHeader />
           
           {currentStep === 0 && (
-             <Animated.View entering={FadeInRight} exiting={FadeOutLeft} style={styles.page}>
-                <TouchableOpacity activeOpacity={0.8} style={styles.mediaContainer} onPress={() => setShowCamera(true)}>
-                   {mediaUrl ? (
-                      <View style={{ flex: 1 }}>
-                         {mediaType === 'video' ? (
-                            <Video 
-                              source={{ uri: mediaUrl }} 
-                              style={styles.media} 
-                              resizeMode={ResizeMode.COVER} 
-                              isLooping 
-                              shouldPlay 
-                              isMuted 
-                            />
-                         ) : (
-                            <Image source={{ uri: mediaUrl }} style={styles.media} />
-                         )}
-                         <BlurView intensity={30} style={styles.mediaEditOverlay}>
-                           <Camera size={ms(20)} color="#fff" />
-                           <Text style={styles.mediaEditText}>Alterar Capa</Text>
-                         </BlurView>
-                      </View>
-                   ) : (
-                      <LinearGradient 
-                        colors={['#1a1a1a', '#2d2d2d']} 
-                        style={styles.mediaPlaceholder}
-                      >
-                         <View style={styles.cameraIconContainer}>
-                           <Camera size={ms(32)} color={Colors.accent.cyan} />
-                         </View>
-                         <Text style={styles.mediaPlaceholderTitle}>Adicionar Capa</Text>
-                         <Text style={styles.mediaPlaceholderSub}>Foto ou vídeo (até 15s)</Text>
-                      </LinearGradient>
-                   )}
-                </TouchableOpacity>
-
-                <View style={styles.inputSection}>
-                   <View style={styles.inputLabelContainer}>
-                     <Text style={styles.inputLabel}>NOME DO EVENTO</Text>
-                   </View>
-                   <TextInput 
-                     style={styles.mainInput} 
-                     value={title} 
-                     onChangeText={setTitle} 
-                     placeholder="Dê um título incrível..." 
-                     placeholderTextColor={Colors.text.tertiary} 
-                   />
-                </View>
-
-                <View style={[styles.inputSection, { marginTop: vs(30) }]}>
-                   <View style={styles.inputLabelContainer}>
-                     <Text style={styles.inputLabel}>DESCRIÇÃO</Text>
-                   </View>
-                   <TextInput 
-                     style={[styles.mainInput, styles.descriptionInput]} 
-                     value={description} 
-                     onChangeText={setDescription} 
-                     multiline 
-                     placeholder="O que os convidados devem saber?" 
-                     placeholderTextColor={Colors.text.tertiary} 
-                   />
-                </View>
-             </Animated.View>
+            <Animated.View entering={FadeInRight} style={styles.stepContainer}>
+              <TouchableOpacity 
+                activeOpacity={0.9} 
+                style={[styles.mediaPicker, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} 
+                onPress={() => setShowCamera(true)}
+              >
+                {mediaUrl ? (
+                  <View style={styles.previewContainer}>
+                    {mediaType === 'video' ? (
+                      <Video source={{ uri: mediaUrl }} style={styles.mediaPreview} resizeMode={ResizeMode.COVER} isLooping shouldPlay isMuted />
+                    ) : (
+                      <Image source={{ uri: mediaUrl }} style={styles.mediaPreview} />
+                    )}
+                    <View style={styles.mediaBadge}>
+                      <Camera size={16} color="#fff" />
+                      <Text style={styles.mediaBadgeText}>Alterar</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <LinearGradient colors={isDark ? ['#1a1a25', '#0a0a0f'] : ['#ffffff', '#f0f0f0']} style={styles.mediaPlaceholder}>
+                    <View style={[styles.cameraIconBg, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.1)' : 'rgba(0, 217, 255, 0.05)' }]}>
+                      <Camera size={40} color={accent} />
+                    </View>
+                    <Text style={[styles.placeholderMain, { color: textPrimary }]}>Adicione uma capa</Text>
+                    <Text style={[styles.placeholderSub, { color: textSecondary }]}>Imagens ou vídeos que vendam sua ideia</Text>
+                  </LinearGradient>
+                )}
+              </TouchableOpacity>
+            </Animated.View>
           )}
 
           {currentStep === 1 && (
-             <Animated.View entering={FadeInRight} exiting={FadeOutLeft} style={styles.page}>
-                <View style={styles.sectionHeader}>
-                  <Layers size={ms(18)} color={Colors.accent.cyan} />
-                  <Text style={styles.sectionTitle}>Categoria</Text>
-                </View>
-                
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false} 
-                  contentContainerStyle={styles.categoryList}
+            <Animated.View entering={FadeInRight} style={styles.stepContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: accent }]}>NOME DO EVENTO</Text>
+                <TextInput 
+                  style={[styles.hugeInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary }]}
+                  placeholder="Seu evento aqui..."
+                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
+                  value={title}
+                  onChangeText={setTitle}
+                  autoFocus
+                />
+              </View>
+
+              <View style={styles.categorySection}>
+                <Text style={[styles.label, { color: accent }]}>CATEGORIA</Text>
+                <TouchableOpacity 
+                  style={[styles.selectorButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }, selectedCategory && [styles.selectorButtonActive, { borderColor: accent, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }]]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowCatModal(true);
+                  }}
                 >
-                   {categories.map(c => (
-                      <TouchableOpacity 
-                        key={c.id} 
-                        activeOpacity={0.7}
-                        style={[styles.categoryCard, selectedCategory === c.id && styles.categoryCardActive]} 
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setSelectedCategory(c.id);
-                          setSelectedSubcategory('');
-                        }}
-                      >
-                         <Text style={styles.categoryIcon}>{c.icon}</Text>
-                         <Text style={[styles.categoryName, selectedCategory === c.id && styles.categoryNameActive]}>{c.name}</Text>
-                         {selectedCategory === c.id && (
-                           <View style={styles.checkBadge}>
-                             <Check size={ms(10)} color="#fff" strokeWidth={4} />
-                           </View>
-                         )}
-                      </TouchableOpacity>
-                   ))}
-                </ScrollView>
-
-                {selectedCategory && subcategories.length > 0 && (
-                  <Animated.View entering={FadeInRight} style={{ marginTop: vs(25) }}>
-                    <View style={styles.sectionHeader}>
-                      <Plus size={ms(18)} color={Colors.accent.cyan} />
-                      <Text style={styles.sectionTitle}>Subcategoria</Text>
+                  <View style={styles.selectorInfo}>
+                    <Layers size={20} color={selectedCategory ? accent : textSecondary} />
+                    <Text style={[styles.selectorText, { color: textSecondary }, selectedCategory && [styles.selectorTextActive, { color: textPrimary }]]}>
+                      {selectedCategory 
+                        ? categories.find(c => c.id === selectedCategory)?.name 
+                        : 'Escolher categoria...'}
+                    </Text>
+                  </View>
+                  <ChevronRight size={20} color={textSecondary} />
+                </TouchableOpacity>
+              </View>
+              {selectedCategory && (
+                <View style={styles.categorySection}>
+                  <Text style={[styles.label, { color: accent }]}>SUBCATEGORIA</Text>
+                  <TouchableOpacity 
+                    style={[styles.selectorButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }, selectedSubcategory && [styles.selectorButtonActive, { borderColor: accent, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }]]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setShowSubcatModal(true);
+                    }}
+                  >
+                    <View style={styles.selectorInfo}>
+                      <Plus size={20} color={selectedSubcategory ? accent : textSecondary} />
+                      <Text style={[styles.selectorText, { color: textSecondary }, selectedSubcategory && [styles.selectorTextActive, { color: textPrimary }]]}>
+                        {selectedSubcategory 
+                          ? subcategories.find(s => s.id === selectedSubcategory)?.name 
+                          : 'Escolher subcategoria...'}
+                      </Text>
                     </View>
-                    <ScrollView 
-                      horizontal 
-                      showsHorizontalScrollIndicator={false} 
-                      contentContainerStyle={styles.categoryList}
-                    >
-                       {subcategories.map(s => (
-                          <TouchableOpacity 
-                            key={s.id} 
-                            activeOpacity={0.7}
-                            style={[styles.subcatCard, selectedSubcategory === s.id && styles.subcatCardActive]} 
-                            onPress={() => {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              setSelectedSubcategory(s.id);
-                            }}
-                          >
-                             <Text style={[styles.categoryName, selectedSubcategory === s.id && styles.categoryNameActive]}>{s.name}</Text>
-                          </TouchableOpacity>
-                       ))}
-                    </ScrollView>
-                  </Animated.View>
-                )}
-
-                <View style={[styles.sectionHeader, { marginTop: vs(40) }]}>
-                  <Calendar size={ms(18)} color={Colors.accent.pink} />
-                  <Text style={styles.sectionTitle}>Data e Hora</Text>
+                    <ChevronRight size={20} color={textSecondary} />
+                  </TouchableOpacity>
                 </View>
+              )}
 
-                <View style={styles.dateTimeRow}>
-                   <TouchableOpacity 
-                     style={styles.dateTimeButton} 
-                     onPress={() => setShowDatePicker(true)}
-                   >
-                      <View style={styles.dtIconContainer}>
-                        <Calendar size={ms(20)} color={Colors.accent.cyan} />
-                      </View>
-                     <View>
-                        <Text style={styles.dtLabel}>Data</Text>
-                        <Text style={styles.dtValue}>{new Date(eventDate).toLocaleDateString('pt-BR')}</Text>
-                     </View>
-                   </TouchableOpacity>
-
-                   <TouchableOpacity 
-                     style={styles.dateTimeButton} 
-                     onPress={() => setShowTimePicker(true)}
-                   >
-                      <View style={styles.dtIconContainer}>
-                        <Clock size={ms(20)} color={Colors.accent.pink} />
-                      </View>
-                     <View>
-                        <Text style={styles.dtLabel}>Hora</Text>
-                        <Text style={styles.dtValue}>{eventTime}</Text>
-                     </View>
-                   </TouchableOpacity>
-                </View>
-
-                <View style={[styles.sectionHeader, { marginTop: vs(40) }]}>
-                  <MapPin size={ms(18)} color={Colors.accent.cyan} />
-                  <Text style={styles.sectionTitle}>Localização</Text>
-                </View>
-                
-                <View style={styles.locationContainer}>
-                   <GooglePlacesAutocomplete
-                     placeholder="Buscar endereços ou lugares..."
-                     onPress={(data, details = null) => {
-                       setLocationName(data.description || data.structured_formatting?.main_text || '');
-                       if (details) {
-                         setLat(details.geometry.location.lat);
-                         setLng(details.geometry.location.lng);
-                       }
-                     }}
-                     fetchDetails={true}
-                     query={{
-                       key: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY,
-                       language: 'pt-BR',
-                       types: 'geocode|establishment',
-                     }}
-                     styles={{
-                       container: { flex: 0 },
-                       textInput: styles.locationInput,
-                       description: { color: '#fff' },
-                       predefinedPlacesDescription: { color: '#fff' },
-                       listView: [styles.autocompleteList, { position: 'relative' }],
-                       row: styles.autocompleteRow,
-                       separator: styles.autocompleteSeparator,
-                     }}
-                     enablePoweredByContainer={false}
-                     textInputProps={{
-                       placeholderTextColor: Colors.text.tertiary,
-                       value: locationName,
-                       onChangeText: setLocationName,
-                     }}
-                   />
-                </View>
-             </Animated.View>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: accent }]}>DESCRIÇÃO</Text>
+                <TextInput 
+                  style={[styles.textArea, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary }]}
+                  placeholder="Conte os detalhes..."
+                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                />
+              </View>
+            </Animated.View>
           )}
 
           {currentStep === 2 && (
-             <Animated.View entering={FadeInRight} exiting={FadeOutLeft} style={styles.page}>
-                <View style={styles.sectionHeader}>
-                  <DollarSign size={ms(18)} color={Colors.status.success} />
-                  <Text style={styles.sectionTitle}>Ingressos</Text>
+            <Animated.View entering={FadeInRight} style={styles.stepContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: accent }]}>LOCALIZAÇÃO</Text>
+                <View style={[styles.searchWrapper, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
+                  <MapPin size={20} color={accent} style={styles.searchIcon} />
+                  <GooglePlacesAutocomplete
+                    placeholder="Onde será o encontro?"
+                    onPress={(data, details = null) => {
+                      setLocationName(data.description || '');
+                      if (details?.geometry?.location) {
+                        setLat(details.geometry.location.lat);
+                        setLng(details.geometry.location.lng);
+                      }
+                    }}
+                    fetchDetails={true}
+                    query={{ key: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY, language: 'pt-BR' }}
+                    styles={{
+                      textInput: [styles.locationInput, { color: textPrimary }],
+                      listView: [styles.autocompleteList, { backgroundColor: backgroundSecondary }],
+                      row: [styles.autocompleteRow, { backgroundColor: 'transparent' }],
+                      description: { color: textPrimary },
+                    }}
+                    enablePoweredByContainer={false}
+                    textInputProps={{ 
+                      placeholderTextColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)', 
+                      value: locationName, 
+                      onChangeText: setLocationName 
+                    }}
+                    disableScroll={true} // Evita conflito com o ScrollView pai
+                  />
                 </View>
-                
-                <TouchableOpacity 
-                   activeOpacity={0.8}
-                   onPress={() => {
-                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                     setIsPaid(!isPaid);
-                   }}
-                   style={[styles.premiumToggle, isPaid && styles.premiumToggleActive]}
-                >
-                   <View style={styles.toggleInfo}>
-                      <Text style={styles.toggleText}>Evento Pago</Text>
-                      <Text style={styles.toggleSub}>{isPaid ? 'Os participantes pagam para entrar' : 'Evento gratuito para todos'}</Text>
-                   </View>
-                   <Switch 
-                     value={isPaid} 
-                     onValueChange={(val) => {
-                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                       setIsPaid(val);
-                     }}
-                     trackColor={{ false: '#333', true: Colors.status.success }} 
-                     thumbColor="#fff"
-                   />
+              </View>
+
+              <View style={styles.row}>
+                <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setShowDatePicker(true)}>
+                  <Calendar size={20} color="#ff1493" />
+                  <View>
+                    <Text style={[styles.glassLabel, { color: textSecondary }]}>DATA</Text>
+                    <Text style={[styles.glassValue, { color: textPrimary }]}>{new Date(eventDate).toLocaleDateString('pt-BR')}</Text>
+                  </View>
                 </TouchableOpacity>
-
-                {isPaid && (
-                  <Animated.View entering={FadeInRight} style={styles.priceContainer}>
-                    <Text style={styles.priceSymbol}>R$</Text>
-                    <TextInput 
-                      style={styles.priceInput} 
-                      value={price} 
-                      onChangeText={setPrice} 
-                      keyboardType="numeric" 
-                      placeholder="0,00" 
-                      placeholderTextColor="#444" 
-                    />
-                  </Animated.View>
-                )}
-
-                <View style={[styles.sectionHeader, { marginTop: vs(40) }]}>
-                  <Users size={ms(18)} color={Colors.accent.cyan} />
-                  <Text style={styles.sectionTitle}>Restrições e Limites</Text>
-                </View>
-
-                <View style={styles.limitsGrid}>
-                   <View style={styles.limitItem}>
-                      <View style={styles.limitIconBg}>
-                        <Flag size={ms(18)} color={Colors.accent.pink} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.limitLabel}>Idade Mínima</Text>
-                        <TextInput 
-                          style={styles.limitInput} 
-                          value={minAge} 
-                          onChangeText={setMinAge} 
-                          keyboardType="numeric" 
-                          placeholder="Livre" 
-                          placeholderTextColor={Colors.text.tertiary} 
-                        />
-                      </View>
-                   </View>
-
-                   <View style={styles.limitItem}>
-                      <View style={styles.limitIconBg}>
-                        <Users size={ms(18)} color={Colors.accent.cyan} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.limitLabel}>Vagas</Text>
-                        <TextInput 
-                          style={styles.limitInput} 
-                          value={maxParticipants} 
-                          onChangeText={setMaxParticipants} 
-                          keyboardType="numeric" 
-                          placeholder="∞" 
-                          placeholderTextColor={Colors.text.tertiary} 
-                        />
-                      </View>
-                   </View>
-                </View>
-                
-                <View style={styles.infoBox}>
-                  <Info size={ms(16)} color={Colors.text.tertiary} />
-                  <Text style={styles.infoText}>Você pode alterar essas informações depois que o evento estiver publicado.</Text>
-                </View>
-             </Animated.View>
+ 
+                <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setShowTimePicker(true)}>
+                  <Clock size={20} color={accent} />
+                  <View>
+                    <Text style={[styles.glassLabel, { color: textSecondary }]}>HORA</Text>
+                    <Text style={[styles.glassValue, { color: textPrimary }]}>{eventTime}</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
           )}
 
           {currentStep === 3 && (
-             <Animated.View entering={FadeInRight} exiting={FadeOutLeft} style={styles.page}>
-                <View style={styles.reviewCard}>
-                   <View style={styles.reviewMedia}>
-                      {mediaType === 'video' ? (
-                        <Video 
-                          source={{ uri: mediaUrl }} 
-                          style={styles.finalMedia} 
-                          isLooping 
-                          shouldPlay 
-                          isMuted 
-                          resizeMode={ResizeMode.COVER} 
-                        />
-                      ) : (
-                        <Image source={{ uri: mediaUrl }} style={styles.finalMedia} />
-                      )}
-                      <LinearGradient 
-                        colors={['transparent', 'rgba(0,0,0,0.8)']} 
-                        style={styles.mediaShadow} 
-                      />
-                      <View style={styles.mediaLabel}>
-                        <Text style={styles.mediaLabelText}>{categories.find(c => c.id === selectedCategory)?.name || 'Evento'}</Text>
-                      </View>
-                   </View>
-                   
-                   <View style={styles.reviewInfo}>
-                      <Text style={styles.reviewTitle}>{title}</Text>
-                      
-                      <View style={styles.reviewDetailsRow}>
-                        <View style={styles.reviewDetail}>
-                          <Calendar size={ms(14)} color={Colors.accent.cyan} />
-                          <Text style={styles.reviewDetailText}>{new Date(eventDate).toLocaleDateString('pt-BR')}</Text>
-                        </View>
-                        <View style={styles.reviewDetail}>
-                          <Clock size={ms(14)} color={Colors.accent.cyan} />
-                          <Text style={styles.reviewDetailText}>{eventTime}</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.reviewDetail}>
-                        <MapPin size={ms(14)} color={Colors.accent.pink} />
-                        <Text style={styles.reviewDetailText} numberOfLines={1}>{locationName}</Text>
-                      </View>
-
-                      <View style={styles.reviewDivider} />
-                      
-                      <Text style={styles.reviewDesc} numberOfLines={3}>{description}</Text>
-
-                      <View style={styles.reviewBadges}>
-                        <View style={[styles.badge, { backgroundColor: isPaid ? 'rgba(52, 199, 89, 0.1)' : 'rgba(0, 217, 255, 0.1)' }]}>
-                          <Text style={[styles.badgeText, { color: isPaid ? Colors.status.success : Colors.accent.cyan }]}>
-                            {isPaid ? `R$ ${price}` : 'Grátis'}
-                          </Text>
-                        </View>
-                        {parseInt(minAge) > 0 && (
-                          <View style={styles.badge}>
-                            <Text style={styles.badgeText}>{minAge}+ Anos</Text>
-                          </View>
-                        )}
-                      </View>
-                   </View>
+            <Animated.View entering={FadeInRight} style={styles.stepContainer}>
+              <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <View>
+                  <Text style={[styles.premiumTitle, { color: textPrimary }]}>Evento Pago?</Text>
+                  <Text style={[styles.premiumSub, { color: textSecondary }]}>Ative para cobrar ingressos</Text>
                 </View>
+                <Switch 
+                  value={isPaid} 
+                  onValueChange={setIsPaid} 
+                  trackColor={{ false: isDark ? '#333' : '#ccc', true: accent }}
+                  thumbColor={isPaid ? '#fff' : '#f4f3f4'}
+                />
+              </View>
 
-                <TouchableOpacity 
-                  style={styles.publishButton} 
-                  onPress={handleCreate} 
-                  disabled={loading}
-                >
-                   {loading ? (
-                     <ActivityIndicator color="#000" />
-                   ) : (
-                     <View style={styles.publishContent}>
-                        <Text style={styles.publishButtonText}>PUBLICAR EVENTO</Text>
-                        <ArrowRight size={ms(20)} color="#000" strokeWidth={3} />
-                     </View>
-                   )}
-                </TouchableOpacity>
-             </Animated.View>
+              {isPaid && (
+                <Animated.View entering={FadeInRight} style={[styles.priceBox, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}>
+                  <Text style={[styles.priceSymbol, { color: accent }]}>R$</Text>
+                  <TextInput 
+                    style={[styles.priceInput, { color: textPrimary }]}
+                    keyboardType="numeric"
+                    placeholder="0,00"
+                    placeholderTextColor={isDark ? '#444' : '#999'}
+                    value={price}
+                    onChangeText={setPrice}
+                  />
+                </Animated.View>
+              )}
+
+              <View style={styles.limitsRow}>
+                <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                  <Users size={20} color={accent} />
+                  <TextInput 
+                    style={[styles.limitInput, { color: textPrimary }]}
+                    placeholder="Limite"
+                    placeholderTextColor={isDark ? '#444' : '#999'}
+                    keyboardType="numeric"
+                    value={maxParticipants}
+                    onChangeText={setMaxParticipants}
+                  />
+                </View>
+                <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                  <Info size={20} color="#ff1493" />
+                  <TextInput 
+                    style={[styles.limitInput, { color: textPrimary }]}
+                    placeholder="Idade"
+                    placeholderTextColor={isDark ? '#444' : '#999'}
+                    keyboardType="numeric"
+                    value={minAge}
+                    onChangeText={setMinAge}
+                  />
+                </View>
+              </View>
+            </Animated.View>
+          )}
+
+          {currentStep === 4 && (
+            <Animated.View entering={FadeInRight} style={styles.stepContainer}>
+              <View style={styles.reviewCard}>
+                {mediaType === 'video' ? (
+                  <Video 
+                    source={{ uri: mediaUrl }} 
+                    style={styles.reviewImage} 
+                    resizeMode={ResizeMode.COVER} 
+                    shouldPlay 
+                    isLooping 
+                    isMuted 
+                  />
+                ) : (
+                  <Image source={{ uri: mediaUrl }} style={styles.reviewImage} />
+                )}
+                <LinearGradient colors={['transparent', 'rgba(0,0,0,0.9)']} style={StyleSheet.absoluteFill} />
+                <View style={styles.reviewContent}>
+                  <Text style={styles.reviewTag}>{categories.find(c => c.id === selectedCategory)?.name}</Text>
+                  <Text style={styles.reviewMainTitle}>{title}</Text>
+                  <View style={styles.reviewRow}>
+                    <Calendar size={14} color="#fff" />
+                    <Text style={styles.reviewText}>{new Date(eventDate).toLocaleDateString('pt-BR')} às {eventTime}</Text>
+                  </View>
+                  <View style={styles.reviewRow}>
+                    <MapPin size={14} color="#fff" />
+                    <Text style={styles.reviewText} numberOfLines={1}>{locationName}</Text>
+                  </View>
+                </View>
+              </View>
+              
+              <TouchableOpacity style={styles.publishButton} onPress={handleCreate} disabled={loading}>
+                <LinearGradient colors={['#00d9ff', '#ff1493']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.publishGradient}>
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Text style={[styles.publishText, { color: '#fff' }]}>PUBLICAR EVENTO</Text>
+                      <Sparkles size={20} color="#fff" />
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </Animated.View>
           )}
 
         </ScrollView>
-        <View style={styles.navFooterContainer}>
-          <BlurView 
-            intensity={80} 
-            tint="dark" 
-            style={styles.navFooter}
-          >
-            {currentStep > 0 ? (
-              <TouchableOpacity 
-                style={styles.backButton} 
-                onPress={prevStep}
-                activeOpacity={0.7}
-              >
-                <ArrowLeft size={ms(22)} color="#fff" />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity 
-                style={styles.backButton} 
-                onPress={() => router.back()}
-                activeOpacity={0.7}
-              >
-                <X size={ms(22)} color="#fff" />
-              </TouchableOpacity>
-            )}
-
-            <View style={styles.stepDots}>
-              {STEPS.map((_, i) => (
-                <View 
-                  key={i} 
-                  style={[
-                    styles.stepDot, 
-                    i === currentStep && styles.stepDotActive,
-                    i === currentStep && { backgroundColor: Colors.accent.cyan }
-                  ]} 
-                />
-              ))}
-            </View>
-
-            {currentStep < 3 ? (
-              <TouchableOpacity 
-                  style={[styles.nextButton, { backgroundColor: Colors.accent.cyan }]} 
-                  onPress={nextStep}
-                  activeOpacity={0.8}
-              >
-                  <Text style={styles.nextButtonText}>Avançar</Text>
-                  <ArrowRight size={ms(20)} color="#000" strokeWidth={3} />
-              </TouchableOpacity>
-            ) : (
-              <View style={{ width: s(44) }} />
-            )}
-          </BlurView>
-        </View>
       </KeyboardAvoidingView>
 
+      {/* Floating Action Button Group */}
+      {currentStep < 4 && (
+        <View style={[styles.fabContainer, { bottom: insets.bottom + vs(20) }]}>
+          <View style={styles.fabRow}>
+            {currentStep > 0 ? (
+              <TouchableOpacity 
+                style={styles.fab} 
+                onPress={prevStep}
+                activeOpacity={0.85}
+              >
+                <LinearGradient colors={['#333', '#1a1a1a']} style={styles.fabGradient}>
+                  <ArrowLeft size={28} color="#fff" />
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 64 }} /> // Espaçador para manter simetria
+            )}
+            
+            <TouchableOpacity 
+              style={styles.fab} 
+              onPress={nextStep}
+              activeOpacity={0.85}
+            >
+              <LinearGradient colors={['#00d9ff', '#0055ff']} style={styles.fabGradient}>
+                <ArrowRight size={28} color="#fff" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Modals */}
       <StoryCameraModal visible={showCamera} onClose={() => setShowCamera(false)} onCapture={handleCapture} />
       {capturedMedia && (
-        <StoryAdvancedEditor 
-          visible={showEditor} 
-          mediaUri={capturedMedia.uri} 
-          mediaType={capturedMedia.type} 
-          mode="event" 
-          onClose={() => setShowEditor(false)} 
-          onSave={handleSaveEditor} 
-        />
+        <StoryAdvancedEditor visible={showEditor} mediaUri={capturedMedia.uri} mediaType={capturedMedia.type} mode="event" onClose={() => setShowEditor(false)} onSave={handleSaveEditor} />
       )}
       <SuccessModal 
         visible={showSuccessModal} 
-        onClose={() => { setShowSuccessModal(false); router.push('/(tabs)'); }} 
-        onViewEvent={() => router.push({ pathname: '/event/[id]', params: { id: createdEventId || '' } } as any)} 
-        title="Evento postado com sucesso!" 
+        onClose={() => { 
+          setShowSuccessModal(false); 
+          resetForm();
+          router.push('/(tabs)'); 
+        }} 
+        onViewEvent={() => {
+          setShowSuccessModal(false);
+          resetForm();
+          router.push({ pathname: '/event/[id]', params: { id: createdEventId || '' } } as any);
+        }} 
+        title="Evento Publicado!" 
       />
-      <Modal 
-        visible={showDatePicker} 
-        transparent 
-        animationType="fade"
-      >
-        <View style={styles.modalOverlay}>
-          <BlurView intensity={90} tint="dark" style={styles.pickerModalContent}>
-            <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>Selecionar Data</Text>
-              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                <Text style={styles.doneText}>Concluir</Text>
-              </TouchableOpacity>
-            </View>
-            <DateTimePicker 
-              value={new Date(eventDate)} 
-              mode="date" 
-              display={Platform.OS === 'ios' ? 'inline' : 'calendar'} 
-              themeVariant="dark"
-              onChange={(e, d) => { 
-                if(d) {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setEventDate(d.toISOString().split('T')[0]);
-                }
-              }} 
+
+      {/* Modal de Categorias */}
+      <Modal visible={showCatModal} transparent animationType="slide">
+        <View style={[styles.modalOverlay, { backgroundColor: backgroundPrimary }]}>
+          <LinearGradient colors={isDark ? ['#050505', '#0f0f18'] : ['#f5f5f7', '#ffffff']} style={StyleSheet.absoluteFill} />
+          <View style={[styles.modalHeader, { paddingTop: insets.top + 20 }]}>
+            <Text style={[styles.modalTitle, { color: textPrimary }]}>Categorias</Text>
+            <TouchableOpacity onPress={() => setShowCatModal(false)} style={[styles.closeCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+              <X size={20} color={textPrimary} />
+            </TouchableOpacity>
+          </View>
+ 
+          <View style={[styles.modalSearchContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+            <Search size={20} color={textSecondary} />
+            <TextInput 
+              style={[styles.modalSearchInput, { color: textPrimary }]}
+              placeholder="Buscar categoria..."
+              placeholderTextColor={textSecondary}
+              value={catSearch}
+              onChangeText={setCatSearch}
+              autoFocus
             />
-          </BlurView>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalScroll}>
+            <View style={styles.subcatGrid}>
+              {categories
+                .filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase()))
+                .map(cat => (
+                  <TouchableOpacity 
+                    key={cat.id}
+                    style={[styles.subcatItem, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }, selectedCategory === cat.id && [styles.subcatItemActive, { backgroundColor: accent, borderColor: accent }]]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedCategory(cat.id);
+                      setSelectedSubcategory('');
+                      setShowCatModal(false);
+                      setCatSearch('');
+                    }}
+                  >
+                    <Text style={styles.catIconSmall}>{cat.icon}</Text>
+                    <Text style={[styles.subcatItemText, { color: textSecondary }, selectedCategory === cat.id && styles.subcatItemTextActive]}>
+                      {cat.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+            </View>
+          </ScrollView>
         </View>
       </Modal>
 
-      <Modal 
-        visible={showTimePicker} 
-        transparent 
-        animationType="fade"
-      >
-        <View style={styles.modalOverlay}>
-          <BlurView intensity={90} tint="dark" style={styles.pickerModalContent}>
-            <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>Selecionar Horário</Text>
-              <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                <Text style={styles.doneText}>Concluir</Text>
-              </TouchableOpacity>
-            </View>
-            <DateTimePicker 
-              value={new Date(`${eventDate}T${eventTime}`)} 
-              mode="time" 
-              display="spinner" 
-              is24Hour 
-              themeVariant="dark"
-              onChange={(e, d) => { 
-                if(d) {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setEventTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
-                }
-              }} 
+      {/* Modal de Subcategorias com Busca */}
+      <Modal visible={showSubcatModal} transparent animationType="slide">
+        <View style={[styles.modalOverlay, { backgroundColor: backgroundPrimary }]}>
+          <LinearGradient colors={isDark ? ['#050505', '#0f0f18'] : ['#f5f5f7', '#ffffff']} style={StyleSheet.absoluteFill} />
+          <View style={[styles.modalHeader, { paddingTop: insets.top + 20 }]}>
+            <Text style={[styles.modalTitle, { color: textPrimary }]}>Subcategorias</Text>
+            <TouchableOpacity onPress={() => setShowSubcatModal(false)} style={[styles.closeCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+              <X size={20} color={textPrimary} />
+            </TouchableOpacity>
+          </View>
+ 
+          <View style={[styles.modalSearchContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+            <Search size={20} color={textSecondary} />
+            <TextInput 
+              style={[styles.modalSearchInput, { color: textPrimary }]}
+              placeholder="Buscar subcategoria..."
+              placeholderTextColor={textSecondary}
+              value={subcatSearch}
+              onChangeText={setSubcatSearch}
+              autoFocus
             />
-          </BlurView>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalScroll}>
+            <View style={styles.subcatGrid}>
+              {subcategories
+                .filter(s => s.name.toLowerCase().includes(subcatSearch.toLowerCase()))
+                .map(sub => (
+                  <TouchableOpacity 
+                    key={sub.id}
+                    style={[styles.subcatItem, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }, selectedSubcategory === sub.id && [styles.subcatItemActive, { backgroundColor: accent, borderColor: accent }]]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedSubcategory(sub.id);
+                      setShowSubcatModal(false);
+                      setSubcatSearch('');
+                    }}
+                  >
+                    <Text style={[styles.subcatItemText, { color: textSecondary }, selectedSubcategory === sub.id && styles.subcatItemTextActive]}>
+                      {sub.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Seletor de Data Premium */}
+      <Modal visible={showDatePicker} transparent animationType="slide">
+        <View style={styles.pickerModalContainer}>
+          <TouchableOpacity 
+            style={styles.pickerBackdrop} 
+            activeOpacity={1} 
+            onPress={() => setShowDatePicker(false)} 
+          />
+          <Animated.View entering={FadeInRight} style={[styles.pickerSheet, { backgroundColor: backgroundSecondary }]}>
+            <View style={styles.pickerIndicator} />
+            <Text style={[styles.pickerTitle, { color: textPrimary }]}>Selecione a Data</Text>
+            
+            <View style={styles.pickerWrapper}>
+              <DateTimePicker 
+                value={new Date(eventDate)} 
+                mode="date" 
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                themeVariant={isDark ? 'dark' : 'light'} 
+                onChange={(e, d) => d && setEventDate(d.toISOString().split('T')[0])}
+                minimumDate={new Date()}
+              />
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.pickerDoneBtn, { backgroundColor: accent }]} 
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                setShowDatePicker(false);
+              }}
+            >
+              <Text style={styles.pickerDoneBtnText}>Confirmar Data</Text>
+              <Check size={20} color="#000" strokeWidth={3} />
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Seletor de Hora Premium */}
+      <Modal visible={showTimePicker} transparent animationType="slide">
+        <View style={styles.pickerModalContainer}>
+          <TouchableOpacity 
+            style={styles.pickerBackdrop} 
+            activeOpacity={1} 
+            onPress={() => setShowTimePicker(false)} 
+          />
+          <Animated.View entering={FadeInRight} style={[styles.pickerSheet, { backgroundColor: backgroundSecondary }]}>
+            <View style={styles.pickerIndicator} />
+            <Text style={[styles.pickerTitle, { color: textPrimary }]}>Selecione o Horário</Text>
+            
+            <View style={styles.pickerWrapper}>
+              <DateTimePicker 
+                value={new Date(`${eventDate}T${eventTime}`)} 
+                mode="time" 
+                display="spinner" 
+                is24Hour 
+                themeVariant={isDark ? 'dark' : 'light'} 
+                onChange={(e, d) => d && setEventTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)} 
+              />
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.pickerDoneBtn, { backgroundColor: accent }]} 
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                setShowTimePicker(false);
+              }}
+            >
+              <Text style={styles.pickerDoneBtnText}>Confirmar Horário</Text>
+              <Check size={20} color="#000" strokeWidth={3} />
+            </TouchableOpacity>
+          </Animated.View>
         </View>
       </Modal>
     </View>
@@ -753,618 +771,569 @@ export default function CreateEvent() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  
-  header: {
-    paddingHorizontal: s(25),
+  container: {
+    flex: 1,
+    backgroundColor: '#050505',
+  },
+  scrollContent: {
+    paddingHorizontal: s(24),
+    paddingTop: vs(20),
+  },
+  stepHeader: {
+    paddingHorizontal: s(24),
     paddingBottom: vs(20),
-    backgroundColor: '#000',
+    backgroundColor: '#050505',
   },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: vs(20),
-  },
-  closeButton: {
-    width: s(44),
-    height: s(44),
-    borderRadius: ms(22),
+  backCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.05)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: vs(20),
   },
-  headerSubtitle: {
-    color: Colors.accent.cyan,
-    fontSize: ms(10),
-    fontWeight: '800',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginBottom: vs(4),
+  stepInfo: {
+    marginBottom: vs(24),
   },
-  headerTitle: {
-    color: '#fff',
+  stepTitle: {
     fontSize: ms(28),
     fontWeight: '900',
+    color: '#fff',
     letterSpacing: -0.5,
   },
-  progressWrapper: {
-    flexDirection: 'row',
-    gap: s(8),
-    width: '100%',
+  stepSubtitle: {
+    fontSize: ms(16),
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: vs(4),
+    fontWeight: '500',
   },
-  progressStepContainer: {
-    flex: 1,
-    height: vs(4),
-  },
-  progressStep: {
-    flex: 1,
-    height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: ms(2),
-  },
-
-  content: { flex: 1 },
-  page: { paddingHorizontal: s(25), paddingTop: vs(10) },
-  
-  mediaContainer: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: ms(32),
+  progressBarBg: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 2,
     overflow: 'hidden',
-    marginBottom: vs(35),
-    backgroundColor: '#0A0A0A',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: vs(20) },
-    shadowOpacity: 0.5,
-    shadowRadius: ms(30),
-    elevation: 20,
   },
-  media: { flex: 1, width: '100%', height: '100%' },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#00d9ff',
+  },
+  stepContainer: {
+    flex: 1,
+  },
+  mediaPicker: {
+    width: '100%',
+    aspectRatio: 0.8,
+    borderRadius: ms(40),
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
   mediaPlaceholder: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0A0A0A',
+    padding: s(40),
   },
-  cameraIconContainer: {
-    width: s(80),
-    height: s(80),
-    borderRadius: ms(40),
-    backgroundColor: 'rgba(0, 217, 255, 0.08)',
+  cameraIconBg: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(0, 217, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: vs(15),
-    borderWidth: 1,
-    borderColor: 'rgba(0, 217, 255, 0.2)',
-  },
-  mediaPlaceholderTitle: {
-    color: '#fff',
-    fontSize: ms(20),
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  mediaPlaceholderSub: {
-    color: Colors.text.tertiary,
-    fontSize: ms(14),
-    marginTop: vs(6),
-    opacity: 0.7,
-  },
-  mediaEditOverlay: {
-    position: 'absolute',
-    bottom: vs(20),
-    right: s(20),
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: s(16),
-    paddingVertical: vs(10),
-    borderRadius: ms(24),
-    gap: s(8),
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  mediaEditText: {
-    color: '#fff',
-    fontSize: ms(14),
-    fontWeight: '700',
-  },
-
-  inputSection: {
-    width: '100%',
-  },
-  inputLabelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: vs(12),
-    opacity: 0.6,
-  },
-  inputLabel: {
-    color: '#fff',
-    fontSize: ms(10),
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
-  mainInput: {
-    color: '#fff',
-    fontSize: ms(20),
-    fontWeight: '600',
-    paddingVertical: vs(12),
-    borderBottomWidth: 1.5,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  descriptionInput: {
-    fontSize: ms(16),
-    height: vs(120),
-    textAlignVertical: 'top',
-    lineHeight: ms(24),
-  },
-
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(12),
     marginBottom: vs(20),
   },
-  sectionTitle: {
-    color: '#fff',
-    fontSize: ms(18),
+  placeholderMain: {
+    fontSize: ms(22),
     fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  categoryList: {
-    paddingRight: s(25),
-    paddingVertical: vs(5),
-  },
-  categoryCard: {
-    width: s(110),
-    height: vs(135),
-    backgroundColor: '#0F0F0F',
-    borderRadius: ms(28),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: s(16),
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  categoryCardActive: {
-    borderColor: Colors.accent.cyan,
-    backgroundColor: 'rgba(0, 217, 255, 0.05)',
-    shadowColor: Colors.accent.cyan,
-    shadowOffset: { width: 0, height: vs(10) },
-    shadowOpacity: 0.2,
-    shadowRadius: ms(15),
-    elevation: 10,
-  },
-  categoryIcon: {
-    fontSize: ms(36),
-    marginBottom: vs(12),
-  },
-  categoryName: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: ms(12),
-    fontWeight: '700',
+    color: '#fff',
     textAlign: 'center',
   },
-  categoryNameActive: {
-    color: '#fff',
-  },
-  checkBadge: {
-    position: 'absolute',
-    top: vs(12),
-    right: s(12),
-    backgroundColor: Colors.accent.cyan,
-    width: s(22),
-    height: s(22),
-    borderRadius: ms(11),
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#0F0F0F',
-  },
-
-  dateTimeRow: {
-    flexDirection: 'row',
-    gap: s(16),
-  },
-  dateTimeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0F0F0F',
-    padding: s(16),
-    borderRadius: ms(24),
-    gap: s(12),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  dtIconContainer: {
-    width: s(44),
-    height: s(44),
-    borderRadius: ms(14),
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dtLabel: {
+  placeholderSub: {
+    fontSize: ms(14),
     color: 'rgba(255,255,255,0.4)',
-    fontSize: ms(10),
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: vs(2),
-  },
-  dtValue: {
-    color: '#fff',
-    fontSize: ms(15),
-    fontWeight: '800',
-  },
-
-  locationContainer: {
-    zIndex: 10,
-  },
-  locationInput: {
-    backgroundColor: '#0F0F0F',
-    borderRadius: ms(24),
-    paddingHorizontal: s(20),
-    height: vs(64),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    color: '#fff',
-    fontSize: ms(15),
-    fontWeight: '600',
-  },
-  autocompleteList: {
-    backgroundColor: '#0F0F0F',
-    borderRadius: ms(24),
+    textAlign: 'center',
     marginTop: vs(8),
+    lineHeight: ms(20),
+  },
+  previewContainer: {
+    flex: 1,
+  },
+  mediaPreview: {
+    flex: 1,
+  },
+  mediaBadge: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  mediaBadgeText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  inputGroup: {
+    marginBottom: vs(32),
+  },
+  label: {
+    fontSize: ms(12),
+    fontWeight: '900',
+    color: '#00d9ff',
+    letterSpacing: 2,
+    marginBottom: vs(16),
+  },
+  hugeInput: {
+    fontSize: ms(28),
+    fontWeight: '800',
+    color: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    padding: ms(8),
+  },
+  textArea: {
+    fontSize: ms(18),
+    fontWeight: '500',
+    color: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    padding: 20,
+    height: vs(150),
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  categorySection: {
+    marginBottom: vs(32),
+  },
+  catScroll: {
+    paddingRight: 40,
+  },
+  catCard: {
+    width: 100,
+    height: 120,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  catCardActive: {
+    backgroundColor: 'rgba(0, 217, 255, 0.1)',
+    borderColor: '#00d9ff',
+  },
+  catIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  catName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.4)',
+  },
+  catNameActive: {
+    color: '#fff',
+  },
+  searchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  searchIcon: {
+    marginRight: 12,
+  },
+  locationInput: {
+    backgroundColor: 'transparent',
+    color: '#fff',
+    fontSize: 16,
+    height: 60,
+  },
+  autocompleteList: {
+    backgroundColor: '#15151a',
+    borderRadius: 16,
+    marginTop: 8,
   },
   autocompleteRow: {
     backgroundColor: 'transparent',
-    padding: ms(16),
-    borderRadius: ms(16),
+    padding: 16,
   },
-  autocompleteSeparator: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    height: 1,
+  row: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  subcatCard: {
-    paddingHorizontal: s(22),
-    paddingVertical: vs(14),
-    backgroundColor: '#0F0F0F',
-    borderRadius: ms(20),
-    justifyContent: 'center',
+  glassButton: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: s(10),
-    borderWidth: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
   },
-  subcatCardActive: {
-    borderColor: Colors.accent.cyan,
-    backgroundColor: 'rgba(0, 217, 255, 0.05)',
+  glassLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: 'rgba(255,255,255,0.3)',
+    letterSpacing: 1,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'flex-end',
+  glassValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+    marginTop: 2,
   },
-  pickerModalContent: {
-    borderTopLeftRadius: ms(40),
-    borderTopRightRadius: ms(40),
-    padding: ms(25),
-    paddingBottom: vs(50),
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  pickerHeader: {
+  premiumCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: vs(25),
-  },
-  pickerTitle: {
-    color: '#fff',
-    fontSize: ms(20),
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  doneText: {
-    color: Colors.accent.cyan,
-    fontSize: ms(17),
-    fontWeight: '800',
-  },
-  
-  premiumToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0F0F0F',
-    padding: s(24),
-    borderRadius: ms(30),
-    borderWidth: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    padding: 24,
+    borderRadius: 24,
+    borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
+    marginBottom: 16,
   },
-  premiumToggleActive: {
-    borderColor: Colors.status.success,
-    backgroundColor: 'rgba(52, 199, 89, 0.05)',
-  },
-  toggleInfo: {
-    flex: 1,
-  },
-  toggleText: {
-    color: '#fff',
-    fontSize: ms(18),
+  premiumTitle: {
+    fontSize: 18,
     fontWeight: '800',
-    letterSpacing: -0.3,
+    color: '#fff',
   },
-  toggleSub: {
+  premiumSub: {
+    fontSize: 14,
     color: 'rgba(255,255,255,0.4)',
-    fontSize: ms(14),
-    marginTop: vs(4),
+    marginTop: 2,
   },
-  priceContainer: {
+  priceBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F0F0F',
-    marginTop: vs(16),
-    paddingHorizontal: s(24),
-    height: vs(72),
-    borderRadius: ms(24),
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(0, 217, 255, 0.05)',
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    height: 80,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 217, 255, 0.2)',
+    marginBottom: 20,
   },
   priceSymbol: {
-    color: Colors.status.success,
-    fontSize: ms(24),
+    fontSize: 24,
     fontWeight: '900',
-    marginRight: s(12),
+    color: '#00d9ff',
+    marginRight: 12,
   },
   priceInput: {
     flex: 1,
-    color: '#fff',
-    fontSize: ms(32),
+    fontSize: 32,
     fontWeight: '900',
+    color: '#fff',
   },
-  limitsGrid: {
+  limitsRow: {
     flexDirection: 'row',
-    gap: s(16),
+    gap: 12,
   },
-  limitItem: {
+  limitBox: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F0F0F',
-    padding: s(16),
-    borderRadius: ms(24),
-    gap: s(12),
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    height: 70,
+    gap: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
   },
-  limitIconBg: {
-    width: s(40),
-    height: s(40),
-    borderRadius: ms(12),
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  limitLabel: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: ms(10),
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
   limitInput: {
-    color: '#fff',
-    fontSize: ms(16),
-    fontWeight: '800',
-    marginTop: vs(4),
-  },
-  infoBox: {
-    flexDirection: 'row',
-    gap: s(12),
-    marginTop: vs(35),
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    padding: s(20),
-    borderRadius: ms(24),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.02)',
-  },
-  infoText: {
     flex: 1,
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: ms(13),
-    lineHeight: ms(20),
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
   },
-
   reviewCard: {
-    backgroundColor: '#0F0F0F',
-    borderRadius: ms(40),
+    width: '100%',
+    aspectRatio: 0.9,
+    borderRadius: 40,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: vs(20) },
-    shadowOpacity: 0.4,
-    shadowRadius: ms(30),
-    elevation: 15,
+    backgroundColor: '#111',
   },
-  reviewMedia: {
-    width: '100%',
-    height: vs(280),
+  reviewImage: {
+    flex: 1,
   },
-  finalMedia: {
-    width: '100%',
-    height: '100%',
-  },
-  mediaShadow: {
+  reviewContent: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: vs(120),
+    padding: 30,
   },
-  mediaLabel: {
-    position: 'absolute',
-    top: vs(24),
-    left: s(24),
-    paddingHorizontal: s(16),
-    paddingVertical: vs(10),
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: ms(20),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  mediaLabelText: {
-    color: '#fff',
-    fontSize: ms(12),
+  reviewTag: {
+    backgroundColor: '#00d9ff',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    fontSize: 12,
     fontWeight: '900',
-    letterSpacing: 0.5,
+    color: '#000',
+    marginBottom: 12,
   },
-  reviewInfo: {
-    padding: s(30),
-  },
-  reviewTitle: {
-    color: '#fff',
-    fontSize: ms(32),
+  reviewMainTitle: {
+    fontSize: 32,
     fontWeight: '900',
+    color: '#fff',
+    marginBottom: 16,
     letterSpacing: -1,
-    marginBottom: vs(20),
   },
-  reviewDetailsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: s(20),
-    marginBottom: vs(12),
-  },
-  reviewDetail: {
+  reviewRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: s(8),
-    marginBottom: vs(12),
+    gap: 8,
+    marginBottom: 8,
   },
-  reviewDetailText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: ms(15),
+  reviewText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 15,
     fontWeight: '600',
   },
-  reviewDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    marginVertical: vs(20),
-  },
-  reviewDesc: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: ms(15),
-    lineHeight: ms(24),
-    marginBottom: vs(25),
-  },
-  reviewBadges: {
+  selectorButton: {
     flexDirection: 'row',
-    gap: s(12),
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  badge: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingHorizontal: s(16),
-    paddingVertical: vs(10),
-    borderRadius: ms(16),
+  selectorButtonActive: {
+    borderColor: '#00d9ff',
+    backgroundColor: 'rgba(0, 217, 255, 0.05)',
   },
-  badgeText: {
+  selectorInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  selectorText: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.3)',
+    fontWeight: '600',
+  },
+  selectorTextActive: {
     color: '#fff',
-    fontSize: ms(13),
-    fontWeight: '800',
   },
-
-  publishButton: {
-    backgroundColor: Colors.accent.cyan,
-    marginTop: vs(40),
-    height: vs(72),
-    borderRadius: ms(30),
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Colors.accent.cyan,
-    shadowOffset: { width: 0, height: vs(12) },
-    shadowOpacity: 0.4,
-    shadowRadius: ms(20),
-    elevation: 10,
-  },
-  publishContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(12),
-  },
-  publishButtonText: {
-    color: '#000',
-    fontSize: ms(18),
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-
-  navFooterContainer: {
-    paddingHorizontal: s(20),
-    paddingBottom: vs(20),
-    backgroundColor: '#000',
-  },
-  navFooter: {
-    paddingHorizontal: s(12),
-    paddingVertical: vs(12),
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderRadius: ms(36),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(20, 20, 20, 0.5)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: vs(15) },
-    shadowOpacity: 0.5,
-    shadowRadius: ms(30),
-    elevation: 20,
+    width: '100%',
+    paddingHorizontal: 24,
+    marginBottom: 20,
   },
-  backButton: {
-    width: s(52),
-    height: s(52),
-    borderRadius: ms(26),
-    backgroundColor: 'rgba(255,255,255,0.08)',
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#fff',
+  },
+  closeCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginHorizontal: 24,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
-  stepDots: {
+  modalSearchInput: {
+    flex: 1,
+    height: 50,
+    color: '#fff',
+    fontSize: 16,
+    paddingLeft: 12,
+  },
+  modalScroll: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+  subcatGrid: {
     flexDirection: 'row',
-    gap: s(8),
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
   },
-  stepDot: {
-    width: s(6),
-    height: s(6),
-    borderRadius: ms(3),
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  subcatItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
-  stepDotActive: {
-    width: s(12),
-    height: s(6),
+  subcatItemActive: {
+    backgroundColor: '#00d9ff',
+    borderColor: '#00d9ff',
   },
-  nextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: s(24),
-    height: vs(52),
-    borderRadius: ms(26),
-    gap: s(8),
+  subcatItemText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 14,
+    fontWeight: '700',
   },
-  nextButtonText: {
+  subcatItemTextActive: {
     color: '#000',
-    fontSize: ms(16),
+  },
+  catIconSmall: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  publishButton: {
+    marginTop: 24,
+    borderRadius: 24,
+    overflow: 'hidden',
+    height: 70,
+  },
+  publishGradient: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  publishText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  fabContainer: {
+    position: 'absolute',
+    right: 24,
+    left: 24,
+    alignItems: 'center',
+  },
+  fabRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    alignItems: 'center',
+  },
+  fab: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    overflow: 'hidden',
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+  },
+  subCatCard: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 16,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
+  },
+  subCatCardActive: {
+    backgroundColor: 'rgba(255, 20, 147, 0.1)',
+    borderColor: '#ff1493',
+  },
+  subCatName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.4)',
+  },
+  subCatNameActive: {
+    color: '#fff',
+  },
+  fabGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+  },
+  pickerModalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  pickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  pickerSheet: {
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingTop: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  pickerIndicator: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 24,
+  },
+  pickerTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  pickerWrapper: {
+    marginBottom: 24,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  pickerDoneBtn: {
+    flexDirection: 'row',
+    height: 64,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pickerDoneBtnText: {
+    color: '#000',
+    fontSize: 16,
     fontWeight: '900',
   },
 });

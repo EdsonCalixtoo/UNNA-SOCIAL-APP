@@ -1,10 +1,26 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  FlatList, 
+  TouchableOpacity, 
+  Image, 
+  ActivityIndicator, 
+  TextInput,
+  Animated,
+  Dimensions
+} from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types/database';
-import { ArrowLeft, UserCheck } from 'lucide-react-native';
+import { ArrowLeft, UserCheck, Search, X, UserPlus, Users } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { s, vs, ms } from '@/utils/responsive';
+
+const { width } = Dimensions.get('window');
 
 interface FollowerData {
   follower_id: string;
@@ -14,45 +30,43 @@ interface FollowerData {
 export default function Followers() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+
   const [loading, setLoading] = useState(true);
   const [followers, setFollowers] = useState<FollowerData[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [profileName, setProfileName] = useState('');
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadFollowers();
   }, [id]);
 
+  useEffect(() => {
+    if (!loading) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [loading]);
+
   const loadFollowers = async () => {
     try {
       setLoading(true);
-
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (profileData) {
-        setProfileName(profileData.username);
-      }
+      const { data: profileData } = await supabase.from('profiles').select('username').eq('id', id).maybeSingle();
+      if (profileData) setProfileName(profileData.username);
 
       const { data, error } = await supabase
         .from('follows')
-        .select(`
-          follower_id,
-          profiles:follower_id (
-            id,
-            username,
-            full_name,
-            avatar_url,
-            bio
-          )
-        `)
+        .select('follower_id, profiles:follower_id (*)')
         .eq('following_id', id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-
       setFollowers((data as any) || []);
     } catch (error) {
       console.error('Error loading followers:', error);
@@ -61,71 +75,96 @@ export default function Followers() {
     }
   };
 
+  const filteredFollowers = followers.filter(f => 
+    f.profiles.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    f.profiles.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const renderFollower = ({ item }: { item: FollowerData }) => {
     const profile = item.profiles;
+    const initials = profile.full_name?.charAt(0).toUpperCase() || profile.username?.charAt(0).toUpperCase() || '?';
 
     return (
       <TouchableOpacity
-        style={styles.followerCard}
+        activeOpacity={0.8}
+        style={[styles.followerCard, { backgroundColor: backgroundSecondary }]}
         onPress={() => router.push(`/profile/${profile.id}`)}
       >
-        {profile.avatar_url ? (
-          <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarText}>
-              {profile.username?.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
+        <LinearGradient colors={[accent, '#ff1493']} style={styles.avatarRing}>
+          {profile.avatar_url ? (
+            <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarPlaceholder}><Text style={styles.avatarText}>{initials}</Text></View>
+          )}
+        </LinearGradient>
 
         <View style={styles.followerInfo}>
-          <Text style={styles.fullName}>{profile.full_name}</Text>
-          <Text style={styles.username}>@{profile.username}</Text>
-          {profile.bio && (
-            <Text style={styles.bio} numberOfLines={2}>
-              {profile.bio}
-            </Text>
-          )}
+          <Text style={[styles.fullName, { color: textPrimary }]}>{profile.full_name}</Text>
+          <Text style={[styles.username, { color: textSecondary }]}>@{profile.username}</Text>
         </View>
 
-        <UserCheck size={20} color="#00d9ff" />
+        <TouchableOpacity style={[styles.followActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+          <UserPlus size={18} color={accent} />
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00d9ff" />
+      <View style={[styles.loadingContainer, { backgroundColor: backgroundPrimary }]}>
+        <ActivityIndicator size="large" color={accent} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#2d2d2d', '#1a1a1a']}
-        style={styles.header}
-      >
+    <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
+      {/* HEADER */}
+      <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#fff" />
+          <ArrowLeft size={22} color={textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>Seguidores</Text>
-          <Text style={styles.headerSubtitle}>@{profileName}</Text>
+          <Text style={[styles.headerTitle, { color: textPrimary }]}>Seguidores</Text>
+          <Text style={[styles.headerSubtitle, { color: textSecondary }]}>@{profileName}</Text>
         </View>
-      </LinearGradient>
+      </View>
 
-      <FlatList
-        data={followers}
+      {/* SEARCH */}
+      <View style={styles.searchSection}>
+        <View style={[styles.searchBar, { backgroundColor: backgroundSecondary }]}>
+          <Search size={18} color={textSecondary} />
+          <TextInput
+            placeholder="Buscar seguidores..."
+            placeholderTextColor={isDark ? '#444' : '#bbb'}
+            style={[styles.searchInput, { color: textPrimary }]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <X size={18} color={textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <Animated.FlatList
+        data={filteredFollowers}
         keyExtractor={(item) => item.follower_id}
         renderItem={renderFollower}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 20 }]}
+        style={{ opacity: fadeAnim }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <UserCheck size={64} color="#666" />
-            <Text style={styles.emptyStateText}>Nenhum seguidor ainda</Text>
+            <View style={[styles.emptyIconBg, { backgroundColor: backgroundSecondary }]}>
+              <Users size={48} color={textSecondary} strokeWidth={1.5} />
+            </View>
+            <Text style={[styles.emptyStateTitle, { color: textPrimary }]}>Nenhum seguidor ainda</Text>
+            <Text style={[styles.emptyStateSub, { color: textSecondary }]}>
+              {searchQuery.length > 0 ? 'Nenhum resultado para sua busca.' : 'O perfil ainda não possui seguidores.'}
+            </Text>
           </View>
         }
       />
@@ -134,109 +173,68 @@ export default function Followers() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0a0a0a',
-  },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
-    paddingTop: 60,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#3d3d3d',
+    gap: 16,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTextContainer: {
-    flex: 1,
+  headerTextContainer: { flex: 1 },
+  headerTitle: { fontSize: ms(20), fontWeight: '900', letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: ms(13), fontWeight: '600', marginTop: -2 },
+
+  searchSection: { padding: 20, paddingBottom: 10 },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    height: 52,
+    borderRadius: 20,
+    gap: 12,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 2,
-  },
-  listContent: {
-    padding: 16,
-  },
+  searchInput: { flex: 1, fontSize: ms(15), fontWeight: '600' },
+
+  listContent: { padding: 20 },
   followerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    padding: 16,
+    padding: 14,
+    borderRadius: 24,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#3d3d3d',
+    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
   },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginRight: 12,
-    borderWidth: 2,
-    borderColor: '#00d9ff',
-  },
-  avatarPlaceholder: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#00d9ff',
+  avatarRing: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    padding: 3,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
-  avatarText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  followerInfo: {
-    flex: 1,
-  },
-  fullName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 2,
-  },
-  username: {
-    fontSize: 14,
-    color: '#999',
-    marginBottom: 4,
-  },
-  bio: {
-    fontSize: 13,
-    color: '#666',
-    lineHeight: 18,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 80,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: '#999',
-    marginTop: 16,
-  },
+  avatar: { width: 52, height: 52, borderRadius: 26, borderWidth: 3, borderColor: '#fff' },
+  avatarPlaceholder: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#fff' },
+  avatarText: { color: '#fff', fontSize: 22, fontWeight: '900' },
+  followerInfo: { flex: 1 },
+  fullName: { fontSize: ms(15), fontWeight: '800', marginBottom: 2 },
+  username: { fontSize: ms(13), fontWeight: '600' },
+  followActionBtn: { width: 44, height: 44, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+
+  emptyState: { alignItems: 'center', paddingTop: 100, paddingHorizontal: 40 },
+  emptyIconBg: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
+  emptyStateTitle: { fontSize: ms(18), fontWeight: '900', marginBottom: 8, textAlign: 'center' },
+  emptyStateSub: { fontSize: ms(14), textAlign: 'center', lineHeight: 20 },
 });

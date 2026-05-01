@@ -1,23 +1,26 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Platform } from 'react-native';
 import { Calendar, Clock, MapPin, Users, DollarSign, Volume2, VolumeX, ChevronRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Video, ResizeMode } from 'expo-av';
 import { Event } from '@/types/database';
 import { s, vs, ms } from '@/utils/responsive';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface EventCardProps {
   event: Event;
   onPress?: () => void;
+  isVisible?: boolean;
 }
 
 type EventStatus = 'happening' | 'starting-soon' | 'upcoming' | 'ended';
 
-export default function EventCard({ event, onPress }: EventCardProps) {
+export default function EventCard({ event, onPress, isVisible = true }: EventCardProps) {
   const router = useRouter();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const [countdown, setCountdown] = useState('');
   const [eventStatus, setEventStatus] = useState<EventStatus>('upcoming');
   const [isMuted, setIsMuted] = useState(true);
@@ -43,11 +46,14 @@ export default function EventCard({ event, onPress }: EventCardProps) {
     return () => clearInterval(interval);
   }, [event.event_date, event.event_time]);
 
-  const handlePress = () => { 
-    if (event.media_type === 'video' || (event.image_url && event.image_url.toLowerCase().includes('.mp4'))) {
-      setIsMuted(!isMuted);
-      return;
+  // Efeito para pausar o som se o cartão sair da tela
+  useEffect(() => {
+    if (!isVisible && !isMuted) {
+      setIsMuted(true);
     }
+  }, [isVisible]);
+
+  const handlePress = () => { 
     if (onPress) onPress(); 
     else router.push(`/event/${event.id}`); 
   };
@@ -65,7 +71,7 @@ export default function EventCard({ event, onPress }: EventCardProps) {
 
   return (
     <TouchableOpacity 
-      style={[styles.card, getStatusStyle()]} 
+      style={[styles.card, getStatusStyle(), { backgroundColor: backgroundSecondary, borderColor: isDark ? (getStatusStyle().borderColor || '#333') : 'rgba(0,0,0,0.05)' }]} 
       onPress={handlePress} 
       activeOpacity={0.95}
     >
@@ -82,7 +88,7 @@ export default function EventCard({ event, onPress }: EventCardProps) {
               style={styles.image} 
               resizeMode={ResizeMode.COVER} 
               isLooping 
-              shouldPlay={true} 
+              shouldPlay={isVisible} 
               isMuted={isMuted}
               useNativeControls={false}
               usePoster={true}
@@ -108,9 +114,15 @@ export default function EventCard({ event, onPress }: EventCardProps) {
         )}
 
         {isVideo && (
-          <View style={styles.muteBtn}>
+          <TouchableOpacity 
+            style={styles.muteBtn} 
+            onPress={(e) => {
+              e.stopPropagation(); // Impede que o clique abra o evento
+              setIsMuted(!isMuted);
+            }}
+          >
              {isMuted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
-          </View>
+          </TouchableOpacity>
         )}
 
         <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent', 'rgba(0,0,0,0.9)']} style={styles.overlay} />
@@ -121,7 +133,9 @@ export default function EventCard({ event, onPress }: EventCardProps) {
 
         <View style={styles.dateBadge}>
           <Text style={styles.dateDay}>{new Date(event.event_date).getDate()}</Text>
-          <Text style={styles.dateMonth}>{new Date(event.event_date).toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase()}</Text>
+          <Text style={styles.dateMonth}>
+            {['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'][new Date(event.event_date).getMonth()]}
+          </Text>
         </View>
 
         <View style={styles.titleBox}><Text style={styles.title} numberOfLines={2}>{event.title}</Text></View>
@@ -129,17 +143,17 @@ export default function EventCard({ event, onPress }: EventCardProps) {
 
       <View style={styles.content}>
         <View style={styles.creatorRow}>
-          <Image source={{ uri: event.profiles?.avatar_url || 'https://via.placeholder.com/150' }} style={styles.avatar} />
-          <Text style={styles.creatorName} numberOfLines={1}>por {event.profiles?.full_name || event.profiles?.username}</Text>
+          <Image source={{ uri: event.profiles?.avatar_url || 'https://via.placeholder.com/150' }} style={[styles.avatar, { borderColor: accent }]} />
+          <Text style={[styles.creatorName, { color: textSecondary }]} numberOfLines={1}>por {event.profiles?.full_name || event.profiles?.username}</Text>
           {event.is_paid && <View style={styles.priceTag}><Text style={styles.priceText}>R$ {event.price.toFixed(0)}</Text></View>}
         </View>
         <TouchableOpacity 
-          style={styles.infoGrid}
+          style={[styles.infoGrid, { borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
           onPress={() => router.push(`/event/${event.id}`)}
         >
-           <View style={styles.infoItem}><Clock size={16} color="#00d9ff" /><Text style={styles.infoValue}>{event.event_time.slice(0,5)}</Text></View>
-           <View style={[styles.infoItem, { flex: 1 }]}><MapPin size={16} color="#ff1493" /><Text style={styles.infoValue} numberOfLines={1}>{event.location_name}</Text></View>
-           <ChevronRight size={18} color="#444" />
+           <View style={styles.infoItem}><Clock size={16} color={accent} /><Text style={[styles.infoValue, { color: textPrimary }]}>{event.event_time.slice(0,5)}</Text></View>
+           <View style={[styles.infoItem, { flex: 1 }]}><MapPin size={16} color="#ff1493" /><Text style={[styles.infoValue, { color: textPrimary }]} numberOfLines={1}>{event.location_name}</Text></View>
+           <ChevronRight size={18} color={textSecondary} />
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -148,21 +162,29 @@ export default function EventCard({ event, onPress }: EventCardProps) {
 
 const styles = StyleSheet.create({
   card: { 
-    backgroundColor: '#111', 
     borderRadius: ms(25), 
     marginHorizontal: s(16), 
     marginVertical: vs(12), 
-    overflow: 'hidden', 
-    elevation: 10 
+    overflow: Platform.OS === 'ios' ? 'visible' : 'hidden', // Permite sombra no iOS
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
   },
   imageContainer: { 
     width: '100%', 
     height: vs(240), 
-    position: 'relative' 
+    position: 'relative',
+    borderTopLeftRadius: ms(25),
+    borderTopRightRadius: ms(25),
+    overflow: 'hidden',
   },
   image: { 
     width: '100%', 
-    height: '100%' 
+    height: '100%',
+    borderTopLeftRadius: ms(25),
+    borderTopRightRadius: ms(25),
   },
   imagePlaceholder: { 
     width: '100%', 
@@ -262,8 +284,9 @@ const styles = StyleSheet.create({
     fontSize: ms(24), 
     fontWeight: '900', 
     color: '#fff', 
-    textShadowColor: '#000', 
-    textShadowRadius: 8 
+    textShadowColor: 'rgba(0,0,0,0.5)', 
+    textShadowRadius: 8,
+    textShadowOffset: { width: 0, height: 2 },
   },
   content: { 
     padding: ms(18) 
@@ -283,7 +306,6 @@ const styles = StyleSheet.create({
   },
   creatorName: { 
     fontSize: ms(13), 
-    color: '#aaa', 
     fontWeight: '700', 
     flex: 1 
   },
@@ -304,7 +326,6 @@ const styles = StyleSheet.create({
     gap: s(15), 
     paddingTop: vs(12), 
     borderTopWidth: 1, 
-    borderTopColor: '#222' 
   },
   infoItem: { 
     flexDirection: 'row', 
@@ -312,7 +333,6 @@ const styles = StyleSheet.create({
     gap: s(6) 
   },
   infoValue: { 
-    color: '#fff', 
     fontSize: ms(14), 
     fontWeight: '600' 
   },

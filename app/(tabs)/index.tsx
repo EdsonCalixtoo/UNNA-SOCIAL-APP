@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Image, Modal, ScrollView } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Image, Modal, ScrollView, Platform } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Post, Category, Subcategory } from '@/types/database';
@@ -9,15 +9,20 @@ import EventCard from '@/components/EventCard';
 import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
+import PageTransition from '@/components/PageTransition';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
   withTiming, 
   useAnimatedScrollHandler,
   interpolate,
-  Extrapolation
+  Extrapolation,
+  FadeInUp,
+  runOnJS
 } from 'react-native-reanimated';
+import { useUI } from '@/contexts/UIContext';
 
 interface ExtendedPost {
   id: string;
@@ -82,6 +87,7 @@ interface ExtendedPost {
 
 export default function Feed() {
   const { user } = useAuth();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const params = useLocalSearchParams();
   const [posts, setPosts] = useState<ExtendedPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,71 +100,67 @@ export default function Feed() {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [visibleItems, setVisibleItems] = useState<string[]>([]);
 
   const scrollY = useSharedValue(0);
   const headerTranslateY = useSharedValue(0);
   const lastScrollY = useSharedValue(0);
 
-  const HEADER_MAX_HEIGHT = vs(130);
-  const HEADER_MIN_HEIGHT = vs(-130);
-  const SCROLL_THRESHOLD = vs(100);
-
-  const headerStyle = {
-    position: 'absolute' as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1000,
-  };
-
   const insets = useSafeAreaInsets();
+  const HEADER_HEIGHT = insets.top + vs(70);
 
-  const listStyle = {
-    paddingTop: vs(130),
-  };
+  const { hideTabBar, showTabBar } = useUI();
+
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      const currentY = event.contentOffset.y;
+      const diff = currentY - lastScrollY.value;
+      
+      // Esconder header ao subir, mostrar ao descer
+      if (currentY > HEADER_HEIGHT) {
+        headerTranslateY.value = withTiming(diff > 0 ? -HEADER_HEIGHT : 0, { duration: 300 });
+        
+        // Controle da TabBar
+        if (diff > 10 && currentY > 100) {
+          runOnJS(hideTabBar)();
+        } else if (diff < -10) {
+          runOnJS(showTabBar)();
+        }
+      } else {
+        headerTranslateY.value = withTiming(0, { duration: 300 });
+        runOnJS(showTabBar)();
+      }
+      
+      scrollY.value = currentY;
+      lastScrollY.value = currentY;
+    },
+  });
+
+  const headerAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: headerTranslateY.value }],
+    opacity: interpolate(headerTranslateY.value, [-HEADER_HEIGHT, 0], [0, 1], Extrapolation.CLAMP),
+  }));
+
 
   useEffect(() => {
     loadUnreadNotifications();
+    // ... rest of useEffect subscriptions ...
+
+    // Gerar um ID único para esta instância da inscrição para evitar conflitos de HMR
+    const instanceId = Math.random().toString(36).substring(7);
 
     // Escutar mudanças em tempo real nas notificações
     const notificationSubscription = supabase
-      .channel('notifications-badge')
+      .channel(`notifications-badge:${user?.id}:${instanceId}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // Escuta INSERT, UPDATE e DELETE em um só
           schema: 'public',
           table: 'notifications',
           filter: `user_id=eq.${user?.id}`,
         },
         () => {
-          // Recarregar o count quando há nova notificação
-          loadUnreadNotifications();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user?.id}`,
-        },
-        () => {
-          // Recarregar o count quando notificações são atualizadas (marcadas como lidas)
-          loadUnreadNotifications();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user?.id}`,
-        },
-        () => {
-          // Recarregar o count quando notificações são deletadas
           loadUnreadNotifications();
         }
       )
@@ -166,7 +168,7 @@ export default function Feed() {
 
     // Escutar mudanças em tempo real nos eventos
     const eventsSubscription = supabase
-      .channel('events-realtime')
+      .channel(`events-realtime:${user?.id}:${instanceId}`)
       .on(
         'postgres_changes',
         {
@@ -175,7 +177,6 @@ export default function Feed() {
           table: 'events',
         },
         () => {
-          // Recarregar os posts quando um evento é criado, atualizado ou deletado
           loadPosts();
         }
       )
@@ -183,7 +184,7 @@ export default function Feed() {
 
     // Escutar mudanças em tempo real nos posts
     const postsSubscription = supabase
-      .channel('posts-realtime')
+      .channel(`posts-realtime:${user?.id}:${instanceId}`)
       .on(
         'postgres_changes',
         {
@@ -192,16 +193,15 @@ export default function Feed() {
           table: 'posts',
         },
         () => {
-          // Recarregar os posts quando há mudanças
           loadPosts();
         }
       )
       .subscribe();
 
     return () => {
-      notificationSubscription.unsubscribe();
-      eventsSubscription.unsubscribe();
-      postsSubscription.unsubscribe();
+      supabase.removeChannel(notificationSubscription);
+      supabase.removeChannel(eventsSubscription);
+      supabase.removeChannel(postsSubscription);
     };
   }, [user]);
 
@@ -424,6 +424,15 @@ export default function Feed() {
     loadPosts();
   };
 
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    const ids = viewableItems.map((item: any) => item.key);
+    setVisibleItems(ids);
+  }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50, // O item é considerado visível se 50% dele aparecer
+  }).current;
+
   const handleLike = async (postId: string, isLiked: boolean) => {
     if (!user) return;
 
@@ -450,54 +459,78 @@ export default function Feed() {
     ));
   };
 
-  const renderItem = ({ item }: { item: ExtendedPost }) => {
-    if (item.events) {
-      return <EventCard event={item.events} />;
-    }
-    return <PostCard post={item} onLike={handleLike} />;
+  const renderItem = ({ item, index }: { item: ExtendedPost; index: number }) => {
+    return (
+      <Animated.View entering={FadeInUp.delay(index * 100).duration(500)}>
+        {item.events ? (
+          <EventCard 
+            event={item.events} 
+            isVisible={visibleItems.includes(item.id)} 
+          />
+        ) : (
+          <PostCard 
+            post={item} 
+            onLike={handleLike} 
+            isVisible={visibleItems.includes(item.id)}
+          />
+        )}
+      </Animated.View>
+    );
   };
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00d9ff" />
+      <View style={[styles.loadingContainer, { backgroundColor: backgroundPrimary }]}>
+        <ActivityIndicator size="large" color={accent} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Animated.View style={[styles.header, headerStyle]}>
+    <PageTransition>
+      <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
+      <Animated.View style={[
+        styles.header, 
+        headerAnimatedStyle, 
+        { 
+          backgroundColor: backgroundSecondary, 
+          borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', 
+          borderBottomWidth: 1,
+          height: HEADER_HEIGHT,
+          paddingTop: insets.top,
+          paddingHorizontal: s(12), // Reduzi um pouco o padding lateral para telas pequenas
+        }
+      ]}>
         <View style={styles.headerLeft}>
           <Image
             source={require('@/assets/images/icone.jpg')}
             style={styles.logoImage}
           />
-          <Text style={styles.logo}>U<Text style={styles.logoPink}>N</Text><Text style={styles.logoSpecial}>И</Text>A</Text>
+          <Text style={[styles.logo, { color: textPrimary }]} numberOfLines={1}>U<Text style={styles.logoSpecial}>N</Text><Text style={styles.logoPink}>И</Text>A</Text>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
-            style={styles.iconButton}
+            style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}
             onPress={() => router.push('/messages')}
           >
-            <MessageCircle size={24} color="#00d9ff" />
+            <MessageCircle size={vs(20)} color={accent} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.iconButton}
+            style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}
             onPress={() => router.push('/notifications')}
           >
-            <Bell size={24} color="#00d9ff" />
+            <Bell size={vs(20)} color={accent} />
             {unreadCount > 0 && (
-              <View style={styles.notificationBadge}>
+              <View style={[styles.notificationBadge, { backgroundColor: accent }]}>
                 <Text style={styles.notificationBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
               </View>
             )}
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterButton, (selectedCategories.length > 0 || dateFilter !== 'all') && styles.filterButtonActive]}
+            style={[styles.filterButton, (selectedCategories.length > 0 || dateFilter !== 'all') && styles.filterButtonActive, { backgroundColor: (selectedCategories.length > 0 || dateFilter !== 'all') ? accent : (isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)'), borderColor: accent }]}
             onPress={() => setShowFilters(true)}
           >
-            <Filter size={24} color={(selectedCategories.length > 0 || dateFilter !== 'all') ? '#000' : '#00d9ff'} />
+            <Filter size={vs(20)} color={(selectedCategories.length > 0 || dateFilter !== 'all') ? '#fff' : accent} />
             {(selectedCategories.length > 0 || dateFilter !== 'all') && (
               <View style={styles.filterBadge} />
             )}
@@ -505,19 +538,33 @@ export default function Feed() {
         </View>
       </Animated.View>
 
-      <FlatList
+      <Animated.FlatList
         data={posts}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={<StoriesBar />}
         renderItem={renderItem}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        windowSize={3} // Mantém menos itens na memória
+        initialNumToRender={5}
+        removeClippedSubviews={Platform.OS === 'android'} // Remove itens fora da tela (Android)
+        maxToRenderPerBatch={5}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#00d9ff" />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={handleRefresh} 
+            tintColor={accent} 
+            colors={[accent]}
+            progressViewOffset={HEADER_HEIGHT}
+          />
         }
         contentContainerStyle={[
           styles.listContent, 
           { 
-            paddingTop: vs(130),
-            paddingBottom: vs(20)
+            paddingTop: HEADER_HEIGHT,
+            paddingBottom: vs(100)
           }
         ]}
         showsVerticalScrollIndicator={false}
@@ -530,19 +577,19 @@ export default function Feed() {
         onRequestClose={() => setShowFilters(false)}
       >
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Filtros</Text>
+          <View style={[styles.modalContent, { backgroundColor: backgroundSecondary }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
+              <Text style={[styles.modalTitle, { color: textPrimary }]}>Filtros</Text>
               <TouchableOpacity onPress={() => setShowFilters(false)}>
-                <X size={24} color="#fff" />
+                <X size={24} color={textPrimary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
-                  <Calendar size={20} color="#00d9ff" />
-                  <Text style={styles.filterSectionTitle}>Data do Evento</Text>
+                  <Calendar size={20} color={accent} />
+                  <Text style={[styles.filterSectionTitle, { color: textPrimary }]}>Data do Evento</Text>
                 </View>
                 <View style={styles.filterOptions}>
                   {[
@@ -553,10 +600,10 @@ export default function Feed() {
                   ].map(option => (
                     <TouchableOpacity
                       key={option.key}
-                      style={[styles.filterOption, dateFilter === option.key && styles.filterOptionActive]}
+                      style={[styles.filterOption, dateFilter === option.key && styles.filterOptionActive, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
                       onPress={() => setDateFilter(option.key as any)}
                     >
-                      <Text style={[styles.filterOptionText, dateFilter === option.key && styles.filterOptionTextActive]}>
+                      <Text style={[styles.filterOptionText, { color: textSecondary }, dateFilter === option.key && styles.filterOptionTextActive]}>
                         {option.label}
                       </Text>
                     </TouchableOpacity>
@@ -565,7 +612,7 @@ export default function Feed() {
               </View>
 
               <View style={styles.filterSection}>
-                <Text style={styles.filterSectionTitle}>Categorias</Text>
+                <Text style={[styles.filterSectionTitle, { color: textPrimary }]}>Categorias</Text>
                 <View style={styles.filterOptions}>
                   {categories.map(category => {
                     const isSelected = selectedCategories.includes(category.id);
@@ -574,7 +621,7 @@ export default function Feed() {
                     return (
                       <View key={category.id}>
                         <TouchableOpacity
-                          style={[styles.categoryCard, isSelected && styles.categoryCardActive]}
+                          style={[styles.categoryCard, isSelected && styles.categoryCardActive, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
                           onPress={() => {
                             if (isSelected) {
                               setSelectedCategories(prev => prev.filter(id => id !== category.id));
@@ -590,16 +637,16 @@ export default function Feed() {
                         >
                           <View style={styles.categoryCardContent}>
                             <View style={styles.categoryCardLeft}>
-                              <Text style={styles.categoryCardIcon}>{category.icon}</Text>
-                              <Text style={[styles.categoryCardText, isSelected && styles.categoryCardTextActive]}>
-                                {category.name}
-                              </Text>
-                            </View>
-                            <ChevronRight
-                              size={20}
-                              color={isSelected ? '#00d9ff' : '#666'}
-                              style={{ transform: [{ rotate: isExpanded ? '90deg' : '0deg' }] }}
-                            />
+                               <Text style={styles.categoryCardIcon}>{category.icon}</Text>
+                               <Text style={[styles.categoryCardText, { color: textPrimary }, isSelected && styles.categoryCardTextActive]}>
+                                 {category.name}
+                               </Text>
+                             </View>
+                             <ChevronRight
+                               size={20}
+                               color={isSelected ? accent : textSecondary}
+                               style={{ transform: [{ rotate: isExpanded ? '90deg' : '0deg' }] }}
+                             />
                           </View>
                         </TouchableOpacity>
 
@@ -610,7 +657,7 @@ export default function Feed() {
                               return (
                                 <TouchableOpacity
                                   key={subcategory.id}
-                                  style={[styles.subcategoryCard, isSubSelected && styles.subcategoryCardActive]}
+                                  style={[styles.subcategoryCard, isSubSelected && styles.subcategoryCardActive, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.03)' }]}
                                   onPress={() => {
                                     if (isSubSelected) {
                                       setSelectedSubcategories(prev => prev.filter(id => id !== subcategory.id));
@@ -619,7 +666,7 @@ export default function Feed() {
                                     }
                                   }}
                                 >
-                                  <Text style={[styles.subcategoryCardText, isSubSelected && styles.subcategoryCardTextActive]}>
+                                  <Text style={[styles.subcategoryCardText, { color: textSecondary }, isSubSelected && styles.subcategoryCardTextActive]}>
                                     {subcategory.name}
                                   </Text>
                                 </TouchableOpacity>
@@ -634,7 +681,7 @@ export default function Feed() {
               </View>
             </ScrollView>
 
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
               <TouchableOpacity
                 style={styles.clearButton}
                 onPress={() => {
@@ -657,6 +704,7 @@ export default function Feed() {
         </View>
       </Modal>
     </View>
+    </PageTransition>
   );
 }
 
@@ -672,16 +720,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
   },
   header: {
-    backgroundColor: '#2d2d2d',
-    paddingTop: vs(60),
-    paddingBottom: vs(16),
-    paddingHorizontal: s(16),
-    borderBottomWidth: 1,
-    borderBottomColor: '#3d3d3d',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    backgroundColor: '#0f0f18',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    height: vs(130),
+    paddingHorizontal: s(16),
   },
   headerLeft: {
     flexDirection: 'row',
@@ -726,10 +774,10 @@ const styles = StyleSheet.create({
     borderRadius: ms(8),
   },
   logo: {
-    fontSize: ms(32),
+    fontSize: ms(28),
     fontWeight: '900',
     color: '#fff',
-    letterSpacing: 2,
+    letterSpacing: 1.5,
   },
   logoSpecial: {
     color: '#00d9ff',

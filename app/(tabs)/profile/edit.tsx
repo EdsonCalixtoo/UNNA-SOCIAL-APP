@@ -1,20 +1,64 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, ActivityIndicator, Alert, Switch, Modal } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  TouchableOpacity, 
+  Image, 
+  TextInput, 
+  ActivityIndicator, 
+  Alert, 
+  Switch, 
+  Modal, 
+  Dimensions,
+  Animated,
+  KeyboardAvoidingView,
+  Platform
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Camera, Save, Lock, LogOut, Trash2, Bell, X } from 'lucide-react-native';
+import { 
+  ArrowLeft, 
+  Camera, 
+  Save, 
+  Lock, 
+  LogOut, 
+  Trash2, 
+  Bell, 
+  X, 
+  User, 
+  AtSign, 
+  Type, 
+  Palette, 
+  Shield, 
+  Check,
+  Sparkles,
+  ChevronRight,
+  Heart,
+  Edit3,
+  Search
+} from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { uploadImage } from '@/lib/storage';
 import UniversalImageEditor from '@/components/UniversalImageEditor';
+import { useTheme } from '@/contexts/ThemeContext';
+import { s, vs, ms } from '@/utils/responsive';
+
+const { width } = Dimensions.get('window');
 
 export default function EditProfile() {
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const { profile, user, refreshProfile } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
   const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     username: '',
     full_name: '',
@@ -24,19 +68,31 @@ export default function EditProfile() {
     secondary_color: '#1a1a1a',
     accent_color: '#ff1493',
     is_private: false,
+    preferred_categories: [] as string[],
+    preferred_subcategories: [] as string[],
+    instagram_url: '',
+    website_url: '',
+    location_city: '',
+    birth_date: '',
   });
+
   const [newAvatarUri, setNewAvatarUri] = useState<string | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showInterestsModal, setShowInterestsModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [showImageEditor, setShowImageEditor] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(true);
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const checkTimeout = useRef<NodeJS.Timeout | null>(null);
 
+  const [subcategories, setSubcategories] = useState<any[]>([]);
 
   useEffect(() => {
+    loadData();
     if (profile) {
       setFormData({
         username: profile.username || '',
@@ -47,22 +103,30 @@ export default function EditProfile() {
         secondary_color: profile.secondary_color || '#1a1a1a',
         accent_color: profile.accent_color || '#ff1493',
         is_private: profile.is_private || false,
+        preferred_categories: profile.preferred_categories || [],
+        preferred_subcategories: (profile as any).preferred_subcategories || [],
+        instagram_url: (profile as any).instagram_url || '',
+        website_url: (profile as any).website_url || '',
+        location_city: (profile as any).location_city || '',
+        birth_date: (profile as any).birth_date || '',
       });
     }
   }, [profile]);
 
+  const loadData = async () => {
+    const [cats, subcats] = await Promise.all([
+      supabase.from('categories').select('*').order('name'),
+      supabase.from('subcategories').select('*').order('name')
+    ]);
+    if (cats.data) setCategories(cats.data);
+    if (subcats.data) setSubcategories(subcats.data);
+  };
+
   const pickImage = async () => {
     try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permissionResult.granted) {
-        Alert.alert('Permissão necessária', 'Precisamos de permissão para acessar suas fotos');
-        return;
-      }
-
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false, // Usaremos nosso próprio editor premium
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
         quality: 0.9,
       });
 
@@ -71,7 +135,6 @@ export default function EditProfile() {
         setShowImageEditor(true);
       }
     } catch (error) {
-      console.error('Error picking image:', error);
       Alert.alert('Erro', 'Não foi possível selecionar a imagem');
     }
   };
@@ -81,424 +144,516 @@ export default function EditProfile() {
     setShowImageEditor(false);
   };
 
+  const checkUsername = async (username: string) => {
+    if (!username || username === profile?.username) {
+      setUsernameAvailable(true);
+      setIsCheckingUsername(false);
+      return;
+    }
+
+    if (username.length < 3) {
+      setUsernameAvailable(false);
+      setIsCheckingUsername(false);
+      return;
+    }
+
+    setIsCheckingUsername(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', username.toLowerCase())
+        .maybeSingle();
+
+      if (error) throw error;
+      setUsernameAvailable(!data);
+    } catch (e) {
+      console.error('Erro ao checar usuário:', e);
+    } finally {
+      setIsCheckingUsername(false);
+    }
+  };
+
+  const handleUsernameChange = (text: string) => {
+    const cleanText = text.replace(/\s/g, '').toLowerCase();
+    setFormData({ ...formData, username: cleanText });
+    
+    if (checkTimeout.current) clearTimeout(checkTimeout.current);
+    
+    if (cleanText === profile?.username) {
+      setUsernameAvailable(true);
+      return;
+    }
+
+    checkTimeout.current = setTimeout(() => {
+      checkUsername(cleanText);
+    }, 600) as any;
+  };
+
+  const toggleCategory = (id: string) => {
+    setFormData(prev => {
+      const exists = prev.preferred_categories.includes(id);
+      if (exists) {
+        return { ...prev, preferred_categories: prev.preferred_categories.filter(c => c !== id) };
+      } else {
+        return { ...prev, preferred_categories: [...prev.preferred_categories, id] };
+      }
+    });
+  };
+
+  const toggleSubcategory = (id: string) => {
+    setFormData(prev => {
+      const exists = prev.preferred_subcategories.includes(id);
+      if (exists) {
+        return { ...prev, preferred_subcategories: prev.preferred_subcategories.filter(c => c !== id) };
+      } else {
+        return { ...prev, preferred_subcategories: [...prev.preferred_subcategories, id] };
+      }
+    });
+  };
+
   const handleSave = async () => {
     if (!user) return;
-
     if (!formData.username.trim() || !formData.full_name.trim()) {
-      Alert.alert('Erro', 'Nome de usuário e nome completo são obrigatórios');
+      Alert.alert('Erro', 'Usuário e nome são obrigatórios');
       return;
     }
 
     setLoading(true);
     try {
       let avatarUrl = formData.avatar_url;
-
       if (newAvatarUri) {
-        const uploadedUrl = await uploadImage(
-          newAvatarUri,
-          'media',
-          'avatars',
-          user.id
-        );
-
-        if (uploadedUrl) {
-          avatarUrl = uploadedUrl;
-        } else {
-          Alert.alert('Aviso', 'Não foi possível fazer upload da imagem. Continuando com a foto anterior.');
-        }
+        const uploadedUrl = await uploadImage(newAvatarUri, 'media', 'avatars', user.id);
+        if (uploadedUrl) avatarUrl = uploadedUrl;
       }
 
       const { error } = await supabase
         .from('profiles')
         .update({
-          username: formData.username.trim(),
+          username: formData.username.trim().toLowerCase(),
           full_name: formData.full_name.trim(),
           bio: formData.bio.trim() || null,
           avatar_url: avatarUrl || null,
-          primary_color: formData.primary_color || null,
-          secondary_color: formData.secondary_color || null,
-          accent_color: formData.accent_color || null,
-          is_private: formData.is_private || false,
+          primary_color: formData.primary_color,
+          accent_color: formData.accent_color,
+          is_private: formData.is_private,
+          preferred_categories: formData.preferred_categories,
+          preferred_subcategories: formData.preferred_subcategories,
+          instagram_url: formData.instagram_url,
+          website_url: formData.website_url,
+          location_city: formData.location_city,
+          birth_date: formData.birth_date || null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
 
       if (error) throw error;
-
       await refreshProfile();
-      Alert.alert('Sucesso', 'Perfil atualizado com sucesso!');
+      Alert.alert('Sucesso', 'Perfil atualizado!');
       router.back();
     } catch (error: any) {
-      console.error('Error updating profile:', error);
-      if (error.code === '23505') {
-        Alert.alert('Erro', 'Este nome de usuário já está em uso');
-      } else {
-        Alert.alert('Erro', 'Não foi possível atualizar o perfil');
-      }
+      Alert.alert('Erro', error.code === '23505' ? 'Usuário já existe' : 'Erro ao salvar');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResetPassword = async () => {
-    if (!newPassword || !confirmPassword || !currentPassword) {
-      Alert.alert('Erro', 'Preencha todos os campos');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Erro', 'As senhas não coincidem');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      Alert.alert('Erro', 'A senha deve ter pelo menos 6 caracteres');
-      return;
-    }
-
-    setPasswordLoading(true);
-    try {
-      // Verificar senha atual fazendo re-autenticação
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: user?.email || '',
-        password: currentPassword,
-      });
-
-      if (signInError) {
-        Alert.alert('Erro', 'Senha atual incorreta');
-        return;
-      }
-
-      // Atualizar a senha
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (updateError) {
-        Alert.alert('Erro', 'Não foi possível atualizar a senha');
-        return;
-      }
-
-      Alert.alert('Sucesso', 'Senha alterada com sucesso!');
-      setShowPasswordModal(false);
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-    } catch (error: any) {
-      console.error('Error resetting password:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao alterar a senha');
-    } finally {
-      setPasswordLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    Alert.alert(
-      'Sair',
-      'Tem certeza que deseja sair da sua conta?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await supabase.auth.signOut();
-              router.replace('/(auth)/login');
-            } catch (error) {
-              Alert.alert('Erro', 'Não foi possível sair da conta');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleDeleteAccount = async () => {
-    Alert.alert(
-      'Deletar Conta',
-      'Tem certeza? Esta ação é irreversível e deletará todos os seus dados.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Deletar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              
-              // Primeiro deletar o perfil
-              await supabase
-                .from('profiles')
-                .delete()
-                .eq('id', user?.id);
-
-              // Deletar a conta de autenticação
-              const { error } = await supabase.auth.admin.deleteUser(user?.id || '');
-              
-              if (error) throw error;
-
-              Alert.alert('Sucesso', 'Conta deletada com sucesso');
-              router.replace('/(auth)/login');
-            } catch (error: any) {
-              console.error('Error deleting account:', error);
-              Alert.alert('Erro', 'Não foi possível deletar a conta');
-            } finally {
-              setLoading(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleLogout = () => {
+    Alert.alert('Sair', 'Deseja sair da conta?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Sair', style: 'destructive', onPress: async () => { await supabase.auth.signOut(); router.replace('/(auth)/login'); } }
+    ]);
   };
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#2d2d2d', '#1a1a1a']}
-        style={styles.header}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#fff" />
+    <View style={[styles.root, { backgroundColor: backgroundPrimary }]}>
+      {/* HEADER */}
+      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: backgroundPrimary }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+          <ArrowLeft size={22} color={textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Editar Perfil</Text>
-        <TouchableOpacity
-          onPress={handleSave}
-          style={styles.saveButton}
-          disabled={loading}
+        <Text style={[styles.headerTitle, { color: textPrimary }]}>Editar Perfil</Text>
+        <TouchableOpacity 
+          onPress={handleSave} 
+          disabled={loading || !usernameAvailable || isCheckingUsername} 
+          style={[styles.headerBtn, (!usernameAvailable || isCheckingUsername) && { opacity: 0.5 }]}
         >
-          {loading ? (
-            <ActivityIndicator color="#00d9ff" />
+          {loading || isCheckingUsername ? (
+            <ActivityIndicator size="small" color={accent} />
           ) : (
-            <Save size={24} color="#00d9ff" />
+            <Check size={22} color={accent} />
           )}
         </TouchableOpacity>
-      </LinearGradient>
+      </View>
 
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
-      >
-        <LinearGradient
-          colors={[formData.primary_color, formData.secondary_color]}
-          style={styles.avatarSection}
-        >
-          {(newAvatarUri || formData.avatar_url) ? (
-            <Image source={{ uri: newAvatarUri || formData.avatar_url }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>
-                {formData.username.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          )}
-          <TouchableOpacity
-            style={styles.changeAvatarButton}
-            onPress={pickImage}
-          >
-            <Camera size={20} color="#fff" />
-          </TouchableOpacity>
-        </LinearGradient>
-
-        <View style={styles.form}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Nome de usuário</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.username}
-              onChangeText={(text) => setFormData({ ...formData, username: text.toLowerCase().replace(/\s/g, '') })}
-              placeholder="seunome"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+          
+          {/* AVATAR SECTION */}
+          <View style={styles.avatarContainer}>
+            <LinearGradient colors={[formData.primary_color || accent, '#ff1493']} style={styles.avatarRing}>
+              { (newAvatarUri || formData.avatar_url) ? (
+                <Image source={{ uri: newAvatarUri || formData.avatar_url }} style={styles.avatarImg} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarText}>{formData.username.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <TouchableOpacity onPress={pickImage} style={styles.cameraBtn}>
+                <Camera size={20} color="#fff" />
+              </TouchableOpacity>
+            </LinearGradient>
+            <Text style={[styles.changeText, { color: accent }]}>Alterar foto do perfil</Text>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Nome completo</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.full_name}
-              onChangeText={(text) => setFormData({ ...formData, full_name: text })}
-              placeholder="Seu Nome Completo"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Bio</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              value={formData.bio}
-              onChangeText={(text) => setFormData({ ...formData, bio: text })}
-              placeholder="Conte um pouco sobre você..."
-              placeholderTextColor="#666"
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              maxLength={150}
-            />
-            <Text style={styles.charCount}>{formData.bio.length}/150</Text>
-          </View>
-
-          {/* Tema e cores */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Tema e cores</Text>
-            <Text style={styles.smallLabel}>Cor de fundo</Text>
-            <View style={styles.swatchesRow}>
-              {['#00d9ff', '#ff1493', '#34C759', '#AF52DE', '#FF9500', '#1a1a1a'].map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.swatch, { backgroundColor: c }, formData.primary_color === c ? styles.swatchSelected : null]}
-                  onPress={() => setFormData({ ...formData, primary_color: c })}
+          {/* BASIC INFO */}
+          <Section title="Informações Básicas" icon={User} isDark={isDark} accent={accent} textPrimary={textPrimary} backgroundSecondary={backgroundSecondary}>
+            <View style={styles.inputWrapper}>
+              <View style={styles.inputLabelRow}>
+                <AtSign size={14} color={textSecondary} />
+                <Text style={[styles.inputLabel, { color: textSecondary }]}>Usuário</Text>
+              </View>
+              <View style={styles.inputContainer}>
+                <TextInput 
+                  style={[styles.input, { color: textPrimary, flex: 1 }]}
+                  value={formData.username}
+                  onChangeText={handleUsernameChange}
+                  placeholder="nome_usuario"
+                  placeholderTextColor={isDark ? '#444' : '#bbb'}
+                  autoCapitalize="none"
                 />
-              ))}
+                {isCheckingUsername ? (
+                  <ActivityIndicator size="small" color={accent} />
+                ) : formData.username !== profile?.username ? (
+                  usernameAvailable ? (
+                    <Check size={18} color="#34C759" />
+                  ) : (
+                    <X size={18} color="#FF3B30" />
+                  )
+                ) : null}
+              </View>
+              {!usernameAvailable && formData.username !== profile?.username && (
+                <Text style={styles.errorHint}>Este nome de usuário já está em uso</Text>
+              )}
             </View>
 
-            <Text style={styles.smallLabel}>Cor de destaque</Text>
-            <View style={styles.swatchesRow}>
-              {['#ff1493', '#00d9ff', '#34C759', '#AF52DE', '#FF3B30'].map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.swatch, { backgroundColor: c }, formData.accent_color === c ? styles.swatchSelected : null]}
-                  onPress={() => setFormData({ ...formData, accent_color: c })}
-                />
-              ))}
-            </View>
-          </View>
+            <View style={styles.divider} />
 
-          {/* Configurações adicionais */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Privacidade</Text>
-            <View style={styles.privacyRow}>
-              <Text style={styles.privacyText}>Conta privada</Text>
-              <Switch
-                value={!!formData.is_private}
-                onValueChange={(val) => setFormData({ ...formData, is_private: val })}
-                thumbColor={formData.is_private ? formData.accent_color : '#fff'}
-                trackColor={{ false: '#777', true: '#333' }}
+            <View style={styles.inputWrapper}>
+              <View style={styles.inputLabelRow}>
+                <Type size={14} color={textSecondary} />
+                <Text style={[styles.inputLabel, { color: textSecondary }]}>Nome Exibido</Text>
+              </View>
+              <TextInput 
+                style={[styles.input, { color: textPrimary }]}
+                value={formData.full_name}
+                onChangeText={t => setFormData({ ...formData, full_name: t })}
+                placeholder="Seu Nome"
+                placeholderTextColor={isDark ? '#444' : '#bbb'}
               />
             </View>
-          </View>
 
-          {/* Notificações */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Notificações</Text>
-            <View style={styles.privacyRow}>
-              <Text style={styles.privacyText}>Receber notificações</Text>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={setNotificationsEnabled}
-                thumbColor={notificationsEnabled ? formData.accent_color : '#fff'}
-                trackColor={{ false: '#777', true: '#333' }}
+            <View style={styles.divider} />
+
+            <View style={styles.inputWrapper}>
+              <View style={styles.inputLabelRow}>
+                <Edit3 size={14} color={textSecondary} />
+                <Text style={[styles.inputLabel, { color: textSecondary }]}>Bio</Text>
+              </View>
+              <TextInput 
+                style={[styles.input, styles.bioInput, { color: textPrimary }]}
+                value={formData.bio}
+                onChangeText={t => setFormData({ ...formData, bio: t })}
+                placeholder="Conte algo sobre você..."
+                placeholderTextColor={isDark ? '#444' : '#bbb'}
+                multiline
+                maxLength={150}
               />
+              <Text style={styles.charCounter}>{formData.bio.length}/150</Text>
             </View>
-          </View>
+          </Section>
 
-          {/* Segurança */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Segurança</Text>
-            <TouchableOpacity 
-              style={styles.securityButton}
-              onPress={() => setShowPasswordModal(true)}
-            >
-              <Lock size={20} color="#fff" />
-              <Text style={styles.securityButtonText}>Redefinir Senha</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Outras Opções */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Conta</Text>
-            <TouchableOpacity 
-              style={styles.logoutButton}
-              onPress={handleLogout}
-            >
-              <LogOut size={20} color="#fff" />
-              <Text style={styles.logoutButtonText}>Sair da Conta</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.deleteButton}
-              onPress={handleDeleteAccount}
-            >
-              <Trash2 size={20} color="#ff1493" />
-              <Text style={styles.deleteButtonText}>Deletar Conta</Text>
-            </TouchableOpacity>
-          </View>
-
-        </View>
-      </ScrollView>
-
-      {/* Modal para redefinir senha */}
-      <Modal
-        visible={showPasswordModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowPasswordModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Redefinir Senha</Text>
+          {/* INTERESTS */}
+          <Section title="Meus Interesses" icon={Heart} isDark={isDark} accent={accent} textPrimary={textPrimary} backgroundSecondary={backgroundSecondary}>
+            <View style={styles.interestsPreview}>
+              <View style={styles.interestsGrid}>
+                {formData.preferred_categories.length > 0 || formData.preferred_subcategories.length > 0 ? (
+                  <>
+                    {categories
+                      .filter(cat => formData.preferred_categories.includes(cat.id))
+                      .map(cat => (
+                        <View key={cat.id} style={[styles.interestChipActive, { backgroundColor: accent }]}>
+                          <Text style={styles.interestEmoji}>{cat.icon || '✨'}</Text>
+                          <Text style={styles.interestLabelActive}>{cat.name}</Text>
+                        </View>
+                      ))}
+                    {subcategories
+                      .filter(sub => formData.preferred_subcategories.includes(sub.id))
+                      .map(sub => (
+                        <View key={sub.id} style={[styles.interestChipActive, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+                          <Text style={[styles.interestLabelActive, { opacity: 0.8 }]}>{sub.name}</Text>
+                        </View>
+                      ))}
+                  </>
+                ) : (
+                  <Text style={[styles.emptyInterests, { color: textSecondary }]}>Nenhum interesse selecionado</Text>
+                )}
+              </View>
               <TouchableOpacity 
-                onPress={() => setShowPasswordModal(false)}
-                style={styles.modalCloseButton}
+                style={[styles.editInterestsBtn, { borderColor: accent }]}
+                onPress={() => setShowInterestsModal(true)}
               >
-                <X size={24} color="#fff" />
+                <Edit3 size={16} color={accent} />
+                <Text style={[styles.editInterestsText, { color: accent }]}>Gerenciar Interesses</Text>
               </TouchableOpacity>
             </View>
+          </Section>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Senha Atual</Text>
-                <TextInput
-                  style={styles.input}
+          {/* SOCIAL LINKS */}
+          <Section title="Links Sociais" icon={Sparkles} isDark={isDark} accent={accent} textPrimary={textPrimary} backgroundSecondary={backgroundSecondary}>
+             <View style={styles.inputWrapper}>
+                <View style={styles.inputLabelRow}>
+                  <Text style={[styles.inputLabel, { color: textSecondary }]}>Instagram</Text>
+                </View>
+                <TextInput 
+                  style={[styles.input, { color: textPrimary }]}
+                  value={formData.instagram_url}
+                  onChangeText={t => setFormData({ ...formData, instagram_url: t })}
+                  placeholder="@seu_instagram"
+                  placeholderTextColor={isDark ? '#444' : '#bbb'}
+                />
+             </View>
+             <View style={styles.divider} />
+             <View style={styles.inputWrapper}>
+                <View style={styles.inputLabelRow}>
+                  <Text style={[styles.inputLabel, { color: textSecondary }]}>Site / Link</Text>
+                </View>
+                <TextInput 
+                  style={[styles.input, { color: textPrimary }]}
+                  value={formData.website_url}
+                  onChangeText={t => setFormData({ ...formData, website_url: t })}
+                  placeholder="https://seu_site.com"
+                  placeholderTextColor={isDark ? '#444' : '#bbb'}
+                />
+             </View>
+          </Section>
+
+          {/* ADDITIONAL INFO */}
+          <Section title="Informações Pessoais" icon={Bell} isDark={isDark} accent={accent} textPrimary={textPrimary} backgroundSecondary={backgroundSecondary}>
+             <View style={styles.inputWrapper}>
+                <View style={styles.inputLabelRow}>
+                  <Text style={[styles.inputLabel, { color: textSecondary }]}>Cidade</Text>
+                </View>
+                <TextInput 
+                  style={[styles.input, { color: textPrimary }]}
+                  value={formData.location_city}
+                  onChangeText={t => setFormData({ ...formData, location_city: t })}
+                  placeholder="Ex: São Paulo, SP"
+                  placeholderTextColor={isDark ? '#444' : '#bbb'}
+                />
+             </View>
+             <View style={styles.divider} />
+             <View style={styles.inputWrapper}>
+                <View style={styles.inputLabelRow}>
+                  <Text style={[styles.inputLabel, { color: textSecondary }]}>Data de Nascimento</Text>
+                </View>
+                <TextInput 
+                  style={[styles.input, { color: textPrimary }]}
+                  value={formData.birth_date}
+                  onChangeText={t => setFormData({ ...formData, birth_date: t })}
+                  placeholder="AAAA-MM-DD"
+                  placeholderTextColor={isDark ? '#444' : '#bbb'}
+                />
+             </View>
+          </Section>
+
+          {/* CUSTOMIZATION */}
+          <Section title="Personalização" icon={Palette} isDark={isDark} accent={accent} textPrimary={textPrimary} backgroundSecondary={backgroundSecondary}>
+            <Text style={[styles.subLabel, { color: textSecondary }]}>Cor do Perfil</Text>
+            <View style={styles.colorRow}>
+              {['#00d9ff', '#ff1493', '#34C759', '#AF52DE', '#FF9500', '#1a1a1a'].map(c => (
+                <TouchableOpacity 
+                  key={c} 
+                  onPress={() => setFormData({ ...formData, primary_color: c })}
+                  style={[styles.colorCircle, { backgroundColor: c }, formData.primary_color === c && { borderColor: textPrimary, borderWidth: 3 }]}
+                />
+              ))}
+            </View>
+          </Section>
+
+          {/* SECURITY & PRIVACY */}
+          <Section title="Privacidade e Segurança" icon={Shield} isDark={isDark} accent={accent} textPrimary={textPrimary} backgroundSecondary={backgroundSecondary}>
+            <View style={styles.instagramRow}>
+              <View style={styles.instaInfo}>
+                <View style={[styles.instaIconBox, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.1)' : 'rgba(0, 217, 255, 0.05)' }]}>
+                  <Lock size={20} color={accent} />
+                </View>
+                <View>
+                  <Text style={[styles.instaTitle, { color: textPrimary }]}>Conta Privada</Text>
+                  <Text style={[styles.instaSub, { color: textSecondary }]}>Somente seguidores aprovados podem ver suas publicações e vídeos.</Text>
+                </View>
+              </View>
+              <Switch 
+                value={formData.is_private} 
+                onValueChange={v => setFormData({ ...formData, is_private: v })} 
+                thumbColor="#fff"
+                trackColor={{ true: accent, false: '#333' }}
+              />
+            </View>
+            
+            <View style={styles.divider} />
+            
+            <TouchableOpacity onPress={() => setShowPasswordModal(true)} style={styles.instaActionRow}>
+              <View style={styles.instaInfo}>
+                <View style={[styles.instaIconBox, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]}>
+                  <Shield size={20} color={textSecondary} />
+                </View>
+                <Text style={[styles.instaTitle, { color: textPrimary }]}>Alterar Senha</Text>
+              </View>
+              <ChevronRight size={18} color={textSecondary} />
+            </TouchableOpacity>
+          </Section>
+
+          {/* DANGER ZONE */}
+          <View style={styles.dangerZone}>
+            <TouchableOpacity onPress={handleLogout} style={[styles.dangerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+              <LogOut size={18} color={textSecondary} />
+              <Text style={[styles.dangerText, { color: textSecondary }]}>Sair da Conta</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.deleteBtn}>
+              <Trash2 size={18} color="#FF3B30" />
+              <Text style={styles.deleteText}>Excluir Minha Conta</Text>
+            </TouchableOpacity>
+          </View>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* PASSWORD MODAL */}
+      <Modal visible={showPasswordModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: backgroundSecondary }]}>
+             <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: textPrimary }]}>Nova Senha</Text>
+                <TouchableOpacity onPress={() => setShowPasswordModal(false)}><X size={24} color={textPrimary} /></TouchableOpacity>
+             </View>
+             <View style={styles.modalBody}>
+                <TextInput 
+                  secureTextEntry 
+                  style={[styles.modalInput, { color: textPrimary, backgroundColor: backgroundPrimary }]} 
+                  placeholder="Senha atual" 
+                  placeholderTextColor="#666" 
                   value={currentPassword}
                   onChangeText={setCurrentPassword}
-                  placeholder="Digite sua senha atual"
-                  secureTextEntry
-                  placeholderTextColor="#666"
                 />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Nova Senha</Text>
-                <TextInput
-                  style={styles.input}
+                <TextInput 
+                  secureTextEntry 
+                  style={[styles.modalInput, { color: textPrimary, backgroundColor: backgroundPrimary }]} 
+                  placeholder="Nova senha" 
+                  placeholderTextColor="#666" 
                   value={newPassword}
                   onChangeText={setNewPassword}
-                  placeholder="Digite a nova senha"
-                  secureTextEntry
-                  placeholderTextColor="#666"
                 />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Confirmar Senha</Text>
-                <TextInput
-                  style={styles.input}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="Confirme a nova senha"
-                  secureTextEntry
-                  placeholderTextColor="#666"
-                />
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.publishButton, passwordLoading && styles.publishButtonDisabled]}
-                onPress={handleResetPassword}
-                disabled={passwordLoading}
-              >
-                {passwordLoading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.publishButtonText}>Redefinir Senha</Text>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
+                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: accent }]}>
+                  <Text style={styles.saveBtnText}>Redefinir Senha</Text>
+                </TouchableOpacity>
+             </View>
           </View>
         </View>
       </Modal>
+
+      {/* INTERESTS SELECTION MODAL */}
+      <Modal visible={showInterestsModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContentLarge, { backgroundColor: backgroundSecondary }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={[styles.modalTitle, { color: textPrimary }]}>Meus Interesses</Text>
+                <Text style={[styles.modalSub, { color: textSecondary }]}>Escolha o que você gosta de ver</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowInterestsModal(false)} style={styles.closeBtn}>
+                <X size={24} color={textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchWrapper}>
+              <Search size={18} color={textSecondary} />
+              <TextInput 
+                style={[styles.searchInput, { color: textPrimary }]}
+                placeholder="Buscar categorias..."
+                placeholderTextColor={isDark ? '#444' : '#bbb'}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <X size={18} color={textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.interestsScroll}>
+              <View style={styles.modalInterestsBody}>
+                {categories
+                  .filter(cat => cat.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                subcategories.some(s => s.category_id === cat.id && s.name.toLowerCase().includes(searchQuery.toLowerCase())))
+                  .map(cat => {
+                    const isSelected = formData.preferred_categories.includes(cat.id);
+                    const catSubcats = subcategories.filter(s => s.category_id === cat.id);
+                    
+                    return (
+                      <View key={cat.id} style={styles.categorySection}>
+                        <TouchableOpacity 
+                          onPress={() => toggleCategory(cat.id)}
+                          style={[
+                            styles.interestChip, 
+                            { backgroundColor: isSelected ? accent : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') }
+                          ]}
+                        >
+                          <Text style={styles.interestEmoji}>{cat.icon || '✨'}</Text>
+                          <Text style={[styles.interestLabel, { color: isSelected ? '#fff' : textPrimary }]}>{cat.name}</Text>
+                          {isSelected && <Check size={12} color="#fff" strokeWidth={3} />}
+                        </TouchableOpacity>
+
+                        {isSelected && catSubcats.length > 0 && (
+                          <View style={styles.subcategoriesRow}>
+                            {catSubcats.map(sub => {
+                              const isSubSelected = formData.preferred_subcategories.includes(sub.id);
+                              return (
+                                <TouchableOpacity 
+                                  key={sub.id} 
+                                  onPress={() => toggleSubcategory(sub.id)}
+                                  style={[
+                                    styles.subcategoryChip, 
+                                    { borderColor: isSubSelected ? accent : (isDark ? '#333' : '#ddd'),
+                                      backgroundColor: isSubSelected ? 'rgba(0, 217, 255, 0.1)' : 'transparent' }
+                                  ]}
+                                >
+                                  <Text style={[styles.subcategoryLabel, { color: isSubSelected ? accent : textSecondary }]}>
+                                    {sub.name}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity 
+              style={[styles.saveBtn, { backgroundColor: accent, marginTop: 20 }]}
+              onPress={() => setShowInterestsModal(false)}
+            >
+              <Text style={styles.saveBtnText}>Concluído</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {selectedImageUri && (
         <UniversalImageEditor
           visible={showImageEditor}
@@ -512,243 +667,453 @@ export default function EditProfile() {
   );
 }
 
+const Section = ({ title, icon: Icon, children, isDark, accent, textPrimary, backgroundSecondary }: any) => (
+  <View style={styles.section}>
+    <View style={styles.sectionHeader}>
+      <View style={[styles.sectionIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+        <Icon size={18} color={accent} />
+      </View>
+      <Text style={[styles.sectionTitle, { color: textPrimary }]}>{title}</Text>
+    </View>
+    <View style={[styles.sectionContent, { backgroundColor: backgroundSecondary }]}>
+      {children}
+    </View>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
+  root: { flex: 1 },
   header: {
-    paddingTop: 60,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3d3d3d',
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  backButton: {
-    padding: 8,
+  headerBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: ms(17),
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
-  saveButton: {
-    padding: 8,
-  },
-  content: {
-    flex: 1,
-  },
-  avatarSection: {
+
+  avatarContainer: {
     alignItems: 'center',
-    paddingVertical: 40,
-    marginBottom: 16,
-    position: 'relative',
+    paddingVertical: vs(32),
   },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+  avatarRing: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    padding: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    elevation: 10,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+  },
+  avatarImg: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
     borderWidth: 4,
     borderColor: '#fff',
   },
   avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: '#1a1a1a',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 4,
     borderColor: '#fff',
   },
   avatarText: {
-    color: '#fff',
-    fontSize: 48,
+    fontSize: 54,
     fontWeight: '900',
+    color: '#fff',
   },
-  changeAvatarButton: {
+  cameraBtn: {
     position: 'absolute',
-    bottom: 40,
-    right: '50%',
-    marginRight: -72,
+    bottom: 0,
+    right: 0,
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#ff1493',
+    backgroundColor: '#00d9ff',
+    borderWidth: 4,
+    borderColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
   },
-  form: {
-    backgroundColor: '#1a1a1a',
-    padding: 20,
-    borderRadius: 20,
-    margin: 16,
+  changeText: {
+    marginTop: 14,
+    fontSize: ms(14),
+    fontWeight: '700',
   },
-  inputGroup: {
+
+  section: {
+    paddingHorizontal: 16,
     marginBottom: 24,
   },
-  label: {
-    fontSize: 14,
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+    paddingLeft: 4,
+  },
+  sectionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    fontSize: ms(15),
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  sectionContent: {
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+  },
+
+  searchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    height: 44,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: ms(14),
     fontWeight: '600',
-    color: '#fff',
-    marginBottom: 8,
+  },
+
+  inputWrapper: {
+    paddingVertical: 8,
+  },
+  inputLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  inputLabel: {
+    fontSize: ms(12),
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#3d3d3d',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: '#0a0a0a',
-    color: '#fff',
+    fontSize: ms(16),
+    fontWeight: '600',
+    paddingVertical: 4,
   },
-  textArea: {
-    height: 100,
-    paddingTop: 12,
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  charCount: {
-    fontSize: 12,
-    color: '#666',
+  errorHint: {
+    color: '#FF3B30',
+    fontSize: ms(11),
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  bioInput: {
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  charCounter: {
     textAlign: 'right',
+    fontSize: 10,
+    color: '#666',
     marginTop: 4,
   },
-  smallLabel: {
-    fontSize: 12,
-    color: '#bbb',
-    marginBottom: 8,
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    marginVertical: 12,
   },
-  swatchesRow: {
+
+  interestsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  interestsPreview: {
+    gap: 12,
+  },
+  interestChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  interestChipActive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  interestEmoji: {
+    fontSize: ms(16),
+  },
+  interestLabel: {
+    fontSize: ms(13),
+    fontWeight: '700',
+  },
+  interestLabelActive: {
+    fontSize: ms(12),
+    fontWeight: '700',
+    color: '#fff',
+  },
+  emptyInterests: {
+    fontSize: ms(13),
+    fontStyle: 'italic',
+    paddingVertical: 10,
+  },
+  editInterestsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    marginTop: 8,
+  },
+  editInterestsText: {
+    fontSize: ms(14),
+    fontWeight: '700',
+  },
+
+  subLabel: {
+    fontSize: ms(13),
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  colorRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 12,
     flexWrap: 'wrap',
   },
-  swatch: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'transparent',
+  colorCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderColor: 'rgba(0,0,0,0.1)',
+    borderWidth: 1,
   },
-  swatchSelected: {
-    borderColor: '#fff',
-    transform: [{ scale: 1.05 }],
-  },
-  privacyRow: {
+
+  switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  privacyText: {
-    color: '#fff',
-    fontSize: 16,
+  switchTitle: {
+    fontSize: ms(15),
+    fontWeight: '700',
   },
-  securityButton: {
+  switchSub: {
+    fontSize: ms(12),
+    marginTop: 2,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  actionLabel: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0a0a0a',
-    borderWidth: 1,
-    borderColor: '#3d3d3d',
-    borderRadius: 12,
+    gap: 10,
+  },
+  actionText: {
+    fontSize: ms(15),
+    fontWeight: '600',
+  },
+
+  dangerZone: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    marginTop: 10,
     gap: 12,
   },
-  securityButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  logoutButton: {
+  dangerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1a3a3a',
-    borderWidth: 1,
-    borderColor: '#00d9ff',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-    marginBottom: 12,
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 16,
+    borderRadius: 20,
   },
-  logoutButtonText: {
-    color: '#00d9ff',
-    fontSize: 16,
-    fontWeight: '500',
+  dangerText: {
+    fontSize: ms(15),
+    fontWeight: '700',
   },
-  deleteButton: {
+  deleteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#3a1a1a',
-    borderWidth: 1,
-    borderColor: '#ff1493',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 16,
+    marginBottom: 40,
   },
-  deleteButtonText: {
-    color: '#ff1493',
-    fontSize: 16,
-    fontWeight: '500',
+  deleteText: {
+    color: '#FF3B30',
+    fontSize: ms(15),
+    fontWeight: '700',
   },
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: 20,
   },
   modalContent: {
-    backgroundColor: '#1a1a1a',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
-    paddingTop: 20,
+    borderRadius: 30,
+    padding: 24,
+    elevation: 20,
+  },
+  modalContentLarge: {
+    borderRadius: 30,
+    padding: 24,
+    elevation: 20,
+    width: '100%',
+    height: '80%',
+    position: 'absolute',
+    bottom: 0,
+  },
+  modalSub: {
+    fontSize: ms(13),
+    marginTop: 4,
+  },
+  closeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  interestsScroll: {
+    paddingBottom: 20,
+  },
+  instagramRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  instaActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  instaInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  instaIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  instaTitle: {
+    fontSize: ms(15),
+    fontWeight: '700',
+  },
+  instaSub: {
+    fontSize: ms(11),
+    marginTop: 2,
+    paddingRight: 20,
+    lineHeight: 16,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3d3d3d',
+    marginBottom: 20,
+  },
+  modalInterestsBody: {
+    gap: 16,
+  },
+  categorySection: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  subcategoriesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingLeft: 12,
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
+  subcategoryChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  subcategoryLabel: {
+    fontSize: ms(12),
+    fontWeight: '600',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  modalCloseButton: {
-    padding: 8,
+    fontSize: 20,
+    fontWeight: '900',
   },
   modalBody: {
-    padding: 20,
+    gap: 16,
   },
-  publishButton: {
-    backgroundColor: '#00d9ff',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  publishButtonDisabled: {
-    opacity: 0.6,
-  },
-  publishButtonText: {
-    color: '#000',
+  modalInput: {
+    borderRadius: 16,
+    padding: 16,
     fontSize: 16,
     fontWeight: '600',
+  },
+  saveBtn: {
+    borderRadius: 16,
+    padding: 18,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 16,
   },
 });

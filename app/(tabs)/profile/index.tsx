@@ -1,23 +1,59 @@
-import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, RefreshControl, Animated } from 'react-native';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Image, ActivityIndicator, Alert, RefreshControl,
+  Animated, useWindowDimensions, Dimensions,
+} from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Event } from '@/types/database';
-import { LogOut, Settings, Calendar, MapPin, Users, DollarSign, Sparkles, TrendingUp, Search, Moon, Sun } from 'lucide-react-native';
+import { 
+  LogOut, 
+  Settings, 
+  Calendar, 
+  Users, 
+  TrendingUp, 
+  Sparkles, 
+  Search, 
+  Moon, 
+  Sun, 
+  Edit3, 
+  Grid3X3, 
+  Clock, 
+  Star,
+  ChevronRight,
+  MapPin,
+  Heart
+} from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback } from 'react';
 import EventCard from '@/components/EventCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { s, vs, ms } from '@/utils/responsive';
+import PageTransition from '@/components/PageTransition';
+import { useUI } from '@/contexts/UIContext';
 
 type TabType = 'created' | 'participating' | 'past';
 
+const TABS: { key: TabType; label: string; icon: any }[] = [
+  { key: 'created', label: 'Criados', icon: Grid3X3 },
+  { key: 'participating', label: 'Participando', icon: Heart },
+  { key: 'past', label: 'Passados', icon: Clock },
+];
+
 export default function Profile() {
   const { user, profile, signOut } = useAuth();
-  const { accent, backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, toggleTheme } = useTheme();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark, toggleTheme } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { showTabBar } = useUI();
+  const { width } = useWindowDimensions();
+
+  useEffect(() => {
+    showTabBar();
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('created');
   const [events, setEvents] = useState<Event[]>([]);
@@ -25,533 +61,332 @@ export default function Profile() {
   const [followingCount, setFollowingCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [eventsCount, setEventsCount] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [userInterests, setUserInterests] = useState<any[]>([]);
+
+  // Animations
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const tabIndicatorPos = useRef(new Animated.Value(0)).current;
+  const fadeAnim  = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (user) {
       loadProfileData();
     }
-  }, [user, activeTab]);
+  }, [user]);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (user) {
-        loadProfileData();
-      }
-    }, [user, activeTab])
-  );
+  useEffect(() => {
+    loadEvents();
+  }, [activeTab]);
+
+  useEffect(() => {
+    const tabIndex = TABS.findIndex(t => t.key === activeTab);
+    Animated.spring(tabIndicatorPos, {
+      toValue: tabIndex * ((width - 32) / 3),
+      useNativeDriver: true,
+      tension: 50,
+      friction: 8
+    }).start();
+  }, [activeTab, width]);
 
   const loadProfileData = async () => {
     try {
       setLoading(true);
-      const [followersData, followingData, eventsData] = await Promise.all([
-        supabase
-          .from('follows')
-          .select('id', { count: 'exact', head: true })
-          .eq('following_id', user?.id),
-
-        supabase
-          .from('follows')
-          .select('id', { count: 'exact', head: true })
-          .eq('follower_id', user?.id),
-
-        supabase
-          .from('events')
-          .select('id', { count: 'exact', head: true })
-          .eq('creator_id', user?.id),
+      const [f1, f2, f3, catRes] = await Promise.all([
+        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', user?.id),
+        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', user?.id),
+        supabase.from('events').select('id', { count: 'exact', head: true }).eq('creator_id', user?.id),
+        supabase.from('categories').select('*')
       ]);
+      setFollowersCount(f1.count || 0);
+      setFollowingCount(f2.count || 0);
+      setEventsCount(f3.count || 0);
 
-      setFollowersCount(followersData.count || 0);
-      setFollowingCount(followingData.count || 0);
-      setEventsCount(eventsData.count || 0);
+      if (profile?.preferred_categories && catRes.data) {
+        const interests = catRes.data.filter(c => profile.preferred_categories?.includes(c.id));
+        setUserInterests(interests);
+      }
 
       await loadEvents();
-    } catch (error) {
-      console.error('Error loading profile data:', error);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    loadProfileData();
-  };
-
   const loadEvents = async () => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 0, duration: 120, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 20, duration: 120, useNativeDriver: true }),
+    ]).start();
+
+    const today = new Date().toISOString().split('T')[0];
+    let data: any[] = [];
     try {
-      Animated.sequence([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: -20,
-          duration: 0,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      const today = new Date().toISOString().split('T')[0];
-
       if (activeTab === 'created') {
-        const { data, error } = await supabase
-          .from('events')
-          .select(`
-            *,
-            categories:category_id (name, icon),
-            subcategories:subcategory_id (name)
-          `)
-          .eq('creator_id', user?.id)
-          .order('event_date', { ascending: true });
-
-        if (error) throw error;
-        setEvents(data || []);
+        const r = await supabase.from('events').select('*, categories:category_id (name, icon), subcategories:subcategory_id (name)').eq('creator_id', user?.id).order('event_date', { ascending: true });
+        data = r.data || [];
       } else if (activeTab === 'participating') {
-        const { data, error } = await supabase
-          .from('event_participants')
-          .select(`
-            event_id,
-            events:event_id (
-              *,
-              categories:category_id (name, icon),
-              subcategories:subcategory_id (name)
-            )
-          `)
-          .eq('user_id', user?.id);
-
-        if (error) throw error;
-        const participatingEvents = data?.map((item: any) => item.events).filter(Boolean) || [];
-        setEvents(participatingEvents);
+        const r = await supabase.from('event_participants').select('event_id, events:event_id (*, categories:category_id (name, icon), subcategories:subcategory_id (name))').eq('user_id', user?.id);
+        data = (r.data || []).map((i: any) => i.events).filter(Boolean);
       } else {
-        const { data, error } = await supabase
-          .from('events')
-          .select(`
-            *,
-            categories:category_id (name, icon),
-            subcategories:subcategory_id (name)
-          `)
-          .eq('creator_id', user?.id)
-          .lt('event_date', today)
-          .order('event_date', { ascending: false });
-
-        if (error) throw error;
-        setEvents(data || []);
+        const r = await supabase.from('events').select('*, categories:category_id (name, icon), subcategories:subcategory_id (name)').eq('creator_id', user?.id).lt('event_date', today).order('event_date', { ascending: false });
+        data = r.data || [];
       }
-
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } catch (error) {
-      console.error('Error loading events:', error);
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
+    } catch { }
+    setEvents(data);
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+    ]).start();
   };
 
-  const handleSignOut = async () => {
-    Alert.alert(
-      'Sair',
-      'Tem certeza que deseja sair?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: async () => {
-            await signOut();
-            router.replace('/(auth)');
-          },
-        },
-      ]
-    );
+  const handleSignOut = () => {
+    Alert.alert('Sair da conta', 'Tem certeza que deseja sair?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Sair', style: 'destructive', onPress: async () => { await signOut(); router.replace('/(auth)'); } },
+    ]);
   };
 
-  if (loading) {
+  const initials = profile?.full_name
+    ? profile.full_name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
+    : profile?.username?.charAt(0).toUpperCase() ?? '?';
+
+  if (loading && events.length === 0) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00d9ff" />
+      <View style={[styles.loadingScreen, { backgroundColor: backgroundPrimary }]}>
+        <ActivityIndicator size="large" color={accent} />
       </View>
     );
   }
 
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const bannerScale = scrollY.interpolate({
+    inputRange: [-100, 0],
+    outputRange: [1.5, 1],
+    extrapolate: 'clamp',
+  });
+
   return (
-    <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
+    <PageTransition>
+      <View style={[styles.root, { backgroundColor: backgroundPrimary }]}>
+      <Animated.ScrollView
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#00d9ff" />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={() => { setRefreshing(true); loadProfileData(); }} 
+            tintColor={accent} 
+          />
         }
       >
-        <LinearGradient
-          colors={['#00d9ff', '#0097a7', '#1a1a1a']}
-          style={styles.headerGradient}
-        >
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={toggleTheme} style={styles.headerButton}>
-              {isDark ? <Sun size={22} color="#fff" /> : <Moon size={22} color="#fff" />}
+        {/* TOP BANNER */}
+        <Animated.View style={[styles.bannerContainer, { transform: [{ scale: bannerScale }] }]}>
+          <LinearGradient 
+            colors={[accent, '#7b2fff', '#ff1493']} 
+            start={{ x: 0, y: 0 }} 
+            end={{ x: 1, y: 1 }} 
+            style={StyleSheet.absoluteFill} 
+          />
+        </Animated.View>
+
+        {/* HEADER ACTIONS */}
+        <View style={[styles.topActions, { top: insets.top + 10 }]}>
+          <TouchableOpacity onPress={toggleTheme} style={styles.glassBtn}>
+            {isDark ? <Sun size={20} color="#fff" /> : <Moon size={20} color="#fff" />}
+          </TouchableOpacity>
+          <View style={styles.topActionsRight}>
+            <TouchableOpacity onPress={() => router.push('/search-users')} style={styles.glassBtn}>
+              <Search size={20} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/search-users')} style={styles.headerButton}>
-              <Search size={22} color="#fff" />
+            <TouchableOpacity onPress={() => router.push('/profile/edit')} style={styles.glassBtn}>
+              <Settings size={20} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/profile/edit')} style={styles.headerButton}>
-              <Settings size={22} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSignOut} style={styles.headerButton}>
-              <LogOut size={22} color="#fff" />
+            <TouchableOpacity onPress={handleSignOut} style={styles.glassBtn}>
+              <LogOut size={20} color="#fff" />
             </TouchableOpacity>
           </View>
-        </LinearGradient>
-        <View style={[styles.profileSection, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', marginTop: -60 }]}>
-          <View style={styles.avatarContainer}>
-            {profile?.avatar_url ? (
-              <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-            ) : (
-              <LinearGradient
-                colors={['#00d9ff', '#0097a7']}
-                style={styles.avatarPlaceholder}
-              >
-                <Text style={styles.avatarText}>
-                  {profile?.username?.charAt(0).toUpperCase()}
-                </Text>
-              </LinearGradient>
-            )}
+        </View>
+
+        {/* PROFILE INFO */}
+        <View style={styles.profileInfo}>
+          <View style={[styles.avatarWrapper, { shadowColor: accent }]}>
+            <LinearGradient colors={[accent, '#ff1493']} style={styles.avatarGradient}>
+              {profile?.avatar_url ? (
+                <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarInitials}>{initials}</Text>
+                </View>
+              )}
+            </LinearGradient>
             <View style={styles.verifiedBadge}>
-              <Sparkles size={16} color="#fff" fill="#FFD60A" />
+              <Sparkles size={14} color="#fff" fill="#fff" />
             </View>
           </View>
 
-          <Text style={[styles.fullName, { color: textPrimary }]}>{profile?.full_name}</Text>
-          <Text style={[styles.username, { color: textSecondary }]}>@{profile?.username}</Text>
+          <Text style={[styles.profileName, { color: textPrimary }]}>{profile?.full_name}</Text>
+          <Text style={[styles.profileUsername, { color: textSecondary }]}>@{profile?.username}</Text>
 
           {profile?.bio && (
-            <View style={[styles.bioContainer, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.04)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.1)' }]}>
-              <Text style={[styles.bio, { color: isDark ? '#E5E5EA' : '#444' }]}>{profile.bio}</Text>
+            <Text style={[styles.profileBio, { color: textSecondary }]}>{profile.bio}</Text>
+          )}
+
+          {/* INTERESTS */}
+          {userInterests.length > 0 && (
+            <View style={styles.interestsContainer}>
+              {userInterests.map((cat) => (
+                <TouchableOpacity 
+                  key={cat.id} 
+                  style={[styles.interestChip, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+                  onPress={() => router.push({ pathname: '/(tabs)', params: { categoryId: cat.id } })}
+                >
+                  <Text style={styles.interestEmoji}>{cat.icon || '✨'}</Text>
+                  <Text style={[styles.interestText, { color: textPrimary }]}>{cat.name}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           )}
 
-          <View style={styles.statsContainer}>
-            <View style={styles.statCard}>
-              <LinearGradient
-                colors={['rgba(0, 217, 255, 0.15)', 'rgba(0, 217, 255, 0.05)']}
-                style={styles.statCardGradient}
-              >
-                <Calendar size={24} color="#00d9ff" />
-                <Text style={styles.statValue}>{eventsCount}</Text>
-                <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit>Eventos</Text>
-              </LinearGradient>
-            </View>
+          <TouchableOpacity 
+            onPress={() => router.push('/profile/edit')} 
+            style={[styles.mainEditBtn, { backgroundColor: accent }]}
+            activeOpacity={0.8}
+          >
+            <Edit3 size={16} color="#fff" />
+            <Text style={styles.mainEditBtnText}>Editar Perfil</Text>
+          </TouchableOpacity>
+        </View>
 
-            <TouchableOpacity
-              style={styles.statCard}
-              onPress={() => router.push(`/profile/${user?.id}/followers`)}
-            >
-              <LinearGradient
-                colors={['rgba(255, 20, 147, 0.15)', 'rgba(255, 20, 147, 0.05)']}
-                style={styles.statCardGradient}
-              >
-                <Users size={24} color="#ff1493" />
-                <Text style={styles.statValue}>{followersCount}</Text>
-                <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit>Seguidores</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+        {/* STATS */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: textPrimary }]}>{eventsCount}</Text>
+            <Text style={[styles.statLabel, { color: textSecondary }]}>Eventos</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <TouchableOpacity 
+            style={styles.statItem}
+            onPress={() => router.push(`/profile/${user?.id}/followers`)}
+          >
+            <Text style={[styles.statValue, { color: textPrimary }]}>{followersCount}</Text>
+            <Text style={[styles.statLabel, { color: textSecondary }]}>Seguidores</Text>
+          </TouchableOpacity>
+          <View style={styles.statDivider} />
+          <TouchableOpacity 
+            style={styles.statItem}
+            onPress={() => router.push(`/profile/${user?.id}/following`)}
+          >
+            <Text style={[styles.statValue, { color: textPrimary }]}>{followingCount}</Text>
+            <Text style={[styles.statLabel, { color: textSecondary }]}>Seguindo</Text>
+          </TouchableOpacity>
+        </View>
 
-            <TouchableOpacity
-              style={styles.statCard}
-              onPress={() => router.push(`/profile/${user?.id}/following`)}
-            >
-              <LinearGradient
-                colors={['rgba(52, 199, 89, 0.15)', 'rgba(52, 199, 89, 0.05)']}
-                style={styles.statCardGradient}
-              >
-                <TrendingUp size={24} color="#34C759" />
-                <Text style={styles.statValue}>{followingCount}</Text>
-                <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit>Seguindo</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+        {/* MODERN TABS */}
+        <View style={styles.tabsContainer}>
+          <View style={[styles.tabsTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+            <Animated.View 
+              style={[
+                styles.tabIndicator, 
+                { 
+                  backgroundColor: backgroundSecondary,
+                  transform: [{ translateX: tabIndicatorPos }]
+                }
+              ]} 
+            />
+            {TABS.map((tab) => {
+              const isActive = activeTab === tab.key;
+              const Icon = tab.icon;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={styles.tabButton}
+                  onPress={() => setActiveTab(tab.key)}
+                >
+                  <Icon size={18} color={isActive ? accent : textSecondary} />
+                  <Text style={[styles.tabText, { color: isActive ? textPrimary : textSecondary }]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'created' && styles.activeTab]}
-            onPress={() => setActiveTab('created')}
-          >
-            <Text style={[styles.tabText, activeTab === 'created' && styles.activeTabText]}>
-              Meus Eventos
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'participating' && styles.activeTab]}
-            onPress={() => setActiveTab('participating')}
-          >
-            <Text style={[styles.tabText, activeTab === 'participating' && styles.activeTabText]}>
-              Participando
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'past' && styles.activeTab]}
-            onPress={() => setActiveTab('past')}
-          >
-            <Text style={[styles.tabText, activeTab === 'past' && styles.activeTabText]}>
-              Passados
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Animated.View style={[styles.eventsSection, {
-          opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }],
-        }]}>
+        {/* LIST */}
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
           {events.length === 0 ? (
             <View style={styles.emptyState}>
-              <LinearGradient
-                colors={['rgba(0, 217, 255, 0.1)', 'rgba(0, 217, 255, 0.02)']}
-                style={styles.emptyStateCard}
-              >
-                <Calendar size={56} color="#00d9ff" strokeWidth={1.5} />
-                <Text style={styles.emptyStateTitle}>
-                  {activeTab === 'created' && 'Nenhum evento criado'}
-                  {activeTab === 'participating' && 'Nenhuma participação'}
-                  {activeTab === 'past' && 'Nenhum evento passado'}
-                </Text>
-                <Text style={styles.emptyStateText}>
-                  {activeTab === 'created' && 'Crie seu primeiro evento e compartilhe com a comunidade'}
-                  {activeTab === 'participating' && 'Participe de eventos para aparecerem aqui'}
-                  {activeTab === 'past' && 'Eventos finalizados aparecerão aqui'}
-                </Text>
-              </LinearGradient>
+              <View style={[styles.emptyIconBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+                <Calendar size={40} color={textSecondary} strokeWidth={1} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: textPrimary }]}>Nada por aqui ainda</Text>
+              <Text style={[styles.emptySubtitle, { color: textSecondary }]}>
+                Comece explorando a comunidade e participando de eventos incríveis!
+              </Text>
             </View>
           ) : (
-            events.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))
+            <View style={styles.eventsGrid}>
+              {events.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </View>
           )}
         </Animated.View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
+    </PageTransition>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0a0a0a',
-  },
-  headerGradient: {
-    paddingTop: 60,
-    paddingBottom: 80,
-    paddingHorizontal: 20,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-  },
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  content: {
-    flex: 1,
-  },
-  profileSection: {
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: 20,
-  },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 4,
-    borderColor: '#00d9ff',
-  },
-  avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#00d9ff',
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 48,
-    fontWeight: '900',
-  },
-  verifiedBadge: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#0a0a0a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFD60A',
-  },
-  fullName: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#fff',
-    marginBottom: 6,
-    letterSpacing: -0.5,
-  },
-  username: {
-    fontSize: 16,
-    color: '#8E8E93',
-    marginBottom: 16,
-    fontWeight: '600',
-  },
-  bioContainer: {
-    backgroundColor: 'rgba(0, 217, 255, 0.08)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 217, 255, 0.2)',
-  },
-  bio: {
-    fontSize: 15,
-    color: '#E5E5EA',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-    marginBottom: 8,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  statCardGradient: {
-    padding: 20,
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 20,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#fff',
-  },
-  statLabel: {
-    fontSize: 10,
-    color: '#9E9E93',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    textAlign: 'center',
-    width: '100%',
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#1a1a1a',
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderRadius: 12,
-  },
-  activeTab: {
-    backgroundColor: '#00d9ff',
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#8E8E93',
-  },
-  activeTabText: {
-    color: '#000',
-  },
-  eventsSection: {
-    paddingHorizontal: 0,
-    paddingBottom: 16,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    paddingHorizontal: 16,
-  },
-  emptyStateCard: {
-    alignItems: 'center',
-    padding: 40,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 217, 255, 0.2)',
-  },
-  emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: '#8E8E93',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
+  root: { flex: 1 },
+  loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  bannerContainer: { height: vs(180), width: '100%', position: 'absolute', top: 0 },
+  topActions: { position: 'absolute', left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 100 },
+  topActionsRight: { flexDirection: 'row', gap: 10 },
+  glassBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  profileInfo: { alignItems: 'center', marginTop: vs(120), paddingHorizontal: 20 },
+  avatarWrapper: { position: 'relative', marginBottom: 20, elevation: 20, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 15 },
+  avatarGradient: { width: 130, height: 130, borderRadius: 65, padding: 4, justifyContent: 'center', alignItems: 'center' },
+  avatarImg: { width: 122, height: 122, borderRadius: 61, borderWidth: 4, borderColor: '#fff' },
+  avatarPlaceholder: { width: 122, height: 122, borderRadius: 61, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#fff' },
+  avatarInitials: { fontSize: ms(48), fontWeight: '900', color: '#fff' },
+  verifiedBadge: { position: 'absolute', bottom: 5, right: 5, backgroundColor: '#00d9ff', width: 32, height: 32, borderRadius: 16, borderWidth: 4, borderColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  profileName: { fontSize: ms(28), fontWeight: '900', letterSpacing: -1, marginBottom: 4 },
+  profileUsername: { fontSize: ms(16), fontWeight: '600', marginBottom: 16 },
+  profileBio: { fontSize: ms(15), textAlign: 'center', lineHeight: 22, marginBottom: 20, paddingHorizontal: 20 },
+  interestsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 24 },
+  interestChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, gap: 6 },
+  interestEmoji: { fontSize: ms(16) },
+  interestText: { fontSize: ms(13), fontWeight: '700' },
+  mainEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 30, marginBottom: 32, elevation: 4 },
+  mainEditBtnText: { color: '#fff', fontWeight: '800', fontSize: ms(14) },
+  statsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 20, marginHorizontal: 20, marginBottom: 32 },
+  statItem: { alignItems: 'center', flex: 1 },
+  statValue: { fontSize: ms(22), fontWeight: '900' },
+  statLabel: { fontSize: ms(12), fontWeight: '700', textTransform: 'uppercase', marginTop: 4, letterSpacing: 1 },
+  statDivider: { width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.1)' },
+  tabsContainer: { paddingHorizontal: 16, marginBottom: 20 },
+  tabsTrack: { flexDirection: 'row', borderRadius: 30, height: 56, padding: 4, position: 'relative' },
+  tabIndicator: { position: 'absolute', top: 4, bottom: 4, left: 4, width: (Dimensions.get('window').width - 32) / 3 - 2.6, borderRadius: 26, elevation: 2 },
+  tabButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  tabText: { fontSize: ms(13), fontWeight: '800' },
+  eventsGrid: { gap: 16 },
+  emptyState: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40 },
+  emptyIconBg: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  emptyTitle: { fontSize: ms(20), fontWeight: '900', marginBottom: 10 },
+  emptySubtitle: { fontSize: ms(15), textAlign: 'center', lineHeight: 22 },
 });

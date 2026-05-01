@@ -1,17 +1,46 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Image } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Image,
+  Animated,
+  useWindowDimensions,
+  Platform,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, Sparkles } from 'lucide-react-native';
-import { s, vs, ms } from '@/utils/responsive';
+import { Check, ArrowRight, Sparkles, SkipForward } from 'lucide-react-native';
 
 interface Category {
   id: string;
   name: string;
   icon: string;
 }
+
+const CARD_GRADIENTS = [
+  ['#00d9ff22', '#00d9ff44'],
+  ['#ff149322', '#ff149344'],
+  ['#34C75922', '#34C75944'],
+  ['#FF950022', '#FF950044'],
+  ['#AF52DE22', '#AF52DE44'],
+  ['#FF3B3022', '#FF3B3044'],
+  ['#00C9A722', '#00C9A744'],
+  ['#FF6B3522', '#FF6B3544'],
+  ['#5856D622', '#5856D644'],
+  ['#FFD60A22', '#FFD60A44'],
+];
+
+const CARD_BORDERS = [
+  '#00d9ff', '#ff1493', '#34C759', '#FF9500',
+  '#AF52DE', '#FF3B30', '#00C9A7', '#FF6B35',
+  '#5856D6', '#FFD60A',
+];
 
 export default function Onboarding() {
   const { user } = useAuth();
@@ -21,321 +50,344 @@ export default function Onboarding() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const { width, height } = useWindowDimensions();
+  const isSmall = height < 700;
+  const fs = (n: number) => Math.max(n * 0.85, Math.min(n, width * (n / 390)));
+  const sp = (n: number) => Math.max(n * 0.8, Math.min(n, height * (n / 844)));
+
+  // Entrance animations
+  const headerFade = useRef(new Animated.Value(0)).current;
+  const headerSlide = useRef(new Animated.Value(-30)).current;
+  const gridFade = useRef(new Animated.Value(0)).current;
+  const gridSlide = useRef(new Animated.Value(40)).current;
+  const footerFade = useRef(new Animated.Value(0)).current;
+  const footerSlide = useRef(new Animated.Value(40)).current;
+
+  // Badge pulse
+  const badgePulse = useRef(new Animated.Value(1)).current;
+
+  // Per-card scale refs
+  const cardScales = useRef<{ [key: string]: Animated.Value }>({}).current;
+
   useEffect(() => {
     loadCategories();
   }, []);
 
+  useEffect(() => {
+    if (!loading) {
+      Animated.stagger(120, [
+        Animated.parallel([
+          Animated.timing(headerFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.spring(headerSlide, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(gridFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.spring(gridSlide, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(footerFade, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.spring(footerSlide, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+        ]),
+      ]).start();
+    }
+  }, [loading]);
+
+  const pulseBadge = () => {
+    Animated.sequence([
+      Animated.spring(badgePulse, { toValue: 1.15, useNativeDriver: true, speed: 80, bounciness: 12 }),
+      Animated.spring(badgePulse, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 8 }),
+    ]).start();
+  };
+
   const loadCategories = async () => {
     try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .order('name');
-
+      const { data, error } = await supabase.from('categories').select('*').order('name');
       if (error) throw error;
       setCategories(data || []);
-    } catch (error) {
-      console.error('Error loading categories:', error);
-      Alert.alert('Erro', 'Não foi possível carregar as categorias');
+      // Initialize card scale refs
+      (data || []).forEach((cat: Category) => {
+        if (!cardScales[cat.id]) cardScales[cat.id] = new Animated.Value(1);
+      });
+    } catch {
+      setCategories([]);
     } finally {
       setLoading(false);
     }
   };
 
   const toggleCategory = (categoryId: string) => {
-    if (selectedCategories.includes(categoryId)) {
-      setSelectedCategories(prev => prev.filter(id => id !== categoryId));
-    } else {
-      setSelectedCategories(prev => [...prev, categoryId]);
+    const scale = cardScales[categoryId];
+    if (scale) {
+      Animated.sequence([
+        Animated.spring(scale, { toValue: 0.92, useNativeDriver: true, speed: 80, bounciness: 5 }),
+        Animated.spring(scale, { toValue: 1.06, useNativeDriver: true, speed: 40, bounciness: 12 }),
+        Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 8 }),
+      ]).start();
     }
+    setSelectedCategories(prev => {
+      const next = prev.includes(categoryId)
+        ? prev.filter(id => id !== categoryId)
+        : [...prev, categoryId];
+      return next;
+    });
+    pulseBadge();
   };
 
-  const handleContinue = async () => {
-    if (selectedCategories.length === 0) {
-      Alert.alert('Atenção', 'Selecione pelo menos uma categoria de interesse');
-      return;
-    }
-
+  const saveAndNavigate = async (skip = false) => {
     if (!user) return;
-
     setSaving(true);
     try {
-      const { error } = await supabase
+      await supabase
         .from('profiles')
         .update({
-          preferred_categories: selectedCategories,
-          onboarding_completed: true
+          preferred_categories: skip ? [] : selectedCategories,
+          onboarding_completed: true,
         })
         .eq('id', user.id);
-
-      if (error) throw error;
-
-      router.replace('/(tabs)');
-    } catch (error: any) {
-      console.error('Error saving preferences:', error);
-      Alert.alert('Erro', 'Não foi possível salvar suas preferências');
+    } catch {
+      // silent fail — still navigate
     } finally {
       setSaving(false);
+      router.replace('/(tabs)');
     }
   };
+
+  const cardSize = (width - 24 * 2 - 12) / 2;
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={styles.loadingScreen}>
+        <LinearGradient colors={['#0a0a12', '#0f0f1e']} style={StyleSheet.absoluteFill} />
         <ActivityIndicator size="large" color="#00d9ff" />
+        <Text style={styles.loadingText}>Carregando categorias...</Text>
       </View>
     );
   }
 
   return (
-    <LinearGradient
-      colors={['#1a1a1a', '#2d2d2d', '#1a1a1a']}
-      style={styles.container}
-    >
+    <View style={styles.root}>
+      <LinearGradient colors={['#0a0a12', '#0f0f1e', '#0a0a12']} style={StyleSheet.absoluteFill} />
+      {/* Decorative orbs */}
+      <View style={[styles.orb, { backgroundColor: 'rgba(0,217,255,0.07)', width: width * 0.6, height: width * 0.6, top: -width * 0.1, right: -width * 0.2 }]} />
+      <View style={[styles.orb, { backgroundColor: 'rgba(255,20,147,0.07)', width: width * 0.5, height: width * 0.5, bottom: 80, left: -width * 0.15 }]} />
+
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scroll, { paddingHorizontal: 24, paddingTop: sp(isSmall ? 36 : 52), paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
+        {/* Header */}
+        <Animated.View style={[styles.header, { opacity: headerFade, transform: [{ translateY: headerSlide }] }]}>
+          <LinearGradient
+            colors={['#00d9ff', '#7b2fff', '#ff1493']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.logoWrap, { width: sp(72), height: sp(72), borderRadius: sp(18) }]}
+          >
             <Image
               source={require('@/assets/images/icone.jpg')}
-              style={styles.logoImage}
+              style={{ width: sp(60), height: sp(60), borderRadius: sp(14) }}
             />
+          </LinearGradient>
+
+          <View style={[styles.sparkleRow, { marginTop: sp(16) }]}>
+            <Sparkles size={fs(20)} color="#00d9ff" />
+            <Text style={[styles.welcomeLabel, { fontSize: fs(13) }]}>  Personalize sua experiência</Text>
           </View>
 
-          <View style={styles.sparkleContainer}>
-            <Sparkles size={32} color="#00d9ff" />
-          </View>
-
-          <Text style={styles.title}>Quase lá!</Text>
-          <Text style={styles.subtitle}>
-            Escolha suas categorias favoritas para personalizarmos seu feed
+          <Text style={[styles.title, { fontSize: fs(30), marginTop: sp(8) }]}>
+            O que mais te{'\n'}representa? ✨
+          </Text>
+          <Text style={[styles.subtitle, { fontSize: fs(15), marginTop: sp(10) }]}>
+            Selecione as categorias que combinam{'\n'}com você — ou pule essa etapa!
+          </Text>
+          <Text style={[styles.hint, { fontSize: fs(12), marginTop: sp(6) }]}>
+            Isso é opcional. Você pode mudar depois 🙂
           </Text>
 
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              {selectedCategories.length} {selectedCategories.length === 1 ? 'selecionada' : 'selecionadas'}
-            </Text>
-          </View>
-        </View>
+          {/* Counter Badge */}
+          <Animated.View style={[styles.badge, { marginTop: sp(16), transform: [{ scale: badgePulse }] }]}>
+            {selectedCategories.length === 0 ? (
+              <Text style={[styles.badgeText, { fontSize: fs(13) }]}>Nenhuma selecionada ainda</Text>
+            ) : (
+              <Text style={[styles.badgeText, { fontSize: fs(13) }]}>
+                {selectedCategories.length} {selectedCategories.length === 1 ? 'categoria escolhida' : 'categorias escolhidas'} 🎉
+              </Text>
+            )}
+          </Animated.View>
+        </Animated.View>
 
-        <View style={styles.categoriesGrid}>
+        {/* Categories Grid */}
+        <Animated.View style={[styles.grid, { opacity: gridFade, transform: [{ translateY: gridSlide }] }]}>
           {categories.map((category, index) => {
             const isSelected = selectedCategories.includes(category.id);
-
-            const gradients = [
-              ['#00d9ff', '#0099cc'],
-              ['#ff1493', '#cc0066'],
-              ['#34C759', '#28a745'],
-              ['#FF9500', '#cc7700'],
-              ['#AF52DE', '#8844bb'],
-              ['#FF3B30', '#cc2f27'],
-              ['#00C9A7', '#00a388'],
-              ['#FF6B35', '#e85a2e'],
-              ['#5856D6', '#4644bb'],
-              ['#FFD60A', '#d9b609'],
-            ];
-
-            const gradient = gradients[index % gradients.length];
+            const scale = cardScales[category.id] || new Animated.Value(1);
+            const borderColor = CARD_BORDERS[index % CARD_BORDERS.length];
+            const gradColors = CARD_GRADIENTS[index % CARD_GRADIENTS.length] as [string, string];
 
             return (
-              <TouchableOpacity
+              <Animated.View
                 key={category.id}
-                style={[styles.categoryCard, isSelected && styles.categoryCardSelected]}
-                onPress={() => toggleCategory(category.id)}
-                activeOpacity={0.7}
+                style={[
+                  styles.cardWrap,
+                  { width: cardSize, height: cardSize, transform: [{ scale }] },
+                ]}
               >
-                <LinearGradient
-                  colors={isSelected ? [gradient[0], gradient[1], gradient[1]] : ['#2d2d2d', '#2d2d2d']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.categoryGradient}
+                <TouchableOpacity
+                  style={[
+                    styles.card,
+                    { borderRadius: cardSize * 0.22 },
+                    isSelected && { borderColor, borderWidth: 2.5 },
+                  ]}
+                  onPress={() => toggleCategory(category.id)}
+                  activeOpacity={0.9}
                 >
-                  {isSelected && (
-                    <View style={styles.checkBadge}>
-                      <Check size={16} color="#fff" strokeWidth={3} />
+                  {isSelected ? (
+                    <LinearGradient
+                      colors={[borderColor + '33', borderColor + '22']}
+                      style={[styles.cardInner, { borderRadius: cardSize * 0.20 }]}
+                    >
+                      <View style={[styles.checkBadge, { backgroundColor: borderColor }]}>
+                        <Check size={fs(13)} color="#fff" strokeWidth={3} />
+                      </View>
+                      <Text style={styles.icon}>{category.icon}</Text>
+                      <Text style={[styles.cardName, { fontSize: fs(13), color: '#fff' }]}>{category.name}</Text>
+                    </LinearGradient>
+                  ) : (
+                    <View style={[styles.cardInner, { borderRadius: cardSize * 0.20 }]}>
+                      <Text style={styles.icon}>{category.icon}</Text>
+                      <Text style={[styles.cardName, { fontSize: fs(13) }]}>{category.name}</Text>
                     </View>
                   )}
-
-                  <Text style={styles.categoryIcon}>{category.icon}</Text>
-                  <Text style={[styles.categoryName, isSelected && styles.categoryNameSelected]}>
-                    {category.name}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
+                </TouchableOpacity>
+              </Animated.View>
             );
           })}
-        </View>
+        </Animated.View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      {/* Footer buttons */}
+      <Animated.View style={[styles.footer, { opacity: footerFade, transform: [{ translateY: footerSlide }], paddingBottom: Platform.OS === 'ios' ? 36 : 24 }]}>
+        {/* Skip */}
         <TouchableOpacity
-          style={[styles.continueButton, (selectedCategories.length === 0 || saving) && styles.continueButtonDisabled]}
-          onPress={handleContinue}
-          disabled={selectedCategories.length === 0 || saving}
-          activeOpacity={0.8}
+          style={styles.skipBtn}
+          onPress={() => saveAndNavigate(true)}
+          disabled={saving}
+          activeOpacity={0.7}
+        >
+          <SkipForward size={fs(15)} color="#666" />
+          <Text style={[styles.skipText, { fontSize: fs(13) }]}>Pular por agora</Text>
+        </TouchableOpacity>
+
+        {/* Continue */}
+        <TouchableOpacity
+          style={[styles.continueBtn, saving && { opacity: 0.6 }]}
+          onPress={() => saveAndNavigate(false)}
+          disabled={saving}
+          activeOpacity={0.85}
         >
           <LinearGradient
-            colors={['#00d9ff', '#ff1493']}
+            colors={selectedCategories.length > 0 ? ['#00d9ff', '#7b2fff', '#ff1493'] : ['#2a2a3a', '#2a2a3a']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.buttonGradient}
+            style={styles.continueBtnGradient}
           >
-            <Text style={styles.continueButtonText}>
-              {saving ? 'Salvando...' : 'Continuar'}
-            </Text>
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <View style={styles.continueBtnContent}>
+                <Text style={[styles.continueBtnText, { fontSize: fs(16) }]}>
+                  {selectedCategories.length > 0 ? 'Ir para o Feed!' : 'Entrar sem selecionar'}
+                </Text>
+                <ArrowRight size={fs(20)} color="#fff" />
+              </View>
+            )}
           </LinearGradient>
         </TouchableOpacity>
-      </View>
-    </LinearGradient>
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-  },
-  scrollContent: {
-    padding: ms(24),
-    paddingTop: vs(60),
-    paddingBottom: vs(120),
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: vs(40),
-  },
-  logoContainer: {
-    width: s(80),
-    height: s(80),
-    borderRadius: ms(20),
-    overflow: 'hidden',
-    marginBottom: vs(20),
-    borderWidth: 3,
-    borderColor: '#00d9ff',
-  },
-  logoImage: {
-    width: '100%',
-    height: '100%',
-  },
-  sparkleContainer: {
-    marginBottom: vs(16),
-  },
-  title: {
-    fontSize: ms(36),
-    fontWeight: '900',
-    color: '#fff',
-    marginBottom: vs(12),
-    textAlign: 'center',
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: ms(17),
-    color: '#9E9E93',
-    textAlign: 'center',
-    lineHeight: vs(24),
-    marginBottom: vs(20),
-    paddingHorizontal: s(20),
-  },
+  root: { flex: 1, backgroundColor: '#0a0a12' },
+  orb: { position: 'absolute', borderRadius: 9999 },
+
+  loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0a0a12' },
+  loadingText: { color: '#666', marginTop: 16, fontSize: 14 },
+
+  scroll: { flexGrow: 1 },
+
+  header: { alignItems: 'center', marginBottom: 32 },
+  logoWrap: { justifyContent: 'center', alignItems: 'center', shadowColor: '#00d9ff', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 10 },
+  sparkleRow: { flexDirection: 'row', alignItems: 'center' },
+  welcomeLabel: { color: '#00d9ff', fontWeight: '600' },
+  title: { fontWeight: '900', color: '#fff', textAlign: 'center', letterSpacing: -0.5, lineHeight: 38 },
+  subtitle: { color: '#888', textAlign: 'center', lineHeight: 22 },
+  hint: { color: '#555', textAlign: 'center' },
+
   badge: {
-    backgroundColor: 'rgba(0, 217, 255, 0.15)',
-    paddingHorizontal: s(20),
-    paddingVertical: vs(10),
-    borderRadius: ms(20),
+    backgroundColor: 'rgba(0,217,255,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(0, 217, 255, 0.3)',
+    borderColor: 'rgba(0,217,255,0.2)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
   },
-  badgeText: {
-    fontSize: ms(15),
-    fontWeight: '700',
-    color: '#00d9ff',
-  },
-  categoriesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: s(16),
-    justifyContent: 'space-between',
-  },
-  categoryCard: {
-    width: '47%',
-    aspectRatio: 1,
-    borderRadius: ms(24),
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  categoryCardSelected: {
-    borderColor: '#00d9ff',
-    shadowColor: '#00d9ff',
-    shadowOffset: { width: 0, height: vs(8) },
-    shadowOpacity: 0.5,
-    shadowRadius: ms(16),
-    elevation: 16,
-  },
-  categoryGradient: {
+  badgeText: { color: '#00d9ff', fontWeight: '700' },
+
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+
+  cardWrap: {},
+  card: {
     flex: 1,
-    padding: ms(20),
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.07)',
+    overflow: 'hidden',
+  },
+  cardInner: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 12,
     position: 'relative',
   },
   checkBadge: {
     position: 'absolute',
-    top: vs(12),
-    right: s(12),
-    width: s(32),
-    height: s(32),
-    borderRadius: ms(16),
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    top: 10,
+    right: 10,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  categoryIcon: {
-    fontSize: ms(48),
-    marginBottom: vs(12),
-  },
-  categoryName: {
-    fontSize: ms(16),
-    fontWeight: '700',
-    color: '#8E8E93',
-    textAlign: 'center',
-  },
-  categoryNameSelected: {
-    color: '#fff',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: vs(2) },
-    textShadowRadius: ms(4),
-  },
+  icon: { fontSize: 40, marginBottom: 10 },
+  cardName: { fontWeight: '700', color: '#666', textAlign: 'center' },
+
   footer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: ms(24),
-    paddingBottom: vs(40),
-    backgroundColor: 'transparent',
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    backgroundColor: 'rgba(10,10,18,0.92)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+    gap: 10,
   },
-  continueButton: {
-    borderRadius: ms(20),
-    overflow: 'hidden',
-  },
-  continueButtonDisabled: {
-    opacity: 0.5,
-  },
-  buttonGradient: {
-    padding: ms(20),
+  skipBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
   },
-  continueButtonText: {
-    fontSize: ms(18),
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 0.5,
-  },
+  skipText: { color: '#666', fontWeight: '600' },
+
+  continueBtn: { borderRadius: 18, overflow: 'hidden' },
+  continueBtnGradient: { paddingVertical: 16, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center' },
+  continueBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  continueBtnText: { color: '#fff', fontWeight: '800', letterSpacing: 0.3 },
 });

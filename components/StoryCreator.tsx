@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import { uploadFile } from '@/lib/storage';
 import StoryCameraModal from './StoryCameraModal';
 import StoryAdvancedEditor from './StoryAdvancedEditor';
 
@@ -51,26 +52,28 @@ export default function StoryCreator({ visible, onClose, onSuccess }: StoryCreat
 
     try {
       console.log('🚀 [UPLOAD] Publicando Story...');
-      const fileName = `${user.id}/${Date.now()}.jpg`;
-      const base64 = await FileSystem.readAsStringAsync(finalUri, { encoding: FileSystem.EncodingType.Base64 });
+      const type = selectedMedia?.type || 'image';
       
-      const { error: uploadError } = await supabase.storage
-        .from('media')
-        .upload(`stories/${fileName}`, decode(base64), {
-          contentType: 'image/jpeg',
-          upsert: true
-        });
+      // Detecta a extensão real do arquivo (iOS grava .mov, não .mp4)
+      const uriExtension = finalUri.split('.').pop()?.toLowerCase() || (type === 'video' ? 'mov' : 'jpg');
+      const extension = type === 'video' ? uriExtension : 'jpg';
+      const contentType = type === 'video' 
+        ? (extension === 'mov' ? 'video/quicktime' : 'video/mp4')
+        : 'image/jpeg';
+      
+      const fileName = `stories/${user.id}/${Date.now()}.${extension}`;
+      console.log(`📦 Upload: ${fileName} (${contentType})`);
 
-      if (uploadError) throw uploadError;
+      const publicUrl = await uploadFile(finalUri, fileName, contentType);
 
-      const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(`stories/${fileName}`);
+      if (!publicUrl) throw new Error('Falha no upload para o R2');
 
       const { error: dbError } = await supabase
         .from('stories')
         .insert({
           user_id: user.id,
           media_url: publicUrl,
-          media_type: 'image',
+          media_type: type,
           expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         });
 
@@ -78,12 +81,16 @@ export default function StoryCreator({ visible, onClose, onSuccess }: StoryCreat
 
       setSelectedMedia(null);
       if (onSuccess) onSuccess();
-      Alert.alert('Sucesso', 'Seu story foi publicado! ✨');
+      onClose();
+      // Mostra o alerta após fechar para não travar a UI
+      setTimeout(() => {
+        Alert.alert('Sucesso', 'Seu story foi publicado! ✨');
+      }, 100);
     } catch (e: any) {
       console.error('❌ Erro no Story:', e);
       Alert.alert('Erro', 'Não foi possível publicar seu story.');
     } finally {
-      onClose();
+      // Já fechamos no sucesso, aqui apenas garante se houver erro e não fechou
     }
   };
 

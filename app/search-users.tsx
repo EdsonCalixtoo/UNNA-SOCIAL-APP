@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -22,21 +22,28 @@ export default function SearchUsers() {
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+  useEffect(() => {
+    // Carregar usuários iniciais ao abrir a tela
+    handleSearch('');
+  }, []);
 
+  const handleSearch = async (query = searchQuery) => {
     try {
       setLoading(true);
       setHasSearched(true);
 
-      const query = searchQuery.trim().replace('@', '');
+      const searchTerm = query.trim().replace('@', '');
 
-      const { data, error } = await supabase
+      let supabaseQuery = supabase
         .from('profiles')
         .select('id, username, full_name, avatar_url, bio')
-        .or(`username.ilike.%${query}%,full_name.ilike.%${query}%`)
-        .neq('id', user?.id)
-        .limit(20);
+        .neq('id', user?.id);
+
+      if (searchTerm) {
+        supabaseQuery = supabaseQuery.or(`username.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`);
+      }
+
+      const { data, error } = await supabaseQuery.limit(50);
 
       if (error) throw error;
       setSearchResults(data || []);
@@ -45,6 +52,11 @@ export default function SearchUsers() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const onSearchTextChange = (text: string) => {
+    setSearchQuery(text);
+    handleSearch(text); // Busca em tempo real
   };
 
   const handleSendMessage = async (otherUserId: string) => {
@@ -135,8 +147,8 @@ export default function SearchUsers() {
               placeholder="Digite @ ou nome do usuário..."
               placeholderTextColor="#8E8E93"
               value={searchQuery}
-              onChangeText={setSearchQuery}
-              onSubmitEditing={handleSearch}
+              onChangeText={onSearchTextChange}
+              onSubmitEditing={() => handleSearch()}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="search"
@@ -144,7 +156,7 @@ export default function SearchUsers() {
           </View>
           <TouchableOpacity
             style={styles.searchButton}
-            onPress={handleSearch}
+            onPress={() => handleSearch()}
             disabled={loading || !searchQuery.trim()}
           >
             <LinearGradient

@@ -3,6 +3,7 @@ import { readAsStringAsync } from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { uploadToR2 } from './r2';
 
 export async function requestMediaLibraryPermission() {
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -13,23 +14,26 @@ export async function requestMediaLibraryPermission() {
   return true;
 }
 
-export async function uploadImage(
+/**
+ * Função genérica para upload de qualquer arquivo (R2 prioritário)
+ */
+export async function uploadFile(
   uri: string,
-  bucket: string,
-  folder: string,
-  userId: string
+  path: string,
+  contentType: string,
+  bucket: string = 'media'
 ): Promise<string | null> {
   try {
-    const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
-    const fileName = `${userId}/${folder}/${Date.now()}.${fileExt}`;
+    // Tenta R2 primeiro
+    const r2Url = await uploadToR2(uri, path, contentType);
+    if (r2Url) return r2Url;
 
+    // Fallback Supabase
     let base64: string;
-
     if (Platform.OS === 'web') {
       const response = await fetch(uri);
       const blob = await response.blob();
       const reader = new FileReader();
-
       base64 = await new Promise((resolve, reject) => {
         reader.onloadend = () => {
           const result = reader.result as string;
@@ -39,22 +43,18 @@ export async function uploadImage(
         reader.readAsDataURL(blob);
       });
     } else {
-      // Usando a nova API do FileSystem
-      // Usando a API legada do FileSystem explicitamente
-      base64 = await readAsStringAsync(uri, {
-        encoding: 'base64'
-      });
+      base64 = await readAsStringAsync(uri, { encoding: 'base64' });
     }
 
     const { data, error } = await supabase.storage
       .from(bucket)
-      .upload(fileName, decode(base64), {
-        contentType: `image/${fileExt}`,
+      .upload(path, decode(base64), {
+        contentType,
         upsert: true,
       });
 
     if (error) {
-      console.error('Upload error:', error);
+      console.error('Supabase upload error:', error);
       return null;
     }
 
@@ -64,9 +64,22 @@ export async function uploadImage(
 
     return urlData.publicUrl;
   } catch (error) {
-    console.error('Error uploading image:', error);
+    console.error('Error in uploadFile:', error);
     return null;
   }
+}
+
+export async function uploadImage(
+  uri: string,
+  bucket: string,
+  folder: string,
+  userId: string
+): Promise<string | null> {
+  const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+  const fileName = `${userId}/${folder}/${Date.now()}.${fileExt}`;
+  const contentType = `image/${fileExt}`;
+  
+  return uploadFile(uri, fileName, contentType, bucket);
 }
 
 export async function deleteImage(url: string, bucket: string): Promise<boolean> {

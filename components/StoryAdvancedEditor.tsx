@@ -15,7 +15,8 @@ import {
   Animated as RNAnimated,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { Audio, Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useAudioPlayer } from 'expo-audio';
 import ViewShot from 'react-native-view-shot';
 import Animated, { 
   useSharedValue, 
@@ -81,25 +82,25 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
   const savedTranslateY = useSharedValue(0);
 
   const viewShotRef = useRef<ViewShot>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const audioPlayer = useAudioPlayer(audioUrl);
+
+  const videoPlayer = useVideoPlayer(mediaType === 'video' ? { uri: mediaUri } : null, player => {
+    player.loop = true;
+    player.muted = false;
+    player.play();
+  });
 
   useEffect(() => {
-    if (visible) {
-      Audio.setAudioModeAsync({ playsInSilentModeIOS: true, shouldDuckAndroid: true });
+    if (audioPlayer && audioUrl) {
+      audioPlayer.loop = true;
+      audioPlayer.play();
     }
-    return () => {
-      if (sound) sound.unloadAsync();
-    };
-  }, [visible]);
+  }, [audioPlayer, audioUrl]);
 
-  async function playSound(url: string) {
-    try {
-      if (sound) await sound.unloadAsync();
-      const { sound: newSound } = await Audio.Sound.createAsync({ uri: url }, { shouldPlay: true, isLooping: true });
-      setSound(newSound);
-    } catch (e) {
-      console.log('Audio error:', e);
-    }
+  function playSound(url: string) {
+    setAudioUrl(url);
   }
 
   const pinchGesture = Gesture.Pinch()
@@ -123,7 +124,7 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
   const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }]
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }] as any
   }));
 
   const saveText = () => {
@@ -138,15 +139,25 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
   };
 
   const handleCapture = async () => {
+    if (mediaType === 'video') {
+      // Vídeos não podem ser capturados pelo ViewShot (gerariam imagem preta).
+      // Retornamos o vídeo original.
+      onSave(mediaUri);
+      return;
+    }
+
     if (!viewShotRef.current || !viewShotRef.current.capture) return;
     setIsProcessing(true);
     try {
-      await new Promise(r => setTimeout(r, 1200));
+      // Pequeno delay para garantir que a UI assentou
+      await new Promise(r => setTimeout(r, 600));
       const uri = await viewShotRef.current.capture();
-      if (sound) await sound.stopAsync();
+      if (audioPlayer) audioPlayer.pause();
+      if (videoPlayer) videoPlayer.pause();
       onSave(uri);
     } catch (error) {
-      console.error(error);
+      console.error('Erro ao capturar imagem:', error);
+      onSave(mediaUri); // Fallback para a original em caso de erro
     } finally {
       setIsProcessing(false);
     }
@@ -156,7 +167,7 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
     <Modal visible={visible} animationType="fade" presentationStyle="fullScreen">
       <GestureHandlerRootView style={styles.container}>
         <View style={styles.header}>
-           <TouchableOpacity onPress={() => { if(sound) sound.stopAsync(); onClose(); }} style={styles.iconBtn}>
+           <TouchableOpacity onPress={() => { if(audioPlayer) audioPlayer.pause(); if(videoPlayer) videoPlayer.pause(); onClose(); }} style={styles.iconBtn}>
               <X size={28} color="#fff" strokeWidth={2.5} />
            </TouchableOpacity>
            <View style={styles.headerRight}>
@@ -166,18 +177,16 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
            </View>
         </View>
 
-        <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 1.0 }} style={styles.canvas}>
+        <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 0.8 }} style={styles.canvas}>
           <GestureDetector gesture={composedGesture}>
              <View style={styles.gestureContainer}>
-                <Animated.View style={[styles.mediaWrapper, animatedStyle]}>
+                <Animated.View style={[styles.mediaWrapper, animatedStyle as any]}>
                    {mediaType === 'video' ? (
-                     <Video
-                        source={{ uri: mediaUri }}
+                     <VideoView
+                        player={videoPlayer}
                         style={styles.mainMedia}
-                        resizeMode={ResizeMode.COVER}
-                        isLooping
-                        shouldPlay
-                        isMuted={false}
+                        contentFit="cover"
+                        nativeControls={false}
                      />
                    ) : (
                      <Image source={{ uri: mediaUri }} style={styles.mainMedia} resizeMode="cover" />

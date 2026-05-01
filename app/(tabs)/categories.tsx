@@ -1,30 +1,50 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Dimensions, RefreshControl } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Dimensions, RefreshControl, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { Search, Sparkles } from 'lucide-react-native';
+import { Search, Sparkles, ChevronRight, Filter } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { 
+  FadeInUp, 
+  FadeInDown, 
+  Layout, 
+  useAnimatedStyle, 
+  useSharedValue, 
+  withSpring,
+  withDelay
+} from 'react-native-reanimated';
 
+import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
+import PageTransition from '@/components/PageTransition';
+import { useUI } from '@/contexts/UIContext';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = (width - s(48)) / 2;
-
 interface Category {
   id: string;
   name: string;
   icon: string;
+  subcategories?: { id: string, name: string }[];
 }
+
+const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
 export default function Categories() {
   const insets = useSafeAreaInsets();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
+  const { showTabBar } = useUI();
+
+  useEffect(() => {
+    showTabBar();
+  }, []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -33,96 +53,130 @@ export default function Categories() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      setCategories([]);
       loadCategories();
     }, [])
   );
 
   const loadCategories = async (isRefreshing = false) => {
     try {
-      if (isRefreshing) {
-        setRefreshing(true);
-      }
-      console.log('[Categories] ========================================');
-      console.log('[Categories] Starting to load categories...');
-      console.log('[Categories] Timestamp:', new Date().toISOString());
-
-      const { data, error, count } = await supabase
+      if (isRefreshing) setRefreshing(true);
+      
+      const { data, error } = await supabase
         .from('categories')
-        .select('*', { count: 'exact' })
+        .select('*, subcategories(id, name)')
         .order('order', { ascending: true })
         .order('name', { ascending: true });
 
-      console.log('[Categories] ========================================');
-      console.log('[Categories] Query completed!');
-      console.log('[Categories] Total count from DB:', count);
-      console.log('[Categories] Data array length:', data?.length);
-      console.log('[Categories] Error:', error);
-
-      if (error) {
-        console.error('[Categories] ❌ Error loading categories:', error);
-        console.error('[Categories] Error code:', error.code);
-        console.error('[Categories] Error message:', error.message);
-        throw error;
-      }
-
-      if (data) {
-        console.log('[Categories] ✅ Successfully loaded categories');
-        console.log('[Categories] Total categories:', data.length);
-        console.log('[Categories] Category list:');
-        data.forEach((cat, index) => {
-          console.log(`  ${index + 1}. ${cat.icon} ${cat.name} (ID: ${cat.id})`);
-        });
-        console.log('[Categories] ========================================');
-        setCategories(data);
-      } else {
-        console.warn('[Categories] ⚠️ No data returned');
-      }
+      if (error) throw error;
+      if (data) setCategories(data as any);
     } catch (error) {
-      console.error('[Categories] ❌ Exception caught:', error);
+      console.error('[Categories] Error:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const onRefresh = () => {
-    loadCategories(true);
-  };
+  const onRefresh = () => loadCategories(true);
 
   const handleCategoryPress = (category: Category) => {
     router.push({
       pathname: '/subcategories',
-      params: { categoryId: category.id, categoryName: category.name }
+      params: { 
+        categoryId: category.id, 
+        categoryName: category.name,
+        initialSearch: searchQuery
+      }
     });
   };
 
-  const filteredCategories = categories.filter(cat =>
-    cat.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredResults = searchQuery.trim() === '' 
+    ? categories.map(c => ({ ...c, type: 'category' }))
+    : (() => {
+        const results: any[] = [];
+        const searchLower = searchQuery.toLowerCase();
 
-  const renderCategory = ({ item, index }: { item: Category; index: number }) => {
+        categories.forEach(cat => {
+          // Se a categoria combina, adiciona ela
+          if (cat.name.toLowerCase().includes(searchLower)) {
+            results.push({ ...cat, type: 'category' });
+          }
+
+          // Busca nas subcategorias
+          cat.subcategories?.forEach(sub => {
+            if (sub.name.toLowerCase().includes(searchLower)) {
+              results.push({ ...sub, type: 'subcategory', parentCategory: cat });
+            }
+          });
+        });
+
+        return results;
+      })();
+
+  const handleSubcategoryPress = (subcategory: any, category: any) => {
+    router.push({
+      pathname: '/(tabs)',
+      params: {
+        filterCategoryId: category.id,
+        filterSubcategoryId: subcategory.id,
+        filterCategoryName: category.name,
+        filterSubcategoryName: subcategory.name
+      }
+    });
+  };
+
+  const SearchResultItem = ({ item, index }: { item: any; index: number }) => {
+    if (item.type === 'category') {
+      return <CategoryCard item={item} index={index} />;
+    }
+
+    // Renderiza subcategoria diretamente
+    return (
+      <AnimatedTouchableOpacity
+        entering={FadeInUp.duration(400).delay(index * 30)}
+        style={[styles.subcategoryResult, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+        onPress={() => handleSubcategoryPress(item, item.parentCategory)}
+      >
+        <View style={[styles.subcategoryIconContainer, { backgroundColor: accent + '22' }]}>
+          <Text style={styles.subcategoryIcon}>{item.parentCategory.icon}</Text>
+        </View>
+        <View style={styles.subcategoryInfo}>
+          <Text style={[styles.subcategoryNameResult, { color: textPrimary }]}>{item.name}</Text>
+          <Text style={[styles.subcategoryParentName, { color: textSecondary }]}>em {item.parentCategory.name}</Text>
+        </View>
+        <ChevronRight size={18} color={textSecondary} />
+      </AnimatedTouchableOpacity>
+    );
+  };
+
+  const CategoryCard = ({ item, index }: { item: Category; index: number }) => {
+    const scale = useSharedValue(1);
+    
+    const animatedStyle = useAnimatedStyle(() => ({
+      transform: [{ scale: scale.value }],
+    }));
+
     const gradients = [
-      ['#00d9ff', '#0099cc'],
-      ['#ff1493', '#cc0066'],
-      ['#34C759', '#28a745'],
-      ['#FF9500', '#cc7700'],
-      ['#AF52DE', '#8844bb'],
-      ['#FF3B30', '#cc2f27'],
-      ['#00C9A7', '#00a388'],
-      ['#FF6B35', '#e85a2e'],
-      ['#5856D6', '#4644bb'],
-      ['#FFD60A', '#d9b609'],
+      ['#00d9ff', '#0055ff'],
+      ['#ff1493', '#8000ff'],
+      ['#34C759', '#1e5a2d'],
+      ['#FF9500', '#ff5e00'],
+      ['#AF52DE', '#5856D6'],
+      ['#FF3B30', '#8b0000'],
+      ['#00C9A7', '#008080'],
+      ['#FF6B35', '#ff3d00'],
     ];
 
     const gradient = gradients[index % gradients.length];
 
     return (
-      <TouchableOpacity
-        style={styles.categoryCard}
+      <AnimatedTouchableOpacity
+        entering={FadeInUp.duration(600).delay(index * 50)}
+        style={[styles.categoryCard, animatedStyle]}
+        onPressIn={() => (scale.value = withSpring(0.98, { damping: 20 }))}
+        onPressOut={() => (scale.value = withSpring(1, { damping: 20 }))}
         onPress={() => handleCategoryPress(item)}
-        activeOpacity={0.8}
+        activeOpacity={1}
       >
         <LinearGradient
           colors={gradient as [string, string, ...string[]]}
@@ -130,146 +184,154 @@ export default function Categories() {
           end={{ x: 1, y: 1 }}
           style={styles.categoryGradient}
         >
-          <View style={styles.categoryContent}>
-            <Text style={styles.categoryIcon}>{item.icon}</Text>
-            <Text style={styles.categoryName}>{item.name}</Text>
-            <View style={styles.categoryBadge}>
-              <Sparkles size={12} color="#fff" />
+          <View style={styles.glassOverlay} />
+          
+          <View style={styles.cardHeader}>
+            <View style={styles.iconContainer}>
+              <Text style={styles.categoryIcon}>{item.icon}</Text>
+            </View>
+            <View style={styles.sparkleContainer}>
+              <Sparkles size={14} color="rgba(255,255,255,0.8)" />
             </View>
           </View>
+
+          <View style={styles.cardFooter}>
+            <Text style={styles.categoryName} numberOfLines={2}>{item.name}</Text>
+            <ChevronRight size={16} color="rgba(255,255,255,0.6)" />
+          </View>
         </LinearGradient>
-      </TouchableOpacity>
+      </AnimatedTouchableOpacity>
     );
   };
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00d9ff" />
+      <View style={[styles.loadingContainer, { backgroundColor: backgroundPrimary }]}>
+        <ActivityIndicator size="large" color={accent} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#2d2d2d', '#1a1a1a']}
-        style={styles.header}
+    <PageTransition>
+      <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
+      <Animated.View 
+        entering={FadeInDown.duration(800)}
+        style={[styles.headerContainer, { paddingTop: insets.top + vs(20), backgroundColor: backgroundSecondary, borderBottomColor: isDark ? 'transparent' : 'rgba(0,0,0,0.05)', borderBottomWidth: isDark ? 0 : 1 }]}
       >
-        <Text style={styles.headerTitle}>Explorar Categorias</Text>
-        <View style={styles.categoryCountBadge}>
-          <Text style={styles.categoryCountNumber}>{categories.length}</Text>
-          <Text style={styles.categoryCountText}>categorias carregadas</Text>
-        </View>
+        <LinearGradient
+          colors={isDark ? ['rgba(255,255,255,0.05)', 'transparent'] : ['rgba(0,0,0,0.02)', 'transparent']}
+          style={StyleSheet.absoluteFill}
+        />
+        
+        <View style={{ height: insets.top }} />
 
-        <View style={styles.searchContainer}>
-          <Search size={20} color="#8E8E93" style={styles.searchIcon} />
+        <View style={[
+          styles.searchContainer,
+          isSearchFocused && styles.searchContainerActive,
+          { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)', borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)' }
+        ]}>
+          <Search size={20} color={isSearchFocused ? accent : textSecondary} style={styles.searchIcon} />
           <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar categorias..."
-            placeholderTextColor="#8E8E93"
+            style={[styles.searchInput, { color: textPrimary }]}
+            placeholder="O que você está procurando?"
+            placeholderTextColor={textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
           />
         </View>
-      </LinearGradient>
+
+
+      </Animated.View>
 
       <FlatList
-        data={filteredCategories}
-        keyExtractor={(item) => item.id}
-        renderItem={renderCategory}
-        numColumns={2}
+        data={filteredResults}
+        keyExtractor={(item) => item.type === 'category' ? `cat-${item.id}` : `sub-${item.id}`}
+        renderItem={({ item, index }) => <SearchResultItem item={item} index={index} />}
+        numColumns={searchQuery.trim() === '' ? 2 : 1}
+        key={searchQuery.trim() === '' ? 'grid' : 'list'}
         contentContainerStyle={[
           styles.listContent,
-          { paddingBottom: insets.bottom + 120 }
+          { paddingBottom: insets.bottom + 100 }
         ]}
-        columnWrapperStyle={styles.columnWrapper}
+        columnWrapperStyle={searchQuery.trim() === '' ? styles.columnWrapper : null}
         showsVerticalScrollIndicator={false}
-        ListFooterComponent={() => (
-          <View style={styles.footerContainer}>
-            <Text style={styles.footerText}>
-              Exibindo {filteredCategories.length} de {categories.length} categorias
-            </Text>
-            <Text style={styles.footerSubtext}>
-              Puxe para baixo para atualizar
-            </Text>
-          </View>
-        )}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#00d9ff"
-            colors={['#00d9ff']}
+            tintColor={accent}
+            colors={[accent]}
           />
         }
+        ListEmptyComponent={() => (
+          <View style={styles.emptyContainer}>
+            <Search size={48} color={isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"} />
+            <Text style={[styles.emptyText, { color: textSecondary }]}>Nenhuma categoria encontrada</Text>
+          </View>
+        )}
       />
     </View>
+    </PageTransition>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0a0a0a',
   },
-  header: {
-    paddingTop: vs(60),
-    paddingBottom: vs(24),
+  headerContainer: {
     paddingHorizontal: s(20),
-    borderBottomLeftRadius: ms(24),
-    borderBottomRightRadius: ms(24),
+    paddingBottom: vs(24),
+    borderBottomLeftRadius: ms(32),
+    borderBottomRightRadius: ms(32),
+    overflow: 'hidden',
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: vs(20),
   },
   headerTitle: {
-    fontSize: ms(32),
+    fontSize: ms(34),
     fontWeight: '800',
     color: '#fff',
-    marginBottom: vs(6),
-    letterSpacing: -0.5,
+    letterSpacing: -1,
   },
   headerSubtitle: {
     fontSize: ms(16),
-    color: '#9E9E93',
-    marginBottom: vs(20),
+    color: '#8E8E93',
+    fontWeight: '500',
   },
-  categoryCountBadge: {
-    backgroundColor: 'rgba(0, 217, 255, 0.15)',
-    paddingHorizontal: s(16),
-    paddingVertical: vs(10),
-    borderRadius: ms(12),
-    flexDirection: 'row',
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    marginBottom: vs(20),
-    borderWidth: 1,
-    borderColor: 'rgba(0, 217, 255, 0.3)',
-  },
-  categoryCountNumber: {
-    fontSize: ms(20),
-    fontWeight: '800',
-    color: '#00d9ff',
-    marginRight: s(8),
-  },
-  categoryCountText: {
-    fontSize: ms(14),
-    color: '#9E9E93',
-    fontWeight: '600',
   },
   searchContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: ms(16),
+    borderRadius: ms(18),
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: s(16),
-    height: vs(52),
+    height: vs(56),
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  searchContainerActive: {
+    borderColor: 'rgba(0, 217, 255, 0.5)',
+    backgroundColor: 'rgba(0, 217, 255, 0.05)',
   },
   searchIcon: {
     marginRight: s(12),
@@ -278,66 +340,136 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#fff',
     fontSize: ms(16),
+    fontWeight: '500',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: vs(16),
+    gap: s(8),
+  },
+  statsText: {
+    fontSize: ms(14),
+    color: '#8E8E93',
+    fontWeight: '600',
+  },
+  statsHighlight: {
+    color: '#00d9ff',
+    fontWeight: '800',
   },
   listContent: {
     padding: ms(16),
-    paddingBottom: vs(120),
-    flexGrow: 1,
+    paddingTop: vs(20),
   },
   columnWrapper: {
     justifyContent: 'space-between',
+    marginBottom: vs(16),
   },
   categoryCard: {
     width: ITEM_WIDTH,
-    height: ITEM_WIDTH * 1.2,
-    marginBottom: vs(16),
-    borderRadius: ms(20),
+    height: ITEM_WIDTH * 1.3,
+    borderRadius: ms(24),
     overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   categoryGradient: {
     flex: 1,
     padding: ms(20),
     justifyContent: 'space-between',
   },
-  categoryContent: {
-    flex: 1,
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  cardHeader: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  iconContainer: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   categoryIcon: {
-    fontSize: ms(48),
-    marginBottom: vs(8),
+    fontSize: ms(32),
+  },
+  sparkleContainer: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 14,
+    marginHorizontal: -4,
   },
   categoryName: {
-    fontSize: ms(20),
-    fontWeight: '700',
+    fontSize: ms(13),
+    fontWeight: '800',
     color: '#fff',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: vs(2) },
-    textShadowRadius: ms(4),
+    flex: 1,
+    marginRight: 4,
   },
-  categoryBadge: {
-    position: 'absolute',
-    top: vs(12),
-    right: s(12),
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: ms(12),
-    padding: ms(8),
-  },
-  footerContainer: {
+  emptyContainer: {
+    flex: 1,
     alignItems: 'center',
-    paddingVertical: vs(30),
-    paddingHorizontal: s(20),
+    justifyContent: 'center',
+    paddingTop: vs(60),
+    gap: vs(12),
   },
-  footerText: {
-    fontSize: ms(16),
-    fontWeight: '700',
-    color: '#00d9ff',
-    marginBottom: vs(6),
-    textAlign: 'center',
-  },
-  footerSubtext: {
-    fontSize: ms(14),
+  emptyText: {
     color: '#8E8E93',
-    textAlign: 'center',
+    fontSize: ms(16),
+    fontWeight: '600',
+  },
+  subcategoryResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: ms(16),
+    borderRadius: ms(20),
+    marginBottom: vs(12),
+    borderWidth: 1,
+  },
+  subcategoryIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: s(16),
+  },
+  subcategoryIcon: {
+    fontSize: ms(24),
+  },
+  subcategoryInfo: {
+    flex: 1,
+  },
+  subcategoryNameResult: {
+    fontSize: ms(17),
+    fontWeight: '700',
+  },
+  subcategoryParentName: {
+    fontSize: ms(13),
+    fontWeight: '500',
+    marginTop: 2,
   },
 });

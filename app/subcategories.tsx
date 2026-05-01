@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ChevronRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '@/contexts/ThemeContext';
+import { s, vs, ms } from '@/utils/responsive';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = width - 40;
@@ -18,7 +20,9 @@ export default function Subcategories() {
   const params = useLocalSearchParams();
   const router = useRouter();
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [filteredSubcategories, setFilteredSubcategories] = useState<Subcategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
 
   const categoryId = params.categoryId as string;
   const categoryName = params.categoryName as string;
@@ -43,6 +47,17 @@ export default function Subcategories() {
       if (data) {
         console.log('Loaded subcategories:', data.length);
         setSubcategories(data);
+        
+        // Aplica o filtro inicial se vier da busca anterior
+        const initialSearch = params.initialSearch as string;
+        if (initialSearch) {
+          const filtered = data.filter(sub => 
+            sub.name.toLowerCase().includes(initialSearch.toLowerCase())
+          );
+          setFilteredSubcategories(filtered);
+        } else {
+          setFilteredSubcategories(data);
+        }
       }
     } catch (error) {
       console.error('Error loading subcategories:', error);
@@ -104,37 +119,44 @@ export default function Subcategories() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00d9ff" />
+      <View style={[styles.loadingContainer, { backgroundColor: backgroundPrimary }]}>
+        <ActivityIndicator size="large" color={accent} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
       <LinearGradient
-        colors={['#2d2d2d', '#1a1a1a']}
-        style={styles.header}
+        colors={isDark ? ['#1a1a1a', '#0a0a0a'] : [backgroundSecondary, backgroundPrimary]}
+        style={[styles.header, { borderBottomColor: isDark ? 'transparent' : 'rgba(0,0,0,0.05)', borderBottomWidth: isDark ? 0 : 1 }]}
       >
         <TouchableOpacity
-          style={styles.backButton}
+          style={[styles.backButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 0, 0, 0.05)' }]}
           onPress={() => router.back()}
         >
-          <ArrowLeft size={24} color="#00d9ff" />
+          <ArrowLeft size={24} color={accent} />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>{categoryName}</Text>
-        <Text style={styles.headerSubtitle}>
+        <Text style={[styles.headerTitle, { color: textPrimary }]}>{categoryName}</Text>
+        <Text style={[styles.headerSubtitle, { color: textSecondary }]}>
           Escolha uma subcategoria ({subcategories.length})
         </Text>
       </LinearGradient>
 
       <FlatList
-        data={subcategories}
+        data={filteredSubcategories}
         keyExtractor={(item) => item.id}
         renderItem={renderSubcategory}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={() => (
+          <View style={styles.emptyContainer}>
+            <Text style={[styles.emptyText, { color: textSecondary }]}>
+              Nenhuma subcategoria correspondente encontrada.
+            </Text>
+          </View>
+        )}
       />
     </View>
   );
@@ -143,13 +165,11 @@ export default function Subcategories() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0a0a0a',
   },
   header: {
     paddingTop: 60,
@@ -217,5 +237,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    textAlign: 'center',
+    opacity: 0.6,
   },
 });

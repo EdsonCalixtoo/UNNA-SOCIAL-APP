@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, TextInput, FlatList, RefreshControl } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
-import { MessageCircle, Search, Plus, ArrowLeft } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { MessageCircle, Search, Plus, ArrowLeft, Users, MessageSquare } from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface ConversationWithDetails {
   id: string;
   updated_at: string;
+  name?: string;
+  is_group?: boolean;
+  avatar_url?: string;
   other_user: {
     id: string;
     username: string;
@@ -23,11 +26,14 @@ interface ConversationWithDetails {
   unread_count: number;
 }
 
-export default function MessagesScreen() {
+export default function ConversationsList() {
   const { user } = useAuth();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const router = useRouter();
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadConversations();
@@ -35,15 +41,18 @@ export default function MessagesScreen() {
 
   const loadConversations = async () => {
     if (!user) return;
-
+    setLoading(true);
     try {
-      const { data: conversationParticipants, error: cpError } = await supabase
+      let { data: conversationParticipants, error: cpError } = await supabase
         .from('conversation_participants')
         .select(`
           conversation_id,
           conversations!inner (
             id,
-            updated_at
+            updated_at,
+            name,
+            is_group,
+            avatar_url
           )
         `)
         .eq('user_id', user.id);
@@ -51,45 +60,40 @@ export default function MessagesScreen() {
       if (cpError) throw cpError;
 
       const conversationDetails = await Promise.all(
-        (conversationParticipants || []).map(async (cp) => {
-          try {
-            const { data: otherParticipants, error: opError } = await supabase
-              .from('conversation_participants')
-              .select('user_id, profiles (id, username, full_name, avatar_url)')
-              .eq('conversation_id', cp.conversation_id)
-              .neq('user_id', user.id)
-              .limit(1);
+        (conversationParticipants || []).map(async (cp: any) => {
+          const { data: otherParticipants } = await supabase
+            .from('conversation_participants')
+            .select('user_id, profiles (id, username, full_name, avatar_url)')
+            .eq('conversation_id', cp.conversation_id)
+            .neq('user_id', user.id)
+            .limit(1);
 
-            if (opError || !otherParticipants || otherParticipants.length === 0) {
-              return null;
-            }
+          const { data: lastMessage } = await supabase
+            .from('messages')
+            .select('content, created_at, sender_id')
+            .eq('conversation_id', cp.conversation_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-            const { data: lastMessage } = await supabase
-              .from('messages')
-              .select('content, created_at, sender_id')
-              .eq('conversation_id', cp.conversation_id)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
+          const { count: unreadCount } = await supabase
+            .from('messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('conversation_id', cp.conversation_id)
+            .eq('read', false)
+            .neq('sender_id', user.id);
 
-            const { count: unreadCount } = await supabase
-              .from('messages')
-              .select('*', { count: 'exact', head: true })
-              .eq('conversation_id', cp.conversation_id)
-              .eq('read', false)
-              .neq('sender_id', user.id);
-
-            return {
-              id: cp.conversation_id,
-              updated_at: cp.conversations[0]?.updated_at || new Date().toISOString(),
-              other_user: otherParticipants[0]?.profiles || null,
-              last_message: lastMessage || undefined,
-              unread_count: unreadCount || 0,
-            };
-          } catch (err) {
-            console.error('Error loading conversation detail:', err);
-            return null;
-          }
+          const conv = cp.conversations;
+          return {
+            id: cp.conversation_id,
+            updated_at: conv?.updated_at || new Date().toISOString(),
+            name: conv?.name || otherParticipants?.[0]?.profiles?.[0]?.full_name || 'Conversa',
+            is_group: conv?.is_group,
+            avatar_url: conv?.is_group ? conv.avatar_url : otherParticipants?.[0]?.profiles?.[0]?.avatar_url,
+            other_user: otherParticipants?.[0]?.profiles?.[0] || {},
+            last_message: lastMessage || undefined,
+            unread_count: unreadCount || 0,
+          };
         })
       );
 
@@ -97,129 +101,130 @@ export default function MessagesScreen() {
       filtered.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
       setConversations(filtered);
     } catch (error) {
-      console.error('Error loading conversations:', error);
+      console.error('Error:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-    if (days === 0) {
-      return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    } else if (days === 1) {
-      return 'Ontem';
-    } else if (days < 7) {
-      return `${days}d`;
-    } else {
-      return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    }
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadConversations();
   };
 
-  const openConversation = (conversationId: string, otherUserId: string) => {
-    router.push(`/messages/${conversationId}?userId=${otherUserId}`);
-  };
+  const filteredConversations = conversations.filter(c => 
+    c.name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  const handleNewMessage = () => {
-    router.push('/search-users');
-  };
+  if (loading && conversations.length === 0) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: backgroundPrimary }]}>
+        <ActivityIndicator size="large" color={accent} />
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#00d9ff', '#ff1493']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.headerGradient}
-      >
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <ArrowLeft size={24} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Mensagens</Text>
-          <TouchableOpacity onPress={handleNewMessage} style={styles.newMessageButton}>
-            <Plus size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#00d9ff" />
-        </View>
-      ) : conversations.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconContainer}>
-            <MessageCircle size={64} color="#3d3d3d" />
-          </View>
-          <Text style={styles.emptyTitle}>Nenhuma mensagem ainda</Text>
-          <Text style={styles.emptyText}>
-            Comece uma conversa tocando no botão + acima
-          </Text>
-          <TouchableOpacity style={styles.startButton} onPress={handleNewMessage}>
-            <Text style={styles.startButtonText}>Começar Conversa</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <ScrollView style={styles.conversationsList}>
-          {conversations.map((conversation) => (
-            <TouchableOpacity
-              key={conversation.id}
-              style={styles.conversationItem}
-              onPress={() => openConversation(conversation.id, conversation.other_user.id)}
+    <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
+      <View style={[styles.header, { backgroundColor: backgroundSecondary, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderBottomWidth: 1 }]}>
+        <View style={{ paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20 }}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
+              <ArrowLeft size={24} color={textPrimary} />
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: textPrimary }]}>Mensagens</Text>
+            <TouchableOpacity 
+              onPress={() => router.push('/messages/new-group')}
+              style={[styles.newGroupButton, { backgroundColor: accent }]}
             >
-              <View style={styles.avatarContainer}>
-                {conversation.other_user.avatar_url ? (
-                  <Image
-                    source={{ uri: conversation.other_user.avatar_url }}
-                    style={styles.avatar}
-                  />
-                ) : (
-                  <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                    <Text style={styles.avatarText}>
-                      {conversation.other_user.full_name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-                {conversation.unread_count > 0 && (
-                  <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadText}>
-                      {conversation.unread_count > 9 ? '9+' : conversation.unread_count}
-                    </Text>
-                  </View>
-                )}
-              </View>
+              <Users size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
-              <View style={styles.conversationContent}>
-                <View style={styles.conversationHeader}>
-                  <Text style={styles.userName}>{conversation.other_user.full_name}</Text>
-                  {conversation.last_message && (
-                    <Text style={styles.time}>
-                      {formatTime(conversation.last_message.created_at)}
-                    </Text>
-                  )}
+          <View style={[styles.searchContainer, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]}>
+            <Search size={20} color={textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: textPrimary }]}
+              placeholder="Buscar conversas..."
+              placeholderTextColor={textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+        </View>
+      </View>
+
+      <FlatList
+        data={filteredConversations}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[styles.conversationItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
+            onPress={() => router.push(`/messages/${item.id}?userId=${item.other_user.id}`)}
+          >
+            <View style={styles.avatarContainer}>
+              {item.avatar_url ? (
+                <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? '#1a1a1a' : '#e1e1e1' }]}>
+                  <Text style={[styles.avatarText, { color: textSecondary }]}>
+                    {(item.name || 'U').charAt(0).toUpperCase()}
+                  </Text>
                 </View>
-                {conversation.last_message && (
-                  <Text
-                    style={[
-                      styles.lastMessage,
-                      conversation.unread_count > 0 && styles.lastMessageUnread,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {conversation.last_message.sender_id === user?.id ? 'Você: ' : ''}
-                    {conversation.last_message.content}
+              )}
+              {item.is_group && (
+                <View style={[styles.groupBadge, { borderColor: backgroundPrimary, backgroundColor: accent }]}>
+                  <Users size={10} color="#fff" />
+                </View>
+              )}
+            </View>
+
+            <View style={styles.conversationInfo}>
+              <View style={styles.conversationHeader}>
+                <Text style={[styles.conversationName, { color: textPrimary }]} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                {item.last_message && (
+                  <Text style={[styles.lastMessageTime, { color: textSecondary }]}>
+                    {new Date(item.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
                 )}
               </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
+
+              <View style={styles.lastMessageContainer}>
+                <Text style={[styles.lastMessage, { color: textSecondary }]} numberOfLines={1}>
+                  {item.last_message ? (
+                    (() => {
+                      const prefix = item.last_message.sender_id === user?.id ? 'Você: ' : '';
+                      try {
+                        const parsed = JSON.parse(item.last_message.content);
+                        if (parsed.type === 'audio') return `${prefix}🎙️ Áudio`;
+                        if (parsed.type === 'image') return `${prefix}📷 Imagem`;
+                        if (parsed.type === 'event_card') return `${prefix}📅 Convite de Evento`;
+                      } catch (e) {}
+                      return `${prefix}${item.last_message.content}`;
+                    })()
+                  ) : (
+                    'Inicie uma conversa'
+                  )}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={accent} />
+        }
+        ListEmptyComponent={() => (
+          <View style={styles.emptyContainer}>
+            <MessageSquare size={48} color={isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"} />
+            <Text style={[styles.emptyText, { color: textSecondary }]}>Nenhuma conversa encontrada</Text>
+          </View>
+        )}
+      />
     </View>
   );
 }
@@ -227,133 +232,94 @@ export default function MessagesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
-  headerGradient: {
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: -0.5,
-  },
-  newMessageButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  emptyContainer: {
-    flex: 1,
+  header: {
+    zIndex: 10,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
   },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#1a1a1a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyTitle: {
+  headerTitle: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 12,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
-  emptyText: {
-    fontSize: 16,
-    color: '#8E8E93',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
+  newGroupButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  startButton: {
-    backgroundColor: '#00d9ff',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 24,
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    height: 50,
+    gap: 12,
   },
-  startButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
-  },
-  conversationsList: {
+  searchInput: {
     flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  listContent: {
+    paddingHorizontal: 10,
+    paddingTop: 10,
   },
   conversationItem: {
     flexDirection: 'row',
-    padding: 16,
+    padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
-    backgroundColor: '#0a0a0a',
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: 12,
+    marginRight: 15,
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
   },
   avatarPlaceholder: {
-    backgroundColor: '#2d2d2d',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
+    fontSize: 24,
+    fontWeight: 'bold',
   },
-  unreadBadge: {
+  groupBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#ff1493',
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
+    bottom: -2,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    borderWidth: 2,
-    borderColor: '#0a0a0a',
   },
-  unreadText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  conversationContent: {
+  conversationInfo: {
     flex: 1,
     justifyContent: 'center',
   },
@@ -363,23 +329,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  userName: {
-    fontSize: 16,
+  conversationName: {
+    fontSize: 17,
     fontWeight: '700',
-    color: '#fff',
+    flex: 1,
+    marginRight: 10,
   },
-  time: {
-    fontSize: 13,
-    color: '#8E8E93',
+  lastMessageTime: {
+    fontSize: 12,
     fontWeight: '500',
+  },
+  lastMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   lastMessage: {
     fontSize: 14,
-    color: '#8E8E93',
-    lineHeight: 18,
+    flex: 1,
   },
-  lastMessageUnread: {
-    color: '#fff',
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+    gap: 15,
+  },
+  emptyText: {
+    fontSize: 16,
     fontWeight: '600',
   },
 });

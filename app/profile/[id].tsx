@@ -1,18 +1,43 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Dimensions, Share } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Dimensions, Share, Animated, RefreshControl } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Profile, Event } from '@/types/database';
-import { ArrowLeft, UserPlus, UserMinus, UserCheck, Calendar, MapPin, Users, Lock, Star, Award, Eye, MessageCircle, Share2 } from 'lucide-react-native';
+import { 
+  ArrowLeft, 
+  UserPlus, 
+  UserMinus, 
+  UserCheck, 
+  Calendar, 
+  MapPin, 
+  Users, 
+  Lock, 
+  Star, 
+  Award, 
+  Eye, 
+  MessageCircle, 
+  Share2,
+  Sparkles,
+  Heart,
+  ChevronRight
+} from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { s, vs, ms } from '@/utils/responsive';
+import EventCard from '@/components/EventCard';
 
 type TabType = 'created' | 'joined';
 
 export default function UserProfile() {
-  const { user } = useAuth();
+  const { user, profile: currentUserProfile } = useAuth();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = Dimensions.get('window');
   const { id } = useLocalSearchParams();
+
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('created');
@@ -22,14 +47,36 @@ export default function UserProfile() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [hasRequestPending, setHasRequestPending] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [createdEventsCount, setCreatedEventsCount] = useState(0);
-  const [postsCount, setPostsCount] = useState(0);
+  const [eventsCount, setEventsCount] = useState(0);
+  const [sharedInterests, setSharedInterests] = useState<any[]>([]);
+  const [userInterests, setUserInterests] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Animations
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const tabIndicatorPos = useRef(new Animated.Value(0)).current;
+  const fadeAnim  = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (id) {
       loadUserProfile();
     }
   }, [id]);
+
+  useEffect(() => {
+    loadEvents();
+  }, [activeTab]);
+
+  useEffect(() => {
+    const tabIndex = activeTab === 'created' ? 0 : 1;
+    Animated.spring(tabIndicatorPos, {
+      toValue: tabIndex * ((width - 32) / 2),
+      useNativeDriver: true,
+      tension: 50,
+      friction: 8
+    }).start();
+  }, [activeTab, width]);
 
   const loadUserProfile = async () => {
     try {
@@ -50,60 +97,40 @@ export default function UserProfile() {
 
       setProfile(profileData);
 
-      // Contar eventos criados
-      const { count: createdCount } = await supabase
-        .from('events')
-        .select('id', { count: 'exact', head: true })
-        .eq('creator_id', id);
-
-      setCreatedEventsCount(createdCount || 0);
-
-      // Contar posts do usuário
-      const { count: postsCountResult } = await supabase
-        .from('posts')
-        .select('id', { count: 'exact', head: true })
-        .eq('creator_id', id);
-
-      setPostsCount(postsCountResult || 0);
-
-      const [followersData, followingData, followData, requestData] = await Promise.all([
-        supabase
-          .from('follows')
-          .select('id', { count: 'exact', head: true })
-          .eq('following_id', id),
-
-        supabase
-          .from('follows')
-          .select('id', { count: 'exact', head: true })
-          .eq('follower_id', id),
-
-        supabase
-          .from('follows')
-          .select('id')
-          .eq('follower_id', user?.id)
-          .eq('following_id', id)
-          .maybeSingle(),
-
-        supabase
-          .from('follow_requests')
-          .select('id, status')
-          .eq('requester_id', user?.id)
-          .eq('requested_id', id)
-          .eq('status', 'pending')
-          .maybeSingle(),
+      const [followersData, followingData, followData, requestData, eventsData, catRes] = await Promise.all([
+        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', id),
+        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', id),
+        supabase.from('follows').select('id').eq('follower_id', user?.id).eq('following_id', id).maybeSingle(),
+        supabase.from('follow_requests').select('id, status').eq('requester_id', user?.id).eq('requested_id', id).eq('status', 'pending').maybeSingle(),
+        supabase.from('events').select('id', { count: 'exact', head: true }).eq('creator_id', id),
+        supabase.from('categories').select('*')
       ]);
 
       setFollowersCount(followersData.count || 0);
       setFollowingCount(followingData.count || 0);
       setIsFollowing(!!followData.data);
       setHasRequestPending(!!requestData.data);
+      setEventsCount(eventsData.count || 0);
+
+      if (catRes.data) {
+        const interests = catRes.data.filter(c => profileData.preferred_categories?.includes(c.id));
+        setUserInterests(interests);
+
+        if (currentUserProfile?.preferred_categories) {
+          const shared = catRes.data.filter(c => 
+            profileData.preferred_categories?.includes(c.id) && 
+            currentUserProfile.preferred_categories?.includes(c.id)
+          );
+          setSharedInterests(shared);
+        }
+      }
 
       await loadEvents();
     } catch (error) {
       console.error('Error loading profile:', error);
-      Alert.alert('Erro', 'Não foi possível carregar o perfil');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -114,13 +141,8 @@ export default function UserProfile() {
       if (activeTab === 'created') {
         const { data, error } = await supabase
           .from('events')
-          .select(`
-            *,
-            categories:category_id (name, icon),
-            subcategories:subcategory_id (name)
-          `)
+          .select('*, categories:category_id (name, icon), subcategories:subcategory_id (name)')
           .eq('creator_id', id)
-          .gte('event_date', today)
           .order('event_date', { ascending: true });
 
         if (error) throw error;
@@ -128,116 +150,40 @@ export default function UserProfile() {
       } else {
         const { data: participantData, error: participantError } = await supabase
           .from('event_participants')
-          .select('event_id')
+          .select('event_id, events:event_id (*, categories:category_id (name, icon), subcategories:subcategory_id (name))')
           .eq('user_id', id);
 
         if (participantError) throw participantError;
-
-        if (!participantData || participantData.length === 0) {
-          setEvents([]);
-          return;
-        }
-
-        const eventIds = participantData.map(p => p.event_id);
-
-        const { data, error } = await supabase
-          .from('events')
-          .select(`
-            *,
-            categories:category_id (name, icon),
-            subcategories:subcategory_id (name)
-          `)
-          .in('id', eventIds)
-          .gte('event_date', today)
-          .order('event_date', { ascending: true });
-
-        if (error) throw error;
-        setEvents(data || []);
+        setEvents((participantData || []).map((i: any) => i.events).filter(Boolean));
       }
     } catch (error) {
       console.error('Error loading events:', error);
     }
   };
 
-  useEffect(() => {
-    if (profile) {
-      loadEvents();
-    }
-  }, [activeTab, profile]);
-
   const handleFollowAction = async () => {
     if (!profile) return;
-
     try {
       setActionLoading(true);
-
       if (isFollowing) {
-        const { error } = await supabase
-          .from('follows')
-          .delete()
-          .eq('follower_id', user?.id)
-          .eq('following_id', id);
-
-        if (error) throw error;
-
+        await supabase.from('follows').delete().eq('follower_id', user?.id).eq('following_id', id);
         setIsFollowing(false);
         setFollowersCount(prev => prev - 1);
       } else if (hasRequestPending) {
-        const { error } = await supabase
-          .from('follow_requests')
-          .delete()
-          .eq('requester_id', user?.id)
-          .eq('requested_id', id);
-
-        if (error) throw error;
-
+        await supabase.from('follow_requests').delete().eq('requester_id', user?.id).eq('requested_id', id);
         setHasRequestPending(false);
       } else {
         if (profile.is_private) {
-          const { error } = await supabase
-            .from('follow_requests')
-            .insert({
-              requester_id: user?.id,
-              requested_id: id,
-              status: 'pending'
-            });
-
-          if (error) throw error;
-
+          await supabase.from('follow_requests').insert({ requester_id: user?.id, requested_id: id, status: 'pending' });
           setHasRequestPending(true);
-
-          await supabase.from('notifications').insert({
-            user_id: id,
-            type: 'follow_request',
-            title: 'Nova solicitação de seguidor',
-            message: `@${user?.user_metadata?.username} quer te seguir`,
-            data: { user_id: user?.id }
-          });
         } else {
-          const { error } = await supabase
-            .from('follows')
-            .insert({
-              follower_id: user?.id,
-              following_id: id
-            });
-
-          if (error) throw error;
-
+          await supabase.from('follows').insert({ follower_id: user?.id, following_id: id });
           setIsFollowing(true);
           setFollowersCount(prev => prev + 1);
-
-          await supabase.from('notifications').insert({
-            user_id: id,
-            type: 'follow_accepted',
-            title: 'Novo seguidor',
-            message: `@${user?.user_metadata?.username} começou a te seguir`,
-            data: { user_id: user?.id }
-          });
         }
       }
     } catch (error) {
       console.error('Error handling follow:', error);
-      Alert.alert('Erro', 'Não foi possível processar a ação');
     } finally {
       setActionLoading(false);
     }
@@ -245,801 +191,188 @@ export default function UserProfile() {
 
   const handleShareProfile = async () => {
     try {
-      const bioText = profile?.bio ? `\n💬 "${profile.bio}"` : '';
-      const followerText = `\n👥 ${followersCount} seguidores`;
-      // Usar um link que funcione com deep linking
-      const profileLink = `https://unna.app/profile/${id}`;
-      
-      const shareMessage = `🌟 Conheça o perfil de @${profile?.username}!\n\n👤 ${profile?.full_name}${bioText}${followerText}\n\n👉 ${profileLink}\n\nVem conferir no UNNA! 🎉`;
-      
-      await Share.share({
-        message: shareMessage,
-        title: `Perfil de ${profile?.full_name}`,
-      });
+      const shareMessage = `Conheça o perfil de @${profile?.username} no UNИA! 🌟\nhttps://unna.app/profile/${id}`;
+      await Share.share({ message: shareMessage });
     } catch (error) {
       console.error('Error sharing profile:', error);
-      Alert.alert('Erro', 'Não foi possível compartilhar o perfil');
     }
   };
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00d9ff" />
+        <ActivityIndicator size="large" color={accent} />
       </View>
     );
   }
 
-  if (!profile) {
-    return null;
-  }
+  if (!profile) return null;
+
+  const bannerScale = scrollY.interpolate({
+    inputRange: [-100, 0],
+    outputRange: [1.5, 1],
+    extrapolate: 'clamp',
+  });
+
+  const initials = profile.full_name
+    ? profile.full_name.split(' ').map((n: any) => n[0]).join('').substring(0, 2).toUpperCase()
+    : profile.username?.charAt(0).toUpperCase() ?? '?';
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={[
-          profile.primary_color || '#00d9ff',
-          profile.secondary_color || '#1a1a1a'
-        ]}
-        style={styles.header}
+    <View style={[styles.root, { backgroundColor: backgroundPrimary }]}>
+      <Animated.ScrollView
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadUserProfile(); }} tintColor={accent} />}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleShareProfile} style={styles.shareButton}>
-          <Share2 size={20} color="#fff" />
-        </TouchableOpacity>
-      </LinearGradient>
+        <Animated.View style={[styles.bannerContainer, { transform: [{ scale: bannerScale }] }]}>
+          <LinearGradient colors={[profile.primary_color || accent, '#7b2fff', '#ff1493']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+        </Animated.View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Banner e Avatar */}
-        <LinearGradient
-          colors={[
-            profile.primary_color || '#00d9ff',
-            'rgba(26, 26, 26, 0.5)'
-          ]}
-          style={styles.profileHeader}
-        >
-          <View style={styles.avatarContainer}>
-            {profile.avatar_url ? (
-              <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {profile.username?.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
+        <View style={[styles.topActions, { top: insets.top + 10 }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.glassBtn}>
+            <ArrowLeft size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleShareProfile} style={styles.glassBtn}>
+            <Share2 size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.profileInfo}>
+          <View style={[styles.avatarWrapper, { shadowColor: profile.primary_color || accent }]}>
+            <LinearGradient colors={[profile.primary_color || accent, '#ff1493']} style={styles.avatarGradient}>
+              {profile.avatar_url ? (
+                <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
+              ) : (
+                <View style={styles.avatarPlaceholder}><Text style={styles.avatarInitials}>{initials}</Text></View>
+              )}
+            </LinearGradient>
             {profile.is_private && (
-              <View style={styles.privateBadge}>
-                <Lock size={12} color="#fff" />
-              </View>
+              <View style={[styles.privateBadge, { backgroundColor: '#FF3B30' }]}><Lock size={14} color="#fff" /></View>
             )}
           </View>
 
-          <View style={styles.userInfo}>
-            <Text style={styles.fullName}>{profile.full_name}</Text>
-            <Text style={styles.username}>@{profile.username}</Text>
-          </View>
+          <Text style={[styles.profileName, { color: textPrimary }]}>{profile.full_name}</Text>
+          <Text style={[styles.profileUsername, { color: textSecondary }]}>@{profile.username}</Text>
 
-          {profile.bio && (
-            <Text style={styles.bio}>{profile.bio}</Text>
+          {profile.bio && <Text style={[styles.profileBio, { color: textSecondary }]}>{profile.bio}</Text>}
+
+          {sharedInterests.length > 0 && (
+            <View style={[styles.compatibilityBox, { backgroundColor: isDark ? 'rgba(0,217,255,0.06)' : 'rgba(0,217,255,0.03)' }]}>
+              <View style={styles.compatibilityHeader}>
+                <Heart size={16} color="#ff1493" fill="#ff1493" />
+                <Text style={[styles.compatibilityTitle, { color: textPrimary }]}>Vocês dois gostam de:</Text>
+              </View>
+              <View style={styles.interestsGrid}>
+                {sharedInterests.map((cat) => (
+                  <View key={cat.id} style={[styles.interestChip, { backgroundColor: backgroundSecondary }]}>
+                    <Text style={styles.interestEmoji}>{cat.icon || '✨'}</Text>
+                    <Text style={[styles.interestText, { color: textPrimary }]}>{cat.name}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
           )}
 
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[
-                styles.followButton,
-                isFollowing && styles.followingButton,
-                { backgroundColor: profile.accent_color || '#ff1493' }
-              ]}
-              onPress={handleFollowAction}
-              disabled={actionLoading}
-            >
-              {actionLoading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  {isFollowing ? (
-                    <>
-                      <UserCheck size={18} color="#fff" />
-                      <Text style={styles.followButtonText}>Seguindo</Text>
-                    </>
-                  ) : hasRequestPending ? (
-                    <>
-                      <UserMinus size={18} color="#fff" />
-                      <Text style={styles.followButtonText}>Cancelar</Text>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus size={18} color="#fff" />
-                      <Text style={styles.followButtonText}>
-                        {profile.is_private ? 'Solicitar' : 'Seguir'}
-                      </Text>
-                    </>
-                  )}
-                </>
-              )}
-            </TouchableOpacity>
+          {userInterests.length > 0 && sharedInterests.length === 0 && (
+            <View style={styles.interestsWrapper}>
+              <View style={styles.interestsGrid}>
+                {userInterests.map((cat) => (
+                  <View key={cat.id} style={[styles.interestChip, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+                    <Text style={styles.interestEmoji}>{cat.icon || '✨'}</Text>
+                    <Text style={[styles.interestText, { color: textPrimary }]}>{cat.name}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
 
-            <TouchableOpacity style={styles.messageButton}>
-              <MessageCircle size={18} color="#00d9ff" />
+          <View style={styles.mainActions}>
+            <TouchableOpacity onPress={handleFollowAction} style={[styles.followBtn, { backgroundColor: isFollowing ? backgroundSecondary : (profile.accent_color || '#ff1493') }]} disabled={actionLoading}>
+              {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={[styles.followBtnText, { color: isFollowing ? textPrimary : '#fff' }]}>{isFollowing ? 'Seguindo' : hasRequestPending ? 'Pendente' : 'Seguir'}</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.messageBtn, { backgroundColor: isDark ? 'rgba(0,217,255,0.1)' : 'rgba(0,217,255,0.05)' }]} onPress={() => router.push(`/messages/${id}?userId=${id}`)}>
+              <MessageCircle size={20} color={accent} />
             </TouchableOpacity>
           </View>
-        </LinearGradient>
+        </View>
 
-        {/* Stats Avançado */}
         <View style={styles.statsContainer}>
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => router.push(`/profile/${id}/followers`)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['rgba(52, 199, 89, 0.1)', 'rgba(52, 199, 89, 0.05)']}
-              style={styles.statCardGradient}
-            >
-              <View style={styles.statIconContainer}>
-                <UserPlus size={28} color="#34C759" />
-              </View>
-              <Text style={styles.statCount}>{followersCount}</Text>
-              <Text style={styles.statName}>Seguidores</Text>
-              <View style={styles.statArrow}>
-                <Text style={styles.arrowText}>→</Text>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => router.push(`/profile/${id}/following`)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['rgba(175, 82, 222, 0.1)', 'rgba(175, 82, 222, 0.05)']}
-              style={styles.statCardGradient}
-            >
-              <View style={styles.statIconContainer}>
-                <UserCheck size={28} color="#AF52DE" />
-              </View>
-              <Text style={styles.statCount}>{followingCount}</Text>
-              <Text style={styles.statName}>Seguindo</Text>
-              <View style={styles.statArrow}>
-                <Text style={styles.arrowText}>→</Text>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
+          <View style={styles.statItem}><Text style={[styles.statValue, { color: textPrimary }]}>{eventsCount}</Text><Text style={[styles.statLabel, { color: textSecondary }]}>Eventos</Text></View>
+          <View style={styles.statDivider} />
+          <TouchableOpacity style={styles.statItem} onPress={() => router.push(`/profile/${id}/followers`)}><Text style={[styles.statValue, { color: textPrimary }]}>{followersCount}</Text><Text style={[styles.statLabel, { color: textSecondary }]}>Seguidores</Text></TouchableOpacity>
+          <View style={styles.statDivider} />
+          <TouchableOpacity style={styles.statItem} onPress={() => router.push(`/profile/${id}/following`)}><Text style={[styles.statValue, { color: textPrimary }]}>{followingCount}</Text><Text style={[styles.statLabel, { color: textSecondary }]}>Seguindo</Text></TouchableOpacity>
         </View>
 
-        {/* Abas Modernas */}
-        <View style={styles.tabsSection}>
-          <View style={styles.tabsContainer}>
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'created' && styles.activeTab]}
-              onPress={() => setActiveTab('created')}
-              activeOpacity={0.7}
-            >
-              <LinearGradient
-                colors={activeTab === 'created' 
-                  ? ['rgba(0, 217, 255, 0.2)', 'rgba(0, 217, 255, 0.1)']
-                  : ['transparent', 'transparent']}
-                style={styles.tabGradient}
-              >
-                <Calendar size={20} color={activeTab === 'created' ? '#00d9ff' : '#666'} />
-                <Text style={[styles.tabText, activeTab === 'created' && styles.activeTabText]}>
-                  Criados
-                </Text>
-                {createdEventsCount > 0 && (
-                  <View style={styles.tabBadge}>
-                    <Text style={styles.tabBadgeText}>{createdEventsCount}</Text>
-                  </View>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'joined' && styles.activeTab]}
-              onPress={() => setActiveTab('joined')}
-              activeOpacity={0.7}
-            >
-              <LinearGradient
-                colors={activeTab === 'joined' 
-                  ? ['rgba(0, 217, 255, 0.2)', 'rgba(0, 217, 255, 0.1)']
-                  : ['transparent', 'transparent']}
-                style={styles.tabGradient}
-              >
-                <Users size={20} color={activeTab === 'joined' ? '#00d9ff' : '#666'} />
-                <Text style={[styles.tabText, activeTab === 'joined' && styles.activeTabText]}>
-                  Participando
-                </Text>
-                {events.length > 0 && (
-                  <View style={styles.tabBadge}>
-                    <Text style={styles.tabBadgeText}>{events.length}</Text>
-                  </View>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+        <View style={styles.tabsWrapper}>
+          <View style={[styles.tabsTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+            <Animated.View style={[styles.tabIndicator, { backgroundColor: backgroundSecondary, transform: [{ translateX: tabIndicatorPos }] }]} />
+            <TouchableOpacity style={styles.tabBtn} onPress={() => setActiveTab('created')}><Calendar size={18} color={activeTab === 'created' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'created' ? textPrimary : textSecondary }]}>Criados</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.tabBtn} onPress={() => setActiveTab('joined')}><Users size={18} color={activeTab === 'joined' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'joined' ? textPrimary : textSecondary }]}>Participando</Text></TouchableOpacity>
           </View>
         </View>
 
-        {/* Lista de Eventos */}
-        <View style={styles.eventsSection}>
+        <View style={styles.listContainer}>
           {events.length === 0 ? (
             <View style={styles.emptyState}>
-              <Calendar size={48} color="#666" />
-              <Text style={styles.emptyStateText}>
-                {activeTab === 'created' ? 'Nenhum evento criado' : 'Não está participando de eventos'}
-              </Text>
+              <View style={[styles.emptyIconBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}><Calendar size={40} color={textSecondary} strokeWidth={1} /></View>
+              <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem eventos ainda</Text>
             </View>
           ) : (
-            events.map((event) => (
-              <TouchableOpacity
-                key={event.id}
-                style={styles.eventCard}
-                onPress={() => router.push(`/event/${event.id}`)}
-                activeOpacity={0.75}
-              >
-                {event.image_url ? (
-                  <>
-                    <Image source={{ uri: event.image_url }} style={styles.eventImage} />
-                    <LinearGradient
-                      colors={['transparent', 'rgba(10, 10, 10, 0.95)']}
-                      style={styles.eventImageOverlay}
-                    />
-                  </>
-                ) : (
-                  <View style={styles.eventImagePlaceholder}>
-                    <Calendar size={48} color="#00d9ff" />
-                  </View>
-                )}
-
-                <View style={styles.eventCardContent}>
-                  <View style={styles.eventCardTop}>
-                    <View style={styles.eventTitleContainer}>
-                      <Text style={styles.eventTitle} numberOfLines={2}>
-                        {event.title}
-                      </Text>
-                    </View>
-                    {event.categories && (
-                      <View style={styles.eventCategoryBadge}>
-                        <Text style={styles.eventCategoryText}>
-                          {event.categories.icon}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.eventMeta}>
-                    <View style={styles.eventMetaRow}>
-                      <View style={styles.eventMetaLeft}>
-                        <Calendar size={16} color="#00d9ff" />
-                        <View style={styles.eventMetaInfo}>
-                          <Text style={styles.eventMetaDate}>
-                            {new Date(event.event_date).toLocaleDateString('pt-BR')}
-                          </Text>
-                          <Text style={styles.eventMetaTime}>{event.event_time}</Text>
-                        </View>
-                      </View>
-                      {event.price > 0 && (
-                        <View style={styles.priceTag}>
-                          <Text style={styles.priceText}>R$ {event.price.toFixed(2)}</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.eventMetaRow}>
-                      <MapPin size={16} color="#FF9500" />
-                      <Text style={styles.eventLocation} numberOfLines={1}>
-                        {event.location_name}
-                      </Text>
-                    </View>
-
-                    {event.max_participants > 0 && (
-                      <View style={styles.eventMetaRow}>
-                        <Users size={16} color="#34C759" />
-                        <Text style={styles.eventParticipants}>
-                          Até {event.max_participants} participantes
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))
+            <View style={styles.eventsGrid}>{events.map((event) => <EventCard key={event.id} event={event} />)}</View>
           )}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0a0a0a',
-  },
-  header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingTop: 60,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  shareButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    flex: 1,
-  },
-  profileHeader: {
-    paddingTop: 120,
-    paddingBottom: 32,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  avatar: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    borderWidth: 5,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  avatarPlaceholder: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 5,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 56,
-    fontWeight: '900',
-  },
-  privateBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FF3B30',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#0a0a0a',
-  },
-  userInfo: {
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  fullName: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: '#fff',
-    textAlign: 'center',
-    letterSpacing: -0.5,
-    marginBottom: 4,
-  },
-  username: {
-    fontSize: 18,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  bio: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    textAlign: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 16,
-    lineHeight: 24,
-    fontWeight: '500',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-    width: '100%',
-  },
-  followButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 24,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  followingButton: {
-    opacity: 0.85,
-  },
-  followButtonText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: 0.5,
-  },
-  messageButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(0, 217, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#00d9ff',
-  },
-  
-  // Stats Section
-  statsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 12,
-    justifyContent: 'space-between',
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 217, 255, 0.2)',
-  },
-  statCardGradient: {
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  statCount: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  statName: {
-    fontSize: 13,
-    color: '#999',
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  statArrow: {
-    marginTop: 8,
-  },
-  arrowText: {
-    fontSize: 18,
-    color: '#00d9ff',
-    fontWeight: '900',
-  },
-
-  // Tabs Section
-  tabsSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    backgroundColor: 'transparent',
-    borderBottomWidth: 0,
-  },
-  tab: {
-    flex: 1,
-    borderRadius: 20,
-    overflow: 'hidden',
-    minHeight: 56,
-  },
-  tabGradient: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: 'rgba(0, 217, 255, 0.2)',
-  },
-  activeTab: {
-    borderRadius: 20,
-  },
-  tabText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#666',
-  },
-  activeTabText: {
-    color: '#00d9ff',
-  },
-  tabBadge: {
-    backgroundColor: '#00d9ff',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 8,
-  },
-  tabBadgeText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#000',
-  },
-
-  // Categories Section
-  section: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 16,
-    letterSpacing: -0.5,
-  },
-  categoriesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  categoryItem: {
-    width: '23%',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#3d3d3d',
-  },
-  categoryEmoji: {
-    fontSize: 28,
-    marginBottom: 8,
-  },
-  categoryName: {
-    fontSize: 11,
-    color: '#ccc',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-
-  // Events Section
-  eventsSection: {
-    padding: 12,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 80,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: '#999',
-    marginTop: 16,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  eventCard: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 24,
-    marginBottom: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#2d2d2d',
-    shadowColor: '#00d9ff',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  eventImage: {
-    width: '100%',
-    height: 200,
-    backgroundColor: '#2d2d2d',
-  },
-  eventImageOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 200,
-  },
-  eventImagePlaceholder: {
-    width: '100%',
-    height: 200,
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  eventCardContent: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  eventCardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  eventTitleContainer: {
-    flex: 1,
-  },
-  eventTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: -0.3,
-    lineHeight: 24,
-  },
-  eventCategoryBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0, 217, 255, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#00d9ff',
-  },
-  eventCategoryText: {
-    fontSize: 24,
-  },
-  eventMeta: {
-    gap: 10,
-  },
-  eventMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(0, 217, 255, 0.05)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 217, 255, 0.1)',
-  },
-  eventMetaLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  eventMetaInfo: {
-    flex: 1,
-  },
-  eventMetaDate: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#00d9ff',
-  },
-  eventMetaTime: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 2,
-  },
-  eventLocation: {
-    fontSize: 13,
-    color: '#ddd',
-    fontWeight: '600',
-    flex: 1,
-    marginLeft: 10,
-  },
-  eventParticipants: {
-    fontSize: 13,
-    color: '#ddd',
-    fontWeight: '600',
-    marginLeft: 10,
-  },
-  priceTag: {
-    backgroundColor: 'rgba(52, 199, 89, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#34C759',
-  },
-  priceText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#34C759',
-  },
-  
-  // Old unused styles (keeping for compatibility but will remove later)
-  eventGradient: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  eventContent: {
-    paddingTop: 0,
-  },
-  eventHeader: {
-    marginBottom: 12,
-  },
-  categoryBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(0, 217, 255, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#00d9ff',
-  },
-  categoryText: {
-    fontSize: 12,
-    color: '#00d9ff',
-    fontWeight: '700',
-  },
-  eventDetails: {
-    gap: 8,
-  },
-  eventDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  eventDetailText: {
-    fontSize: 13,
-    color: '#ddd',
-    flex: 1,
-    fontWeight: '500',
-  },
+  root: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  bannerContainer: { height: vs(180), width: '100%', position: 'absolute', top: 0 },
+  topActions: { position: 'absolute', left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 100 },
+  glassBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  profileInfo: { alignItems: 'center', marginTop: vs(120), paddingHorizontal: 20 },
+  avatarWrapper: { position: 'relative', marginBottom: 20, elevation: 20, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 15 },
+  avatarGradient: { width: 130, height: 130, borderRadius: 65, padding: 4, justifyContent: 'center', alignItems: 'center' },
+  avatarImg: { width: 122, height: 122, borderRadius: 61, borderWidth: 4, borderColor: '#fff' },
+  avatarPlaceholder: { width: 122, height: 122, borderRadius: 61, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#fff' },
+  avatarInitials: { fontSize: 48, fontWeight: '900', color: '#fff' },
+  privateBadge: { position: 'absolute', bottom: 5, right: 5, width: 32, height: 32, borderRadius: 16, borderWidth: 4, borderColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  profileName: { fontSize: ms(28), fontWeight: '900', letterSpacing: -1, marginBottom: 4 },
+  profileUsername: { fontSize: ms(16), fontWeight: '600', marginBottom: 16 },
+  profileBio: { fontSize: ms(15), textAlign: 'center', lineHeight: 22, marginBottom: 20, paddingHorizontal: 20 },
+  compatibilityBox: { width: '100%', padding: 16, borderRadius: 24, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(0,217,255,0.1)' },
+  compatibilityHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  compatibilityTitle: { fontSize: ms(14), fontWeight: '800' },
+  interestsWrapper: { marginBottom: 24 },
+  interestsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
+  interestChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', gap: 6 },
+  interestEmoji: { fontSize: ms(16) },
+  interestText: { fontSize: ms(13), fontWeight: '700' },
+  mainActions: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 32 },
+  followBtn: { paddingHorizontal: 36, paddingVertical: 14, borderRadius: 30, minWidth: 140, alignItems: 'center' },
+  followBtnText: { fontWeight: '800', fontSize: ms(15) },
+  messageBtn: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0,217,255,0.2)' },
+  statsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 20, marginHorizontal: 20, marginBottom: 32 },
+  statItem: { alignItems: 'center', flex: 1 },
+  statValue: { fontSize: ms(22), fontWeight: '900' },
+  statLabel: { fontSize: ms(12), fontWeight: '700', textTransform: 'uppercase', marginTop: 4, letterSpacing: 1 },
+  statDivider: { width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.1)' },
+  tabsWrapper: { paddingHorizontal: 16, marginBottom: 20 },
+  tabsTrack: { flexDirection: 'row', borderRadius: 30, height: 56, padding: 4, position: 'relative' },
+  tabIndicator: { position: 'absolute', top: 4, bottom: 4, left: 4, width: (Dimensions.get('window').width - 32) / 2 - 4, borderRadius: 26, elevation: 2 },
+  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  tabBtnText: { fontSize: ms(14), fontWeight: '800' },
+  listContainer: { paddingHorizontal: 0 },
+  eventsGrid: { gap: 16 },
+  emptyState: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40 },
+  emptyIconBg: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  emptyTitle: { fontSize: ms(18), fontWeight: '900', marginBottom: 10 },
 });

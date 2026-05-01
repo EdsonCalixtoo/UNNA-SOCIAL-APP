@@ -6,6 +6,7 @@ import { markNotificationAsRead, markAllNotificationsAsRead, deleteNotification,
 import { Bell, Calendar, UserPlus, UserCheck, Users, CheckCheck, MessageCircle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface Notification {
   id: string;
@@ -17,12 +18,25 @@ interface Notification {
   created_at: string;
 }
 
+import { useInAppNotification } from '@/contexts/InAppNotificationContext';
+
 export default function Notifications() {
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const { user } = useAuth();
+  const { showNotification } = useInAppNotification();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const handleTestNotification = () => {
+    const id = Math.random().toString(36).substring(7);
+    showNotification({
+      title: 'UNNA Premium',
+      message: `Esta é a notificação #${id.toUpperCase()}. Elas agora se empilham como no celular!`,
+      type: id.length > 5 ? 'new_message' : 'event_created'
+    });
+  };
 
   useEffect(() => {
     loadNotifications();
@@ -185,7 +199,11 @@ export default function Notifications() {
 
   const renderNotification = ({ item }: { item: Notification }) => (
     <TouchableOpacity
-      style={[styles.notificationCard, !item.read && styles.unreadCard]}
+      style={[
+        styles.notificationCard, 
+        { backgroundColor: backgroundSecondary, borderColor: isDark ? '#3d3d3d' : 'rgba(0,0,0,0.05)' },
+        !item.read && [styles.unreadCard, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)', borderColor: accent }]
+      ]}
       onPress={() => handleNotificationPress(item)}
       activeOpacity={0.7}
     >
@@ -194,12 +212,12 @@ export default function Notifications() {
       </View>
 
       <View style={styles.notificationContent}>
-        <Text style={styles.notificationTitle}>{item.title}</Text>
-        <Text style={styles.notificationMessage}>{item.message}</Text>
+        <Text style={[styles.notificationTitle, { color: textPrimary }]}>{item.title}</Text>
+        <Text style={[styles.notificationMessage, { color: textSecondary }]}>{item.message}</Text>
         <Text style={styles.notificationTime}>{formatTime(item.created_at)}</Text>
       </View>
 
-      {!item.read && <View style={styles.unreadDot} />}
+      {!item.read && <View style={[styles.unreadDot, { backgroundColor: accent }]} />}
     </TouchableOpacity>
   );
 
@@ -207,32 +225,39 @@ export default function Notifications() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00d9ff" />
+      <View style={[styles.loadingContainer, { backgroundColor: backgroundPrimary }]}>
+        <ActivityIndicator size="large" color={accent} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
       <LinearGradient
-        colors={['#2d2d2d', '#1a1a1a']}
-        style={styles.header}
+        colors={[isDark ? '#2d2d2d' : '#f0f0f0', isDark ? '#1a1a1a' : '#ffffff']}
+        style={[styles.header, { borderBottomColor: isDark ? '#3d3d3d' : 'rgba(0,0,0,0.05)' }]}
       >
         <View style={styles.headerTop}>
           <Text style={styles.headerTitle}>Notificações</Text>
-          {unreadCount > 0 && (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity
-              style={styles.markAllButton}
-              onPress={handleMarkAllAsRead}
+              style={[styles.testButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
+              onPress={handleTestNotification}
             >
-              <CheckCheck size={20} color="#00d9ff" />
-              <Text style={styles.markAllText}>Marcar todas</Text>
+              <Bell size={18} color={textSecondary} />
             </TouchableOpacity>
-          )}
+            {unreadCount > 0 && (
+              <TouchableOpacity
+                style={[styles.markAllButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.1)' : 'rgba(0, 217, 255, 0.05)', borderColor: accent }]}
+                onPress={handleMarkAllAsRead}
+              >
+                <CheckCheck size={20} color={accent} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
         {unreadCount > 0 && (
-          <Text style={styles.headerSubtitle}>
+          <Text style={[styles.headerSubtitle, { color: accent }]}>
             {unreadCount} {unreadCount === 1 ? 'não lida' : 'não lidas'}
           </Text>
         )}
@@ -255,9 +280,9 @@ export default function Notifications() {
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Bell size={64} color="#666" />
-            <Text style={styles.emptyStateText}>Nenhuma notificação</Text>
-            <Text style={styles.emptyStateSubtext}>
+            <Bell size={64} color={isDark ? '#666' : '#ccc'} />
+            <Text style={[styles.emptyStateText, { color: textPrimary }]}>Nenhuma notificação</Text>
+            <Text style={[styles.emptyStateSubtext, { color: textSecondary }]}>
               Você será notificado sobre novos eventos e interações
             </Text>
           </View>
@@ -317,6 +342,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#00d9ff',
+  },
+  testButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
   listContent: {
     padding: 16,
