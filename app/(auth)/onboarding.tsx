@@ -43,7 +43,7 @@ const CARD_BORDERS = [
 ];
 
 export default function Onboarding() {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -101,7 +101,7 @@ export default function Onboarding() {
 
   const loadCategories = async () => {
     try {
-      const { data, error } = await supabase.from('categories').select('*').order('name');
+      const { data, error } = await supabase.from('categories').select('*').order('order');
       if (error) throw error;
       setCategories(data || []);
       // Initialize card scale refs
@@ -144,9 +144,10 @@ export default function Onboarding() {
           onboarding_completed: true,
         })
         .eq('id', user.id);
-    } catch {
-      // silent fail — still navigate
+    } catch (error) {
+      console.error('Error saving onboarding:', error);
     } finally {
+      await refreshProfile();
       setSaving(false);
       router.replace('/(tabs)');
     }

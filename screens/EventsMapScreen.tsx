@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { View, StyleSheet, Platform, Alert, Dimensions, Linking } from 'react-native';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUI } from '@/contexts/UIContext';
 
@@ -25,6 +25,7 @@ export default function EventsMapScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { showTabBar } = useUI();
+  const params = useLocalSearchParams();
   const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
@@ -39,6 +40,8 @@ export default function EventsMapScreen() {
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isFilterVisible, setIsFilterVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [trendingOnly, setTrendingOnly] = useState(false);
 
   // Load Initial Data
   useEffect(() => {
@@ -79,11 +82,77 @@ export default function EventsMapScreen() {
     init();
   }, []);
 
+  // Handle incoming navigation parameters (from EventCard click)
+  useEffect(() => {
+    if (events.length === 0) return;
+
+    const handleParams = () => {
+      const eventId = params.eventId as string;
+      const latParam = params.latitude ? parseFloat(params.latitude as string) : null;
+      const lngParam = params.longitude ? parseFloat(params.longitude as string) : null;
+
+      let targetEvent = null;
+
+      if (eventId && eventId !== 'undefined') {
+        targetEvent = events.find(e => e.id === eventId);
+      } else if (latParam && lngParam) {
+        // Fallback para coordenadas
+        targetEvent = events.find(e => 
+          Math.abs(parseFloat(String(e.latitude)) - latParam) < 0.005 && 
+          Math.abs(parseFloat(String(e.longitude)) - lngParam) < 0.005
+        );
+      }
+
+      if (targetEvent) {
+        const lat = parseFloat(String(targetEvent.latitude));
+        const lng = parseFloat(String(targetEvent.longitude));
+
+        setSelectedEvent(targetEvent);
+        
+        setTimeout(() => {
+          mapRef.current?.animateToRegion({
+            latitude: lat - 0.012, 
+            longitude: lng,
+            latitudeDelta: 0.04,
+            longitudeDelta: 0.04,
+          }, 1000);
+        }, 500);
+      }
+    };
+
+    handleParams();
+  }, [params.eventId, params.latitude, params.longitude, events]);
+
   // Filter Events
   const filteredEvents = useMemo(() => {
-    if (!selectedCategory) return events;
-    return events.filter(e => e.category_id === selectedCategory);
-  }, [events, selectedCategory]);
+    let result = events;
+    
+    if (selectedCategory) {
+      result = result.filter(e => e.category_id === selectedCategory);
+    }
+    
+    if (trendingOnly) {
+      // Ordena por popularidade: (likes * 2) + (participantes * 1)
+      result = [...result].sort((a, b) => {
+        const scoreA = (a.likes_count || 0) * 2 + (a.participants_count || 0);
+        const scoreB = (b.likes_count || 0) * 2 + (b.participants_count || 0);
+        return scoreB - scoreA;
+      });
+      // Mostra apenas os top 15 se estiver no modo "Bombando"
+      result = result.slice(0, 15);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(e => 
+        e.title?.toLowerCase().includes(q) || 
+        e.description?.toLowerCase().includes(q) ||
+        e.location_name?.toLowerCase().includes(q)
+      );
+    }
+    
+    return result;
+  }, [events, selectedCategory, searchQuery, trendingOnly]);
 
   // Handlers
   const handleMarkerPress = useCallback((event: any) => {
@@ -166,7 +235,7 @@ export default function EventsMapScreen() {
         key={isDark ? 'dark-map' : 'light-map'}
         ref={mapRef}
         style={styles.map}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_GOOGLE}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         customMapStyle={isDark ? darkMapStyle : lightMapStyle}
         showsUserLocation
         showsMyLocationButton={false}
@@ -191,7 +260,14 @@ export default function EventsMapScreen() {
       {/* UI Layers */}
       <MapHeader 
         onFilterPress={() => setIsFilterVisible(true)} 
-        eventCount={filteredEvents.length} 
+        eventCount={filteredEvents.length}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onSelectCategory={setSelectedCategory}
+        trendingOnly={trendingOnly}
+        onTrendingChange={setTrendingOnly}
       />
 
       <UserLocationButton onPress={handleCenterUser} bottomOffset={selectedEvent ? height * 0.48 : 110} />

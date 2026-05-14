@@ -1,32 +1,41 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Platform } from 'react-native';
-import { Calendar, Clock, MapPin, Users, DollarSign, Volume2, VolumeX, ChevronRight } from 'lucide-react-native';
+import { Calendar, Clock, MapPin, Users, DollarSign, Volume2, VolumeX, ChevronRight, Flag, Heart } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Video, ResizeMode } from 'expo-av';
 import { Event } from '@/types/database';
 import { s, vs, ms } from '@/utils/responsive';
 import { useTheme } from '@/contexts/ThemeContext';
+import MediaCarousel from './MediaCarousel';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface EventCardProps {
-  event: Event;
+  event: any;
   onPress?: () => void;
   isVisible?: boolean;
+  onLike?: (eventId: string, isLiked: boolean) => void;
+  onParticipantsPress?: (eventId: string) => void;
 }
 
 type EventStatus = 'happening' | 'starting-soon' | 'upcoming' | 'ended';
 
-export default function EventCard({ event, onPress, isVisible = true }: EventCardProps) {
+export default function EventCard({ event, onPress, isVisible = true, onLike, onParticipantsPress }: EventCardProps) {
   const router = useRouter();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const [countdown, setCountdown] = useState('');
   const [eventStatus, setEventStatus] = useState<EventStatus>('upcoming');
-  const [isMuted, setIsMuted] = useState(true);
-  const [videoError, setVideoError] = useState(false);
+  const contentTranslateY = useSharedValue(0);
+  const contentOpacity = useSharedValue(1);
 
   useEffect(() => {
+    if (event.type === 'publication' || !event.event_date || !event.event_time) {
+      setCountdown('Publicação');
+      setEventStatus('upcoming');
+      return;
+    }
     const updateCountdown = () => {
       const now = new Date();
       const eventDateTime = new Date(`${event.event_date}T${event.event_time}`);
@@ -44,14 +53,8 @@ export default function EventCard({ event, onPress, isVisible = true }: EventCar
     updateCountdown();
     const interval = setInterval(updateCountdown, 60000);
     return () => clearInterval(interval);
-  }, [event.event_date, event.event_time]);
+  }, [event.event_date, event.event_time, event.type]);
 
-  // Efeito para pausar o som se o cartão sair da tela
-  useEffect(() => {
-    if (!isVisible && !isMuted) {
-      setIsMuted(true);
-    }
-  }, [isVisible]);
 
   const handlePress = () => { 
     if (onPress) onPress(); 
@@ -67,96 +70,164 @@ export default function EventCard({ event, onPress, isVisible = true }: EventCar
     }
   };
 
-  const isVideo = (event.media_type === 'video' || (event.image_url && event.image_url.toLowerCase().includes('.mp4'))) && !videoError;
+  const contentAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: contentTranslateY.value }],
+    opacity: contentOpacity.value,
+  }));
+
+  const handleFullScreenChange = (visible: boolean) => {
+    if (visible) {
+      contentTranslateY.value = withTiming(vs(100), { duration: 300 });
+      contentOpacity.value = withTiming(0, { duration: 250 });
+    } else {
+      contentTranslateY.value = withSpring(0);
+      contentOpacity.value = withTiming(1, { duration: 300 });
+    }
+  };
+
+
+  const isPublication = event.type === 'publication' || !event.event_date || !event.event_time;
 
   return (
-    <TouchableOpacity 
-      style={[styles.card, getStatusStyle(), { backgroundColor: backgroundSecondary, borderColor: isDark ? (getStatusStyle().borderColor || '#333') : 'rgba(0,0,0,0.05)' }]} 
-      onPress={handlePress} 
-      activeOpacity={0.95}
+    <View 
+      style={[styles.card, getStatusStyle(), { backgroundColor: backgroundSecondary, borderColor: isDark ? (getStatusStyle().borderColor || '#333') : 'rgba(0,0,0,0.05)' }]}
     >
-      <View style={[styles.countdownBadge, eventStatus === 'happening' ? { backgroundColor: '#34C759' } : { backgroundColor: 'rgba(0, 217, 255, 0.95)' }]}>
-        <Clock size={12} color="#fff" strokeWidth={3} />
-        <Text style={styles.countdownText}>{countdown}</Text>
-      </View>
-      
       <View style={styles.imageContainer}>
-        {event.image_url ? (
-          isVideo ? (
-            <Video 
-              source={{ uri: event.image_url }} 
-              style={styles.image} 
-              resizeMode={ResizeMode.COVER} 
-              isLooping 
-              shouldPlay={isVisible} 
-              isMuted={isMuted}
-              useNativeControls={false}
-              usePoster={true}
-              posterSource={{ uri: event.image_url }} // Supabase serves a frame if it's a video in some cases, or we use the same URL
-              posterStyle={styles.image}
-              onError={(error) => {
-                // Silenciamos o erro fatal e usamos o fallback para imagem
-                console.log('ℹ️ [EventCard] Vídeo indisponível (usando fallback de imagem):', error);
-                setVideoError(true);
-              }}
-              onPlaybackStatusUpdate={(status: any) => {
-                if (status.error) {
-                  console.log('ℹ️ [EventCard] AVPlayer fallback ativado.');
-                  setVideoError(true);
-                }
-              }}
-            />
-          ) : (
-            <Image source={{ uri: event.image_url }} style={styles.image} resizeMode="cover" />
-          )
+        {event.image_urls && event.image_urls.length > 0 ? (
+          <MediaCarousel 
+            mediaUrls={event.image_urls} 
+            mediaTypes={event.media_types} 
+            height={vs(240)}
+            borderRadius={0}
+            isVisible={isVisible}
+            onFullScreenChange={handleFullScreenChange}
+          />
+        ) : event.image_url ? (
+          <MediaCarousel 
+            mediaUrls={[event.image_url]} 
+            mediaTypes={event.media_type ? [event.media_type] : undefined} 
+            height={vs(240)}
+            borderRadius={0}
+            isVisible={isVisible}
+            onFullScreenChange={handleFullScreenChange}
+          />
         ) : (
           <LinearGradient colors={['#00d9ff', '#ff1493']} style={styles.imagePlaceholder}><Text style={styles.imagePlaceholderText}>UNИA</Text></LinearGradient>
         )}
 
-        {isVideo && (
-          <TouchableOpacity 
-            style={styles.muteBtn} 
-            onPress={(e) => {
-              e.stopPropagation(); // Impede que o clique abra o evento
-              setIsMuted(!isMuted);
-            }}
-          >
-             {isMuted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
-          </TouchableOpacity>
-        )}
-
         <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent', 'rgba(0,0,0,0.9)']} style={styles.overlay} />
+
+        <View style={[styles.countdownBadge, isPublication ? { backgroundColor: '#ff1493' } : (eventStatus === 'happening' ? { backgroundColor: '#34C759' } : { backgroundColor: 'rgba(0, 217, 255, 0.95)' })]}>
+          {isPublication ? <Flag size={12} color="#fff" strokeWidth={3} /> : <Clock size={12} color="#fff" strokeWidth={3} />}
+          <Text style={styles.countdownText}>{countdown}</Text>
+        </View>
 
         {event.categories?.icon && (
           <View style={styles.catBadge}><Text style={styles.catIcon}>{event.categories.icon}</Text><Text style={styles.catText}>{event.categories.name}</Text></View>
         )}
 
-        <View style={styles.dateBadge}>
-          <Text style={styles.dateDay}>{new Date(event.event_date).getDate()}</Text>
-          <Text style={styles.dateMonth}>
-            {['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'][new Date(event.event_date).getMonth()]}
-          </Text>
-        </View>
+        {!isPublication && event.event_date && (
+          <View style={styles.dateBadge}>
+            <Text style={styles.dateDay}>{new Date(event.event_date).getDate()}</Text>
+            <Text style={styles.dateMonth}>
+              {['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'][new Date(event.event_date).getMonth()]}
+            </Text>
+          </View>
+        )}
 
-        <View style={styles.titleBox}><Text style={styles.title} numberOfLines={2}>{event.title}</Text></View>
+        {!isPublication && (
+          <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={styles.titleBox}>
+            <Text style={styles.title} numberOfLines={2}>{event.title}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      <View style={styles.content}>
-        <View style={styles.creatorRow}>
-          <Image source={{ uri: event.profiles?.avatar_url || 'https://via.placeholder.com/150' }} style={[styles.avatar, { borderColor: accent }]} />
-          <Text style={[styles.creatorName, { color: textSecondary }]} numberOfLines={1}>por {event.profiles?.full_name || event.profiles?.username}</Text>
-          {event.is_paid && <View style={styles.priceTag}><Text style={styles.priceText}>R$ {event.price.toFixed(0)}</Text></View>}
-        </View>
-        <TouchableOpacity 
-          style={[styles.infoGrid, { borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
-          onPress={() => router.push(`/event/${event.id}`)}
-        >
-           <View style={styles.infoItem}><Clock size={16} color={accent} /><Text style={[styles.infoValue, { color: textPrimary }]}>{event.event_time.slice(0,5)}</Text></View>
-           <View style={[styles.infoItem, { flex: 1 }]}><MapPin size={16} color="#ff1493" /><Text style={[styles.infoValue, { color: textPrimary }]} numberOfLines={1}>{event.location_name}</Text></View>
-           <ChevronRight size={18} color={textSecondary} />
+      <Animated.View style={[styles.content, contentAnimatedStyle]}>
+        <TouchableOpacity activeOpacity={0.9} onPress={handlePress}>
+          {isPublication && (
+            <Text style={[styles.publicationTitle, { color: textPrimary }]}>{event.title}</Text>
+          )}
+
+          <View style={styles.creatorRow}>
+            <Image source={{ uri: event.profiles?.avatar_url || 'https://via.placeholder.com/150' }} style={[styles.avatar, { borderColor: accent }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.creatorName, { color: textPrimary }]} numberOfLines={1}>
+                {event.profiles?.full_name || event.profiles?.username}
+              </Text>
+              <Text style={[styles.creatorHandle, { color: textSecondary }]}>
+                @{event.profiles?.username}
+              </Text>
+            </View>
+            {event.is_paid && <View style={styles.priceTag}><Text style={styles.priceText}>R$ {event.price.toFixed(0)}</Text></View>}
+          </View>
+
+          {!isPublication ? (
+            <View style={[styles.infoGrid, { borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+               <View style={styles.eventStats}>
+                 <TouchableOpacity 
+                   style={styles.statBtn} 
+                   onPress={() => onLike && onLike(event.id, event.is_liked)}
+                 >
+                   <Heart 
+                     size={18} 
+                     color={event.is_liked ? '#FF3B30' : textSecondary} 
+                     fill={event.is_liked ? '#FF3B30' : 'none'} 
+                   />
+                   <Text style={[styles.statText, { color: textSecondary }]}>{event.likes_count || 0}</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity 
+                   style={styles.statBtn}
+                   onPress={() => onParticipantsPress && onParticipantsPress(event.id)}
+                 >
+                   <Users size={18} color={textSecondary} />
+                   <Text style={[styles.statText, { color: textSecondary }]}>{event.participants_count || 0}</Text>
+                 </TouchableOpacity>
+               </View>
+               
+               <View style={{ flex: 1 }} />
+               
+               <TouchableOpacity 
+                 style={styles.infoItem} 
+                 onPress={() => {
+                   router.push({
+                     pathname: '/(tabs)/map',
+                     params: { 
+                       latitude: event.latitude, 
+                       longitude: event.longitude,
+                       eventId: event.id 
+                     }
+                   });
+                 }}
+               >
+                 <MapPin size={18} color="#ff1493" />
+                 <ChevronRight size={18} color={textSecondary} />
+               </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={[styles.socialActions, { borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+              <View style={styles.socialBtn}>
+                <TouchableOpacity 
+                  style={styles.statBtn} 
+                  onPress={() => onLike && onLike(event.id, event.is_liked)}
+                >
+                  <Heart 
+                    size={20} 
+                    color={event.is_liked ? '#FF3B30' : textSecondary} 
+                    fill={event.is_liked ? '#FF3B30' : 'none'} 
+                  />
+                  <Text style={[styles.statText, { color: textSecondary }]}>{event.likes_count || 0}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flex: 1 }} />
+              <View style={styles.socialBtn}>
+                <Flag size={18} color={textSecondary} />
+                <Text style={[styles.socialBtnText, { color: textSecondary }]}>Publicação</Text>
+              </View>
+            </View>
+          )}
         </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -238,18 +309,6 @@ const styles = StyleSheet.create({
     color: '#fff', 
     fontSize: ms(11), 
     fontWeight: '700' 
-  },
-  muteBtn: { 
-    position: 'absolute', 
-    bottom: vs(12), 
-    left: s(12), 
-    width: s(32), 
-    height: s(32), 
-    borderRadius: ms(16), 
-    backgroundColor: 'rgba(0,0,0,0.5)', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    zIndex: 20 
   },
   dateBadge: { 
     position: 'absolute', 
@@ -335,5 +394,47 @@ const styles = StyleSheet.create({
   infoValue: { 
     fontSize: ms(14), 
     fontWeight: '600' 
+  },
+  publicationTitle: {
+    fontSize: ms(18),
+    fontWeight: '800',
+    marginBottom: vs(12),
+    lineHeight: vs(24),
+  },
+  creatorHandle: {
+    fontSize: ms(12),
+    marginTop: vs(2),
+  },
+  socialActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: vs(15),
+    borderTopWidth: 1,
+    marginTop: vs(5),
+  },
+  socialBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(8),
+  },
+  socialBtnText: {
+    fontSize: ms(13),
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  eventStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(15),
+  },
+  statBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(5),
+  },
+  statText: {
+    fontSize: ms(14),
+    fontWeight: '700',
   },
 });

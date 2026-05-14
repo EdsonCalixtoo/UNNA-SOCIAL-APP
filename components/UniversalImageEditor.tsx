@@ -184,20 +184,28 @@ export default function UniversalImageEditor({ visible, imageUri, onClose, onSav
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => { if(sound) sound.stopAsync(); onClose(); }} style={styles.iconButton}>
-            <X size={28} color="#fff" strokeWidth={2.5} />
-          </TouchableOpacity>
-          <View style={styles.headerRight}>
-            <TouchableOpacity onPress={() => setShowMusicModal(true)} style={styles.iconButton}>
-              <Music size={24} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowLocationInput(true)} style={styles.iconButton}>
-              <MapPin size={24} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setEditingTextId('new')} style={styles.iconButton}>
-              <Type size={24} color="#fff" />
-            </TouchableOpacity>
-          </View>
+          {mode === 'profile' ? (
+            <View style={styles.profileHeader}>
+              <Text style={styles.profileHeaderTitle}>Mover e redimensionar</Text>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity onPress={() => { if(sound) sound.stopAsync(); onClose(); }} style={styles.iconButton}>
+                <X size={28} color="#fff" strokeWidth={2.5} />
+              </TouchableOpacity>
+              <View style={styles.headerRight}>
+                <TouchableOpacity onPress={() => setShowMusicModal(true)} style={styles.iconButton}>
+                  <Music size={24} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowLocationInput(true)} style={styles.iconButton}>
+                  <MapPin size={24} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setEditingTextId('new')} style={styles.iconButton}>
+                  <Type size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </View>
 
         <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 1.0 }} style={styles.canvas}>
@@ -216,7 +224,19 @@ export default function UniversalImageEditor({ visible, imageUri, onClose, onSav
               ]} 
               resizeMode="cover"
             />
-            <View style={styles.overlay} collapsable={false} pointerEvents="none" />
+            <View style={styles.overlay} collapsable={false} pointerEvents="none">
+              {mode === 'profile' && (
+                <View style={styles.profileCropOverlay}>
+                  <View style={styles.cropTop} />
+                  <View style={styles.cropMiddle}>
+                    <View style={styles.cropSide} />
+                    <View style={styles.cropCircle} />
+                    <View style={styles.cropSide} />
+                  </View>
+                  <View style={styles.cropBottom} />
+                </View>
+              )}
+            </View>
             
             {selectedSong && (
               <DraggableItem x={50} y={150}>
@@ -246,23 +266,33 @@ export default function UniversalImageEditor({ visible, imageUri, onClose, onSav
         </ViewShot>
 
         <View style={styles.footer}>
-           {mode === 'story' ? (
-             <TouchableOpacity style={styles.storyBtn} activeOpacity={0.8} onPress={handleCapture}>
-                <View style={styles.avatarCircle}>
-                   <Image source={{ uri: profile?.avatar_url }} style={styles.avatarImage} />
-                </View>
-                <Text style={styles.storyBtnText}>Seu story</Text>
-             </TouchableOpacity>
+           {mode === 'profile' ? (
+             <View style={styles.profileFooter}>
+               <TouchableOpacity onPress={onClose} style={styles.profileFooterBtn}>
+                 <Text style={styles.profileFooterBtnText}>Cancelar</Text>
+               </TouchableOpacity>
+               <TouchableOpacity onPress={handleCapture} style={styles.profileFooterBtn}>
+                 <Text style={styles.profileFooterBtnText}>Escolher</Text>
+               </TouchableOpacity>
+             </View>
+           ) : mode === 'story' ? (
+             <>
+               <TouchableOpacity style={styles.storyBtn} activeOpacity={0.8} onPress={handleCapture}>
+                  <View style={styles.avatarCircle}>
+                     <Image source={{ uri: profile?.avatar_url }} style={styles.avatarImage} />
+                  </View>
+                  <Text style={styles.storyBtnText}>Seu story</Text>
+               </TouchableOpacity>
+               <TouchableOpacity style={styles.publishMainBtn} onPress={handleCapture} disabled={isProcessing}>
+                 {isProcessing ? <ActivityIndicator color="#000" /> : <ChevronRight size={24} color="#000" strokeWidth={3} />}
+               </TouchableOpacity>
+             </>
            ) : (
              <TouchableOpacity style={styles.confirmMainBtn} activeOpacity={0.8} onPress={handleCapture}>
                 <Check size={20} color="#fff" strokeWidth={3} />
                 <Text style={styles.confirmMainBtnText}>CONCLUIR</Text>
              </TouchableOpacity>
            )}
-
-           <TouchableOpacity style={styles.publishMainBtn} onPress={handleCapture} disabled={isProcessing}>
-             {isProcessing ? <ActivityIndicator color="#000" /> : <ChevronRight size={24} color="#000" strokeWidth={3} />}
-           </TouchableOpacity>
         </View>
 
         {/* Music Modal */}
@@ -383,4 +413,44 @@ const styles = StyleSheet.create({
   colorRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, paddingBottom: 40 },
   colorDot: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: 'transparent' },
   activeDot: { borderColor: '#fff' },
+  profileHeader: { 
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center', 
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  profileHeaderTitle: { color: '#fff', fontSize: 17, fontWeight: '400' },
+  profileFooter: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    paddingHorizontal: 25,
+    paddingBottom: 20,
+  },
+  profileFooterBtn: { padding: 10 },
+  profileFooterBtnText: { color: '#fff', fontSize: 18, fontWeight: '400' },
+  profileCropOverlay: { 
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 100,
+  },
+  cropTop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)' },
+  cropMiddle: { flexDirection: 'row', height: SCREEN_WIDTH },
+  cropSide: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)' },
+  cropCircle: { 
+    width: SCREEN_WIDTH, 
+    height: SCREEN_WIDTH, 
+    borderRadius: SCREEN_WIDTH / 2, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.4)',
+    overflow: 'hidden',
+  },
+  cropBottom: { flex: 1.5, backgroundColor: 'rgba(0,0,0,0.85)' },
 });

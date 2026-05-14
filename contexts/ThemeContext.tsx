@@ -47,7 +47,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         accent,
         accentAlt: '#00e5ff',
         textPrimary: '#ffffff',
-        textSecondary: '#8E8E93',
+        textSecondary: '#A0A0A0',
         isDark: true,
       };
     } else {
@@ -57,7 +57,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         accent,
         accentAlt: '#00bcd4',
         textPrimary: '#111111', 
-        textSecondary: '#555555', 
+        textSecondary: '#444444', 
         isDark: false,
       };
     }

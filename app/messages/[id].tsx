@@ -818,7 +818,15 @@ export default function ChatScreen() {
           </TouchableOpacity>
 
           {(conversation || otherUser) && (
-            <View style={styles.userInfo}>
+            <TouchableOpacity 
+              style={styles.userInfo}
+              onPress={() => {
+                if (!conversation?.is_group && otherUser) {
+                  router.push(`/profile/${otherUser.id}`);
+                }
+              }}
+              activeOpacity={0.7}
+            >
               {(conversation?.avatar_url || otherUser?.avatar_url) ? (
                 <Image source={{ uri: conversation?.avatar_url || otherUser?.avatar_url }} style={styles.headerAvatar} />
               ) : (
@@ -846,7 +854,7 @@ export default function ChatScreen() {
                   )}
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           )}
 
           <View style={{ width: 40 }} />

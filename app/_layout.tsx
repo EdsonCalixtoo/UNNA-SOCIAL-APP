@@ -1,4 +1,8 @@
 import '@/lib/polyfills';
+import * as SplashScreen from 'expo-splash-screen';
+
+// Prevent the splash screen from auto-hiding before asset loading is complete.
+SplashScreen.preventAutoHideAsync();
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -24,6 +28,8 @@ Audio.setAudioModeAsync({
   playThroughEarpieceAndroid: false,
 });
 
+import AnimatedSplashScreen from '@/components/AnimatedSplashScreen';
+
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   const segments = useSegments();
@@ -39,25 +45,30 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!user && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (user) {
-      const isGoogleUser = user.app_metadata?.provider === 'google';
       const hasUsername = !!profile?.username;
       const onboardingCompleted = !!profile?.onboarding_completed;
+      const isOnboarding = segments[1] === 'onboarding';
 
-      if (isGoogleUser && !hasUsername && !onboardingCompleted && !isCompleteProfile) {
-        // Apenas redireciona para completar perfil se não tiver username E não tiver terminado onboarding
+      if (!hasUsername && !isCompleteProfile) {
         router.replace('/(auth)/complete-profile');
-      } else if ((hasUsername || onboardingCompleted || !isGoogleUser) && inAuthGroup && !isCompleteProfile) {
+      } else if (hasUsername && !onboardingCompleted) {
+        if (!isOnboarding) {
+          router.replace('/(auth)/onboarding');
+        }
+      } else if (onboardingCompleted && inAuthGroup) {
         router.replace('/(tabs)');
       }
     }
   }, [user, profile, loading, segments]);
 
+  useEffect(() => {
+    if (!loading) {
+      SplashScreen.hideAsync();
+    }
+  }, [loading]);
+
   if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#050505', justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#00d9ff" />
-      </View>
-    );
+    return <AnimatedSplashScreen />;
   }
 
   return <>{children}</>;

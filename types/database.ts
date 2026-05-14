@@ -34,6 +34,7 @@ export interface Event {
   title: string;
   description: string;
   image_url?: string;
+  image_urls?: string[];
   event_date: string;
   event_time: string;
   location_name: string;
@@ -45,7 +46,9 @@ export interface Event {
   category_id?: string;
   subcategory_id?: string;
   media_type?: 'image' | 'video';
+  media_types?: ('image' | 'video')[];
   min_age?: number;
+  type?: 'event' | 'publication';
   status?: string;
   created_at: string;
   updated_at: string;
@@ -73,6 +76,7 @@ export interface Story {
   user_id: string;
   media_url: string;
   media_type: 'image' | 'video';
+  thumbnail_url?: string;
   created_at: string;
   expires_at: string;
   profiles?: Profile;
@@ -83,6 +87,7 @@ export interface Post {
   user_id: string;
   content: string;
   image_url?: string;
+  image_urls?: string[];
   event_id?: string;
   created_at: string;
   profiles?: Profile;

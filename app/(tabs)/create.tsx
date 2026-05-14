@@ -43,6 +43,7 @@ import {
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { uploadFile } from '@/lib/storage';
+import { processMedia } from '@/lib/mediaOptimizer';
 import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -70,10 +71,11 @@ import { useTheme } from '@/contexts/ThemeContext';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const STEPS = [
+  { id: 'type', title: 'O que criar?', subtitle: 'Escolha o tipo de conteúdo' },
   { id: 'media', title: 'A identidade', subtitle: 'Escolha uma capa impactante' },
-  { id: 'details', title: 'O que é?', subtitle: 'Dê um nome e descreva seu evento' },
+  { id: 'details', title: 'O que é?', subtitle: 'Dê um nome e descreva' },
   { id: 'logistics', title: 'Onde e quando?', subtitle: 'Defina o local e horário' },
-  { id: 'settings', title: 'Regras', subtitle: 'Preços e limites de convidados' },
+  { id: 'settings', title: 'Regras', subtitle: 'Preços e limites' },
   { id: 'review', title: 'Revisão', subtitle: 'Confira se tudo está perfeito' }
 ];
 
@@ -84,6 +86,7 @@ export default function CreateEvent() {
   const insets = useSafeAreaInsets();
   
   const [currentStep, setCurrentStep] = useState(0);
+  const [contentType, setContentType] = useState<'event' | 'publication'>('event');
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
@@ -91,8 +94,7 @@ export default function CreateEvent() {
   // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [mediaUrl, setMediaUrl] = useState('');
-  const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
+  const [mediaFiles, setMediaFiles] = useState<{ uri: string; type: 'image' | 'video' }[]>([]);
   const [showCamera, setShowCamera] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [capturedMedia, setCapturedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
@@ -101,6 +103,7 @@ export default function CreateEvent() {
   const [eventDate, setEventDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [eventTime, setEventTime] = useState(() => `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`);
   const [locationName, setLocationName] = useState('');
+  const [locationNumber, setLocationNumber] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [isPaid, setIsPaid] = useState(false);
@@ -120,14 +123,14 @@ export default function CreateEvent() {
     setCurrentStep(0);
     setTitle('');
     setDescription('');
-    setMediaUrl('');
-    setMediaType('image');
+    setMediaFiles([]);
     setCapturedMedia(null);
     setSelectedCategory('');
     setSelectedSubcategory('');
     setEventDate(new Date().toISOString().split('T')[0]);
     setEventTime(`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`);
     setLocationName('');
+    setLocationNumber('');
     setLat(null);
     setLng(null);
     setIsPaid(false);
@@ -145,7 +148,7 @@ export default function CreateEvent() {
   }, [currentStep]);
 
   useEffect(() => { loadCategories(); }, []);
-  const loadCategories = async () => { const { data } = await supabase.from('categories').select('*').order('name'); if (data) setCategories(data); };
+  const loadCategories = async () => { const { data } = await supabase.from('categories').select('*').order('order'); if (data) setCategories(data); };
   const loadSubcategories = async (categoryId: string) => { const { data } = await supabase.from('subcategories').select('*').eq('category_id', categoryId).order('name'); if (data) setSubcategories(data); };
   useEffect(() => { if (selectedCategory) loadSubcategories(selectedCategory); }, [selectedCategory]);
 
@@ -156,17 +159,34 @@ export default function CreateEvent() {
   };
   
   const handleSaveEditor = (finalUri: string) => { 
-    setMediaUrl(finalUri); 
     if (capturedMedia) {
-      setMediaType(capturedMedia.type);
+      setMediaFiles(prev => [...prev, { uri: finalUri, type: capturedMedia.type }]);
     }
     setShowEditor(false); 
   };
 
+  const removeMedia = (index: number) => {
+    setMediaFiles(prev => prev.filter((_, i) => i !== index));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const nextStep = () => {
-    if (currentStep === 0 && !mediaUrl) return Alert.alert('Atenção', 'Escolha uma imagem ou vídeo para o seu evento.');
-    if (currentStep === 1 && (!title || !selectedCategory)) return Alert.alert('Atenção', 'Dê um título e escolha uma categoria.');
-    if (currentStep === 2 && !locationName) return Alert.alert('Atenção', 'Defina um local para o evento.');
+    if (currentStep === 0) {
+      // Step Type Selection - No validation needed
+    }
+    if (currentStep === 1 && mediaFiles.length === 0) return Alert.alert('Atenção', 'Escolha pelo menos uma imagem ou vídeo.');
+    if (currentStep === 2 && (!title || !selectedCategory)) return Alert.alert('Atenção', 'Dê um título e escolha uma categoria.');
+    
+    if (contentType === 'publication') {
+      if (currentStep === 2) {
+        // Skip Logistics and Settings for publications
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setCurrentStep(5); // Jump to Review
+        return;
+      }
+    } else {
+      if (currentStep === 3 && !locationName) return Alert.alert('Atenção', 'Defina um local para o evento.');
+    }
     
     if (currentStep < STEPS.length - 1) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -175,6 +195,10 @@ export default function CreateEvent() {
   };
 
   const prevStep = () => {
+    if (contentType === 'publication' && currentStep === 5) {
+      setCurrentStep(2);
+      return;
+    }
     if (currentStep > 0) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setCurrentStep(currentStep - 1);
@@ -185,33 +209,48 @@ export default function CreateEvent() {
 
   const handleCreate = async () => {
     if (!user) return;
+    if (mediaFiles.length === 0) return Alert.alert('Erro', 'Adicione pelo menos uma mídia.');
+    
     setLoading(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
-      const extension = mediaType === 'video' ? 'mp4' : 'jpg';
-      const storagePath = `events/${user.id}/${Date.now()}.${extension}`;
-      
-      console.log('🚀 Iniciando upload para R2:', storagePath);
-      
-      const publicUrl = await uploadFile(
-        mediaUrl,
-        storagePath,
-        mediaType === 'video' ? 'video/mp4' : 'image/jpeg'
-      );
+      const uploadedUrls: string[] = [];
+      const mediaTypes: ('image' | 'video')[] = [];
 
-      if (!publicUrl) throw new Error('Falha no upload para o R2');
+      for (const media of mediaFiles) {
+        console.log(`🚀 Otimizando mídia antes do upload: ${media.type}`);
+        const optimizedMedia = await processMedia(media.uri, media.type);
+        
+        const storagePath = `events/${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${optimizedMedia.extension}`;
+        
+        console.log('🚀 Iniciando upload para R2:', storagePath);
+        
+        const publicUrl = await uploadFile(
+          optimizedMedia.uri,
+          storagePath,
+          optimizedMedia.contentType
+        );
+
+        if (!publicUrl) throw new Error('Falha no upload para o R2');
+        
+        uploadedUrls.push(publicUrl);
+        mediaTypes.push(optimizedMedia.type);
+      }
       
-      console.log('✅ Upload concluído com sucesso!');
+      console.log('✅ Todos uploads concluídos com sucesso!');
 
       const { data: eventData, error } = await supabase.from('events').insert({
         creator_id: user.id, 
         title, 
         description, 
-        image_url: publicUrl, 
-        media_type: mediaType, 
-        event_date: eventDate, 
-        event_time: eventTime, 
-        location_name: locationName,
+        type: contentType,
+        image_url: uploadedUrls[0], // Capa principal
+        image_urls: uploadedUrls, // Todas as mídias
+        media_type: mediaTypes[0], // Tipo da capa
+        media_types: mediaTypes, // Todos os tipos
+        event_date: contentType === 'event' ? eventDate : null, 
+        event_time: contentType === 'event' ? eventTime : null, 
+        location_name: locationName ? (locationNumber ? `${locationName}, ${locationNumber}` : locationName) : null,
         is_paid: isPaid, 
         price: parseFloat(price) || 0, 
         min_age: parseInt(minAge) || 0, 
@@ -229,9 +268,10 @@ export default function CreateEvent() {
       console.log('📝 Tentando criar post no feed para o evento:', eventData.id);
       const { error: postError } = await supabase.from('posts').insert({
         user_id: user.id,
-        content: `Criei um novo evento: ${title}`,
+        content: contentType === 'event' ? `Criei um novo evento: ${title}` : `Publiquei algo novo: ${title}`,
         event_id: eventData.id,
-        image_url: publicUrl
+        image_url: uploadedUrls[0],
+        image_urls: uploadedUrls
       });
 
       if (postError) {
@@ -262,7 +302,7 @@ export default function CreateEvent() {
       </View>
 
       <View style={[styles.progressBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-        <Animated.View style={[styles.progressBarFill, { width: `${(currentStep + 1) * 20}%`, backgroundColor: accent }]} />
+        <Animated.View style={[styles.progressBarFill, { width: `${((currentStep + 1) / STEPS.length) * 100}%`, backgroundColor: accent }]} />
       </View>
     </View>
   );
@@ -280,42 +320,93 @@ export default function CreateEvent() {
           contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + vs(100) }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
         >
           <StepHeader />
           
           {currentStep === 0 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
-              <TouchableOpacity 
-                activeOpacity={0.9} 
-                style={[styles.mediaPicker, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} 
-                onPress={() => setShowCamera(true)}
-              >
-                {mediaUrl ? (
-                  <View style={styles.previewContainer}>
-                    {mediaType === 'video' ? (
-                      <Video source={{ uri: mediaUrl }} style={styles.mediaPreview} resizeMode={ResizeMode.COVER} isLooping shouldPlay isMuted />
-                    ) : (
-                      <Image source={{ uri: mediaUrl }} style={styles.mediaPreview} />
-                    )}
-                    <View style={styles.mediaBadge}>
-                      <Camera size={16} color="#fff" />
-                      <Text style={styles.mediaBadgeText}>Alterar</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <LinearGradient colors={isDark ? ['#1a1a25', '#0a0a0f'] : ['#ffffff', '#f0f0f0']} style={styles.mediaPlaceholder}>
-                    <View style={[styles.cameraIconBg, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.1)' : 'rgba(0, 217, 255, 0.05)' }]}>
-                      <Camera size={40} color={accent} />
-                    </View>
-                    <Text style={[styles.placeholderMain, { color: textPrimary }]}>Adicione uma capa</Text>
-                    <Text style={[styles.placeholderSub, { color: textSecondary }]}>Imagens ou vídeos que vendam sua ideia</Text>
+              <View style={styles.typeSelectionGrid}>
+                <TouchableOpacity 
+                  activeOpacity={0.9} 
+                  style={[styles.typeCard, contentType === 'event' && { borderColor: accent, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setContentType('event');
+                  }}
+                >
+                  <LinearGradient colors={['#00d9ff', '#0055ff']} style={styles.typeIconBg}>
+                    <Calendar size={32} color="#fff" />
                   </LinearGradient>
+                  <Text style={[styles.typeTitle, { color: textPrimary }]}>Evento</Text>
+                  <Text style={[styles.typeDesc, { color: textSecondary }]}>Tem data, hora e local marcados. Ideal para festas, encontros e treinos.</Text>
+                  {contentType === 'event' && <View style={[styles.checkCircle, { backgroundColor: accent }]}><Check size={14} color="#fff" strokeWidth={4} /></View>}
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  activeOpacity={0.9} 
+                  style={[styles.typeCard, contentType === 'publication' && { borderColor: '#ff1493', backgroundColor: 'rgba(255, 20, 147, 0.05)' }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setContentType('publication');
+                  }}
+                >
+                  <LinearGradient colors={['#ff1493', '#ff0055']} style={styles.typeIconBg}>
+                    <Flag size={32} color="#fff" />
+                  </LinearGradient>
+                  <Text style={[styles.typeTitle, { color: textPrimary }]}>Publicação</Text>
+                  <Text style={[styles.typeDesc, { color: textSecondary }]}>Sem data fixa. Ideal para doações, avisos, anúncios ou compartilhamento geral.</Text>
+                  {contentType === 'publication' && <View style={[styles.checkCircle, { backgroundColor: '#ff1493' }]}><Check size={14} color="#fff" strokeWidth={4} /></View>}
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          )}
+          
+          {currentStep === 1 && (
+            <Animated.View entering={FadeInRight} style={styles.stepContainer}>
+              <View style={styles.mediaGrid}>
+                {mediaFiles.map((media, index) => (
+                  <View key={index} style={[styles.mediaItem, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+                    {media.type === 'video' ? (
+                      <Video source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode={ResizeMode.COVER} isLooping shouldPlay isMuted />
+                    ) : (
+                      <Image source={{ uri: media.uri }} style={styles.mediaPreview} />
+                    )}
+                    <TouchableOpacity 
+                      style={styles.removeMediaBtn} 
+                      onPress={() => removeMedia(index)}
+                    >
+                      <X size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                
+                {mediaFiles.length < 5 && (
+                  <TouchableOpacity 
+                    activeOpacity={0.9} 
+                    style={[styles.mediaPickerSmall, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} 
+                    onPress={() => setShowCamera(true)}
+                  >
+                    <LinearGradient colors={isDark ? ['#1a1a25', '#0a0a0f'] : ['#ffffff', '#f0f0f0']} style={styles.mediaPlaceholderSmall}>
+                      <Camera size={30} color={accent} />
+                      <Text style={[styles.placeholderSmallText, { color: textPrimary }]}>Adicionar</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
                 )}
-              </TouchableOpacity>
+              </View>
+              
+              {mediaFiles.length === 0 && (
+                <View style={styles.emptyMediaInfo}>
+                  <Info size={20} color={accent} />
+                  <Text style={[styles.emptyMediaText, { color: textSecondary }]}>
+                    Adicione até 5 fotos ou vídeos para destacar seu evento.
+                  </Text>
+                </View>
+              )}
             </Animated.View>
           )}
 
-          {currentStep === 1 && (
+          {currentStep === 2 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: accent }]}>NOME DO EVENTO</Text>
@@ -386,41 +477,138 @@ export default function CreateEvent() {
             </Animated.View>
           )}
 
-          {currentStep === 2 && (
-            <Animated.View entering={FadeInRight} style={styles.stepContainer}>
-              <View style={styles.inputGroup}>
+          {currentStep === 3 && (
+            <Animated.View entering={FadeInRight} style={[styles.stepContainer, { zIndex: 10 }]}>
+              <View style={[styles.inputGroup, { zIndex: 100 }]}>
                 <Text style={[styles.label, { color: accent }]}>LOCALIZAÇÃO</Text>
-                <View style={[styles.searchWrapper, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
-                  <MapPin size={20} color={accent} style={styles.searchIcon} />
-                  <GooglePlacesAutocomplete
-                    placeholder="Onde será o encontro?"
-                    onPress={(data, details = null) => {
-                      setLocationName(data.description || '');
-                      if (details?.geometry?.location) {
-                        setLat(details.geometry.location.lat);
-                        setLng(details.geometry.location.lng);
-                      }
-                    }}
-                    fetchDetails={true}
-                    query={{ key: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY, language: 'pt-BR' }}
-                    styles={{
-                      textInput: [styles.locationInput, { color: textPrimary }],
-                      listView: [styles.autocompleteList, { backgroundColor: backgroundSecondary }],
-                      row: [styles.autocompleteRow, { backgroundColor: 'transparent' }],
-                      description: { color: textPrimary },
-                    }}
-                    enablePoweredByContainer={false}
-                    textInputProps={{ 
-                      placeholderTextColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)', 
-                      value: locationName, 
-                      onChangeText: setLocationName 
-                    }}
-                    disableScroll={true} // Evita conflito com o ScrollView pai
-                  />
-                </View>
+                <GooglePlacesAutocomplete
+                  placeholder="Onde será o encontro?"
+                  onPress={(data, details = null) => {
+                    setLocationName(data.structured_formatting?.main_text || data.description || '');
+                    if (details?.geometry?.location) {
+                      setLat(details.geometry.location.lat);
+                      setLng(details.geometry.location.lng);
+                    }
+                  }}
+                  fetchDetails={true}
+                  query={{ key: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY, language: 'pt-BR' }}
+                  styles={{
+                    container: { flex: 0, zIndex: 100 },
+                    textInputContainer: {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      height: 60,
+                    },
+                    textInput: {
+                      backgroundColor: 'transparent',
+                      color: textPrimary,
+                      fontSize: 16,
+                      flex: 1,
+                      height: '100%',
+                      paddingRight: 16,
+                      paddingLeft: 4, // Compensation since MapPin gives padding
+                    },
+                    listView: {
+                      position: 'absolute',
+                      top: 68, // Flutua abaixo do input
+                      left: 0,
+                      right: 0,
+                      backgroundColor: isDark ? '#1a1a24' : '#ffffff',
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                      elevation: 10,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 10 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 20,
+                      maxHeight: 280, // Limita altura com scroll suave
+                      zIndex: 1000,
+                    },
+                    row: {
+                      paddingHorizontal: 20,
+                      paddingVertical: 16,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      minHeight: 70,
+                      backgroundColor: 'transparent',
+                    },
+                    separator: {
+                      height: 1,
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+                      marginLeft: 64, // Alinha com o texto, ignorando o ícone
+                      marginRight: 20,
+                    },
+                  }}
+                  renderLeftButton={() => (
+                    <View style={{ justifyContent: 'center', paddingLeft: 18, paddingRight: 8 }}>
+                      <MapPin size={22} color={accent} />
+                    </View>
+                  )}
+                  renderRow={(data) => {
+                    const mainText = data.structured_formatting?.main_text || data.description;
+                    const secondaryText = data.structured_formatting?.secondary_text || '';
+                    return (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
+                          <MapPin size={18} color={textSecondary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: textPrimary, fontSize: 16, fontWeight: '700', marginBottom: secondaryText ? 4 : 0 }}>
+                            {mainText}
+                          </Text>
+                          {!!secondaryText && (
+                            <Text style={{ color: textSecondary, fontSize: 14, lineHeight: 20 }} numberOfLines={2}>
+                              {secondaryText}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  }}
+                  enablePoweredByContainer={false}
+                  textInputProps={{ 
+                    placeholderTextColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)', 
+                    value: locationName, 
+                    onChangeText: setLocationName 
+                  }}
+                  listUnderlayColor={isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'}
+                  disableScroll={false} // Ativa o scroll interno do dropdown limitando maxHeight
+                />
               </View>
 
-              <View style={styles.row}>
+              {/* Novo Campo para Número e Complemento com PREVIEW */}
+              <View style={[styles.inputGroup, { marginTop: 16, zIndex: 1 }]}>
+                <Text style={[styles.label, { color: accent }]}>NÚMERO E COMPLEMENTO</Text>
+                <TextInput 
+                  style={[styles.hugeInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary, fontSize: 16, height: 60 }]}
+                  placeholder="Ex: 123, Apto 42"
+                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
+                  value={locationNumber}
+                  onChangeText={setLocationNumber}
+                />
+                
+                {/* PREVIEW DO ENDEREÇO FINAL */}
+                {(locationName !== '' || locationNumber !== '') && (
+                  <Animated.View entering={FadeInRight} style={{ marginTop: 16, padding: 20, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.03)' : 'rgba(0, 217, 255, 0.05)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0, 217, 255, 0.15)', flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0, 217, 255, 0.1)', justifyContent: 'center', alignItems: 'center' }}>
+                      <Check size={20} color="#00d9ff" strokeWidth={3} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#00d9ff', fontSize: 11, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>ENDEREÇO FINAL</Text>
+                      <Text style={{ color: textPrimary, fontSize: 15, fontWeight: '600', lineHeight: 22 }}>
+                        {locationName}{locationNumber ? `, ${locationNumber}` : ''}
+                      </Text>
+                    </View>
+                  </Animated.View>
+                )}
+              </View>
+
+              <View style={[styles.row, { marginTop: 24 }]}>
                 <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setShowDatePicker(true)}>
                   <Calendar size={20} color="#ff1493" />
                   <View>
@@ -440,7 +628,7 @@ export default function CreateEvent() {
             </Animated.View>
           )}
 
-          {currentStep === 3 && (
+          {currentStep === 4 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
                 <View>
@@ -496,33 +684,48 @@ export default function CreateEvent() {
             </Animated.View>
           )}
 
-          {currentStep === 4 && (
+          {currentStep === 5 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={styles.reviewCard}>
-                {mediaType === 'video' ? (
-                  <Video 
-                    source={{ uri: mediaUrl }} 
-                    style={styles.reviewImage} 
-                    resizeMode={ResizeMode.COVER} 
-                    shouldPlay 
-                    isLooping 
-                    isMuted 
-                  />
-                ) : (
-                  <Image source={{ uri: mediaUrl }} style={styles.reviewImage} />
-                )}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.reviewMediaScroll}>
+                  {mediaFiles.map((media, index) => (
+                    <View key={index} style={styles.reviewMediaItem}>
+                      {media.type === 'video' ? (
+                        <Video 
+                          source={{ uri: media.uri }} 
+                          style={styles.reviewImage} 
+                          resizeMode={ResizeMode.COVER} 
+                          shouldPlay 
+                          isLooping 
+                          isMuted 
+                        />
+                      ) : (
+                        <Image source={{ uri: media.uri }} style={styles.reviewImage} />
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
                 <LinearGradient colors={['transparent', 'rgba(0,0,0,0.9)']} style={StyleSheet.absoluteFill} />
                 <View style={styles.reviewContent}>
                   <Text style={styles.reviewTag}>{categories.find(c => c.id === selectedCategory)?.name}</Text>
                   <Text style={styles.reviewMainTitle}>{title}</Text>
-                  <View style={styles.reviewRow}>
-                    <Calendar size={14} color="#fff" />
-                    <Text style={styles.reviewText}>{new Date(eventDate).toLocaleDateString('pt-BR')} às {eventTime}</Text>
-                  </View>
-                  <View style={styles.reviewRow}>
-                    <MapPin size={14} color="#fff" />
-                    <Text style={styles.reviewText} numberOfLines={1}>{locationName}</Text>
-                  </View>
+                  {contentType === 'event' ? (
+                    <>
+                      <View style={styles.reviewRow}>
+                        <Calendar size={14} color="#fff" />
+                        <Text style={styles.reviewText}>{new Date(eventDate).toLocaleDateString('pt-BR')} às {eventTime}</Text>
+                      </View>
+                      <View style={styles.reviewRow}>
+                        <MapPin size={14} color="#fff" />
+                        <Text style={styles.reviewText} numberOfLines={1}>{locationName}</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View style={styles.reviewRow}>
+                      <Flag size={14} color="#fff" />
+                      <Text style={styles.reviewText}>Publicação sem data fixa</Text>
+                    </View>
+                  )}
                 </View>
               </View>
               
@@ -532,7 +735,7 @@ export default function CreateEvent() {
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <>
-                      <Text style={[styles.publishText, { color: '#fff' }]}>PUBLICAR EVENTO</Text>
+                      <Text style={[styles.publishText, { color: '#fff' }]}>PUBLICAR {contentType === 'event' ? 'EVENTO' : 'AGORA'}</Text>
                       <Sparkles size={20} color="#fff" />
                     </>
                   )}
@@ -545,7 +748,7 @@ export default function CreateEvent() {
       </KeyboardAvoidingView>
 
       {/* Floating Action Button Group */}
-      {currentStep < 4 && (
+      {currentStep < 5 && (
         <View style={[styles.fabContainer, { bottom: insets.bottom + vs(20) }]}>
           <View style={styles.fabRow}>
             {currentStep > 0 ? (
@@ -576,7 +779,12 @@ export default function CreateEvent() {
       )}
 
       {/* Modals */}
-      <StoryCameraModal visible={showCamera} onClose={() => setShowCamera(false)} onCapture={handleCapture} />
+      <StoryCameraModal 
+        visible={showCamera} 
+        onClose={() => setShowCamera(false)} 
+        onCapture={handleCapture}
+        usageType="event"
+      />
       {capturedMedia && (
         <StoryAdvancedEditor visible={showEditor} mediaUri={capturedMedia.uri} mediaType={capturedMedia.type} mode="event" onClose={() => setShowEditor(false)} onSave={handleSaveEditor} />
       )}
@@ -861,7 +1069,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   mediaPreview: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   mediaBadge: {
     position: 'absolute',
@@ -1335,5 +1544,112 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 16,
     fontWeight: '900',
+  },
+  mediaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: s(12),
+    marginTop: vs(10),
+  },
+  mediaItem: {
+    width: (SCREEN_WIDTH - s(48) - s(24)) / 2,
+    height: vs(180),
+    borderRadius: ms(20),
+    overflow: 'hidden',
+    borderWidth: 1,
+    position: 'relative',
+  },
+  removeMediaBtn: {
+    position: 'absolute',
+    top: vs(8),
+    right: s(8),
+    backgroundColor: 'rgba(255, 0, 0, 0.7)',
+    width: s(28),
+    height: s(28),
+    borderRadius: ms(14),
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  mediaPickerSmall: {
+    width: (SCREEN_WIDTH - s(48) - s(24)) / 2,
+    height: vs(180),
+    borderRadius: ms(20),
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  mediaPlaceholderSmall: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderSmallText: {
+    fontSize: ms(12),
+    fontWeight: '700',
+    marginTop: vs(8),
+  },
+  emptyMediaInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 217, 255, 0.05)',
+    padding: ms(16),
+    borderRadius: ms(16),
+    marginTop: vs(24),
+    gap: s(12),
+  },
+  emptyMediaText: {
+    fontSize: ms(14),
+    flex: 1,
+    lineHeight: vs(20),
+  },
+  reviewMediaScroll: {
+    width: '100%',
+    height: vs(350),
+  },
+  reviewMediaItem: {
+    width: SCREEN_WIDTH - s(48),
+    height: vs(350),
+  },
+  typeSelectionGrid: {
+    gap: vs(20),
+    marginTop: vs(10),
+  },
+  typeCard: {
+    borderRadius: ms(25),
+    padding: ms(24),
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  typeIconBg: {
+    width: s(64),
+    height: s(64),
+    borderRadius: ms(20),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: vs(16),
+  },
+  typeTitle: {
+    fontSize: ms(22),
+    fontWeight: '900',
+    marginBottom: vs(8),
+  },
+  typeDesc: {
+    fontSize: ms(14),
+    lineHeight: vs(20),
+    opacity: 0.8,
+  },
+  checkCircle: {
+    position: 'absolute',
+    top: vs(20),
+    right: s(20),
+    width: s(28),
+    height: s(28),
+    borderRadius: ms(14),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -41,7 +41,7 @@ serve(async (req) => {
     if (error) throw error;
 
     // Transformar URLs para CDN Otimizada
-    const optimizedStories = stories.map((s: any) => {
+    const optimizedStories = (stories || []).map((s: any) => {
       const isVideo = s.media_type === 'video';
       const rawUrl = s.media_url;
       
@@ -72,7 +72,8 @@ serve(async (req) => {
     );
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), { 
+    const error = err as Error;
+    return new Response(JSON.stringify({ error: error.message }), { 
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500 
     });

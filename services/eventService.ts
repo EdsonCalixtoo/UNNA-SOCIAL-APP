@@ -5,20 +5,22 @@ export const eventService = {
   /**
    * Busca eventos ao vivo com todos os relacionamentos necessários
    */
-  async getLiveEvents(): Promise<Event[]> {
+  async getLiveEvents(): Promise<any[]> {
     const { data, error } = await supabase
       .from('events')
       .select(`
         *,
         profiles:creator_id (id, username, full_name, avatar_url),
         categories:category_id (id, name, icon),
-        subcategories:subcategory_id (id, name)
+        subcategories:subcategory_id (id, name),
+        likes:event_likes(count),
+        participants:event_participants(count)
       `)
       .eq('status', 'ao_vivo')
       .not('latitude', 'is', null)
       .not('longitude', 'is', null)
       .order('event_date', { ascending: true })
-      .limit(50);
+      .limit(100);
 
     if (error) {
       console.error('❌ Supabase error loading events:', error);
@@ -26,17 +28,15 @@ export const eventService = {
     }
 
     const now = new Date();
-    // Filtra eventos que não terminaram (4h de duração estimada)
-    return (data || []).filter((event) => {
+    return (data || []).map(event => ({
+      ...event,
+      likes_count: event.likes?.[0]?.count || 0,
+      participants_count: event.participants?.[0]?.count || 0,
+    })).filter((event) => {
       if (!event.event_date || !event.event_time) return false;
-      
-      // Cria data/hora do evento (YYYY-MM-DD + THH:mm:ss)
       const eventDateTime = new Date(`${event.event_date}T${event.event_time}`);
       if (isNaN(eventDateTime.getTime())) return false;
-      
-      // Define fim do evento como 4h após o início
-      const eventEndTime = new Date(eventDateTime.getTime() + 4 * 60 * 60 * 1000);
-      
+      const eventEndTime = new Date(eventDateTime.getTime() + 6 * 60 * 60 * 1000); // 6h duration
       return eventEndTime > now;
     });
   },
@@ -48,7 +48,7 @@ export const eventService = {
     const { data, error } = await supabase
       .from('categories')
       .select('id, name, icon')
-      .order('name', { ascending: true });
+      .order('order', { ascending: true });
 
     if (error) throw error;
     return data || [];

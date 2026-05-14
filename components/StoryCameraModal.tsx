@@ -19,9 +19,10 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onCapture: (uri: string, type: 'image' | 'video') => void;
+  usageType?: 'story' | 'event' | 'profile';
 }
 
-export default function StoryCameraModal({ visible, onClose, onCapture }: Props) {
+export default function StoryCameraModal({ visible, onClose, onCapture, usageType = 'story' }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const [facing, setFacing] = useState<CameraType>('back');
@@ -103,7 +104,9 @@ export default function StoryCameraModal({ visible, onClose, onCapture }: Props)
     return (
       <Modal visible={visible} animationType="slide">
         <View style={[st.root, { justifyContent: 'center', padding: 32 }]}>
-          <Text style={st.permText}>Precisamos da câmera e microfone para os Stories</Text>
+          <Text style={st.permText}>
+            Precisamos da câmera e microfone para {usageType === 'event' ? 'o seu Evento' : usageType === 'profile' ? 'o seu Perfil' : 'os Stories'}
+          </Text>
           <TouchableOpacity style={st.permBtn} onPress={() => { requestPermission(); requestMicPermission(); }}>
             <Text style={st.permBtnTxt}>Dar permissão</Text>
           </TouchableOpacity>

@@ -128,7 +128,7 @@ export default function CompleteProfile() {
           full_name: fullName,
           avatar_url: googlePhoto || null,
           updated_at: new Date().toISOString(),
-          onboarding_completed: false, // Define como falso inicialmente
+          onboarding_completed: false, // Mantém como falso para ele passar pelas categorias agora
         });
 
       if (updateError) throw updateError;

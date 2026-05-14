@@ -46,6 +46,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [error, setError] = useState('');
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
@@ -54,7 +55,7 @@ export default function Login() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState('');
 
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithGoogle, signInWithApple } = useAuth();
   const router = useRouter();
   const { width, height } = useWindowDimensions();
 
@@ -183,6 +184,23 @@ export default function Login() {
       shakeError();
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    setAppleLoading(true);
+    setError('');
+    try {
+      const { error: appleError } = await signInWithApple();
+      if (appleError) {
+        setError(appleError.message);
+        shakeError();
+      }
+    } catch (err: any) {
+      setError('Erro ao entrar com Apple');
+      shakeError();
+    } finally {
+      setAppleLoading(false);
     }
   };
 
@@ -359,27 +377,48 @@ export default function Login() {
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Google Login Button */}
-            <TouchableOpacity
-              style={[styles.googleBtn, googleLoading && { opacity: 0.7 }]}
-              onPress={handleGoogleLogin}
-              disabled={loading || googleLoading}
-              activeOpacity={0.8}
-            >
-              <View style={styles.googleBtnContent}>
+            {/* Social Login Buttons */}
+            <View style={styles.socialRow}>
+              {/* Google Button */}
+              <TouchableOpacity
+                style={[styles.socialBtn, googleLoading && { opacity: 0.7 }]}
+                onPress={handleGoogleLogin}
+                disabled={loading || googleLoading || appleLoading}
+                activeOpacity={0.8}
+              >
                 {googleLoading ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <>
                     <Image 
                       source={{ uri: 'https://cdn-icons-png.flaticon.com/512/2991/2991148.png' }} 
-                      style={styles.googleIcon} 
+                      style={styles.socialIcon} 
                     />
-                    <Text style={[styles.googleBtnText, { fontSize: fs(15) }]}>Entrar com Google</Text>
+                    <Text style={[styles.socialBtnText, { fontSize: fs(14) }]}>Google</Text>
                   </>
                 )}
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+
+              {/* Apple Button */}
+              <TouchableOpacity
+                style={[styles.socialBtn, appleLoading && { opacity: 0.7 }]}
+                onPress={handleAppleLogin}
+                disabled={loading || googleLoading || appleLoading}
+                activeOpacity={0.8}
+              >
+                {appleLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Image 
+                      source={{ uri: 'https://cdn-icons-png.flaticon.com/512/0/747.png' }} 
+                      style={[styles.socialIcon, { tintColor: '#fff' }]} 
+                    />
+                    <Text style={[styles.socialBtnText, { fontSize: fs(14) }]}>Apple</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
 
             {/* Register link */}
             <View style={styles.registerRow}>
@@ -558,27 +597,29 @@ const styles = StyleSheet.create({
   dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.08)' },
   dividerText: { color: '#555', fontWeight: '600' },
 
-  // Register Row
-  googleBtn: {
-    width: '100%',
+  // Social Row
+  socialRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  socialBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 20,
+    height: 56,
+    gap: 10,
   },
-  googleBtnContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    gap: 12,
+  socialIcon: {
+    width: 20,
+    height: 20,
   },
-  googleIcon: {
-    width: 24,
-    height: 24,
-  },
-  googleBtnText: {
+  socialBtnText: {
     color: '#fff',
     fontWeight: '700',
   },

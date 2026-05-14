@@ -3,19 +3,19 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIn
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Profile, Event } from '@/types/database';
-import { 
-  ArrowLeft, 
-  UserPlus, 
-  UserMinus, 
-  UserCheck, 
-  Calendar, 
-  MapPin, 
-  Users, 
-  Lock, 
-  Star, 
-  Award, 
-  Eye, 
-  MessageCircle, 
+import {
+  ArrowLeft,
+  UserPlus,
+  UserMinus,
+  UserCheck,
+  Calendar,
+  MapPin,
+  Users,
+  Lock,
+  Star,
+  Award,
+  Eye,
+  MessageCircle,
   Share2,
   Sparkles,
   Heart,
@@ -55,7 +55,7 @@ export default function UserProfile() {
   // Animations
   const scrollY = useRef(new Animated.Value(0)).current;
   const tabIndicatorPos = useRef(new Animated.Value(0)).current;
-  const fadeAnim  = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -79,6 +79,7 @@ export default function UserProfile() {
   }, [activeTab, width]);
 
   const loadUserProfile = async () => {
+    if (!id || id === 'undefined') return;
     try {
       setLoading(true);
 
@@ -117,8 +118,8 @@ export default function UserProfile() {
         setUserInterests(interests);
 
         if (currentUserProfile?.preferred_categories) {
-          const shared = catRes.data.filter(c => 
-            profileData.preferred_categories?.includes(c.id) && 
+          const shared = catRes.data.filter(c =>
+            profileData.preferred_categories?.includes(c.id) &&
             currentUserProfile.preferred_categories?.includes(c.id)
           );
           setSharedInterests(shared);
@@ -135,6 +136,7 @@ export default function UserProfile() {
   };
 
   const loadEvents = async () => {
+    if (!id || id === 'undefined') return;
     try {
       const today = new Date().toISOString().split('T')[0];
 
@@ -292,41 +294,74 @@ export default function UserProfile() {
           )}
 
           <View style={styles.mainActions}>
-            <TouchableOpacity onPress={handleFollowAction} style={[styles.followBtn, { backgroundColor: isFollowing ? backgroundSecondary : (profile.accent_color || '#ff1493') }]} disabled={actionLoading}>
-              {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={[styles.followBtnText, { color: isFollowing ? textPrimary : '#fff' }]}>{isFollowing ? 'Seguindo' : hasRequestPending ? 'Pendente' : 'Seguir'}</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.messageBtn, { backgroundColor: isDark ? 'rgba(0,217,255,0.1)' : 'rgba(0,217,255,0.05)' }]} onPress={() => router.push(`/messages/${id}?userId=${id}`)}>
-              <MessageCircle size={20} color={accent} />
-            </TouchableOpacity>
+            {user?.id === profile.id ? (
+              <TouchableOpacity onPress={() => router.push('/profile/edit')} style={[styles.followBtn, { backgroundColor: backgroundSecondary, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} disabled={actionLoading}>
+                <Text style={[styles.followBtnText, { color: textPrimary }]}>Editar Perfil</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <TouchableOpacity onPress={handleFollowAction} style={[styles.followBtn, { backgroundColor: isFollowing ? backgroundSecondary : (profile.accent_color || '#ff1493') }]} disabled={actionLoading}>
+                  {actionLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={[styles.followBtnText, { color: isFollowing ? textPrimary : '#fff' }]}>
+                      {isFollowing ? 'Seguindo' : hasRequestPending ? 'Solicitado' : profile.is_private ? 'Solicitar para seguir' : 'Seguir'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.messageBtn, { backgroundColor: isDark ? 'rgba(0,217,255,0.1)' : 'rgba(0,217,255,0.05)' }]} onPress={() => router.push(`/messages/${id}?userId=${id}`)}>
+                  <MessageCircle size={20} color={accent} />
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
 
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}><Text style={[styles.statValue, { color: textPrimary }]}>{eventsCount}</Text><Text style={[styles.statLabel, { color: textSecondary }]}>Eventos</Text></View>
-          <View style={styles.statDivider} />
-          <TouchableOpacity style={styles.statItem} onPress={() => router.push(`/profile/${id}/followers`)}><Text style={[styles.statValue, { color: textPrimary }]}>{followersCount}</Text><Text style={[styles.statLabel, { color: textSecondary }]}>Seguidores</Text></TouchableOpacity>
-          <View style={styles.statDivider} />
-          <TouchableOpacity style={styles.statItem} onPress={() => router.push(`/profile/${id}/following`)}><Text style={[styles.statValue, { color: textPrimary }]}>{followingCount}</Text><Text style={[styles.statLabel, { color: textSecondary }]}>Seguindo</Text></TouchableOpacity>
-        </View>
-
-        <View style={styles.tabsWrapper}>
-          <View style={[styles.tabsTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-            <Animated.View style={[styles.tabIndicator, { backgroundColor: backgroundSecondary, transform: [{ translateX: tabIndicatorPos }] }]} />
-            <TouchableOpacity style={styles.tabBtn} onPress={() => setActiveTab('created')}><Calendar size={18} color={activeTab === 'created' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'created' ? textPrimary : textSecondary }]}>Criados</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.tabBtn} onPress={() => setActiveTab('joined')}><Users size={18} color={activeTab === 'joined' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'joined' ? textPrimary : textSecondary }]}>Participando</Text></TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.listContainer}>
-          {events.length === 0 ? (
-            <View style={styles.emptyState}>
-              <View style={[styles.emptyIconBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}><Calendar size={40} color={textSecondary} strokeWidth={1} /></View>
-              <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem eventos ainda</Text>
+        {(profile.is_private && !isFollowing && user?.id !== profile.id) ? (
+          <View style={styles.privacyWall}>
+            <View style={[styles.lockCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+              <Lock size={40} color={textSecondary} strokeWidth={1.5} />
             </View>
-          ) : (
-            <View style={styles.eventsGrid}>{events.map((event) => <EventCard key={event.id} event={event} />)}</View>
-          )}
-        </View>
+            <Text style={[styles.privacyTitle, { color: textPrimary }]}>Esta conta é privada</Text>
+            <Text style={[styles.privacySubtext, { color: textSecondary }]}>
+              Siga esta conta para ver seus eventos e interações.
+            </Text>
+            {hasRequestPending && (
+              <View style={[styles.pendingBadge, { backgroundColor: isDark ? 'rgba(0,217,255,0.1)' : 'rgba(0,217,255,0.05)' }]}>
+                <Text style={[styles.pendingText, { color: accent }]}>Solicitação enviada</Text>
+              </View>
+            )}
+          </View>
+        ) : (
+          <>
+            <View style={styles.statsContainer}>
+              <View style={styles.statItem}><Text style={[styles.statValue, { color: textPrimary }]}>{eventsCount}</Text><Text style={[styles.statLabel, { color: textSecondary }]}>Eventos</Text></View>
+              <View style={styles.statDivider} />
+              <TouchableOpacity style={styles.statItem} onPress={() => router.push(`/profile/${id}/followers`)}><Text style={[styles.statValue, { color: textPrimary }]}>{followersCount}</Text><Text style={[styles.statLabel, { color: textSecondary }]}>Seguidores</Text></TouchableOpacity>
+              <View style={styles.statDivider} />
+              <TouchableOpacity style={styles.statItem} onPress={() => router.push(`/profile/${id}/following`)}><Text style={[styles.statValue, { color: textPrimary }]}>{followingCount}</Text><Text style={[styles.statLabel, { color: textSecondary }]}>Seguindo</Text></TouchableOpacity>
+            </View>
+
+            <View style={styles.tabsWrapper}>
+              <View style={[styles.tabsTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <Animated.View style={[styles.tabIndicator, { backgroundColor: backgroundSecondary, transform: [{ translateX: tabIndicatorPos }] }]} />
+                <TouchableOpacity style={styles.tabBtn} onPress={() => setActiveTab('created')}><Calendar size={18} color={activeTab === 'created' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'created' ? textPrimary : textSecondary }]}>Criados</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.tabBtn} onPress={() => setActiveTab('joined')}><Users size={18} color={activeTab === 'joined' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'joined' ? textPrimary : textSecondary }]}>Participando</Text></TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.listContainer}>
+              {events.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <View style={[styles.emptyIconBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}><Calendar size={40} color={textSecondary} strokeWidth={1} /></View>
+                  <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem eventos ainda</Text>
+                </View>
+              ) : (
+                <View style={styles.eventsGrid}>{events.map((event) => <EventCard key={event.id} event={event} />)}</View>
+              )}
+            </View>
+          </>
+        )}
       </Animated.ScrollView>
     </View>
   );
@@ -375,4 +410,10 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40 },
   emptyIconBg: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   emptyTitle: { fontSize: ms(18), fontWeight: '900', marginBottom: 10 },
+  privacyWall: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40 },
+  lockCircle: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  privacyTitle: { fontSize: ms(18), fontWeight: '900', marginBottom: 8 },
+  privacySubtext: { fontSize: ms(14), textAlign: 'center', lineHeight: 20 },
+  pendingBadge: { marginTop: 24, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  pendingText: { fontSize: ms(13), fontWeight: '800' },
 });

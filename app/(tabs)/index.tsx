@@ -1,17 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Image, Modal, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Image, Modal, ScrollView, Platform, Dimensions } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Post, Category, Subcategory } from '@/types/database';
 import StoriesBar from '@/components/StoriesBar';
 import PostCard from '@/components/PostCard';
 import EventCard from '@/components/EventCard';
+import { EventParticipantsModal } from '@/components/EventParticipantsModal';
 import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
 import PageTransition from '@/components/PageTransition';
+import * as Haptics from 'expo-haptics';
+import { Check } from 'lucide-react-native';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -24,6 +27,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useUI } from '@/contexts/UIContext';
 
+const { width } = Dimensions.get('window');
+
 interface ExtendedPost {
   id: string;
   user_id: string;
@@ -31,6 +36,8 @@ interface ExtendedPost {
   image_url?: string;
   event_id?: string;
   created_at: string;
+  is_liked?: boolean;
+  likes_count?: number;
   profiles?: {
     id: string;
     username: string;
@@ -51,6 +58,9 @@ interface ExtendedPost {
     price: number;
     category_id?: string;
     subcategory_id?: string;
+    is_liked?: boolean;
+    likes_count?: number;
+    participants_count?: number;
     created_at: string;
     updated_at: string;
     categories?: {
@@ -81,8 +91,6 @@ interface ExtendedPost {
       updated_at: string;
     };
   };
-  likes_count?: number;
-  is_liked?: boolean;
 }
 
 export default function Feed() {
@@ -100,6 +108,8 @@ export default function Feed() {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
+  const [selectedEventIdForParticipants, setSelectedEventIdForParticipants] = useState<string | null>(null);
   const [visibleItems, setVisibleItems] = useState<string[]>([]);
 
   const scrollY = useSharedValue(0);
@@ -144,8 +154,7 @@ export default function Feed() {
 
   useEffect(() => {
     loadUnreadNotifications();
-    // ... rest of useEffect subscriptions ...
-
+    
     // Gerar um ID único para esta instância da inscrição para evitar conflitos de HMR
     const instanceId = Math.random().toString(36).substring(7);
 
@@ -272,19 +281,13 @@ export default function Feed() {
 
   const loadCategories = async () => {
     try {
-      console.log('[Feed] Loading categories...');
       const { data, error } = await supabase
         .from('categories')
         .select('*')
-        .order('name');
+        .order('order');
 
-      console.log('[Feed] Categories loaded:', { count: data?.length, error });
-      if (error) {
-        console.error('[Feed] Error:', error);
-        throw error;
-      }
+      if (error) throw error;
       setCategories(data || []);
-      console.log('[Feed] Categories set:', data?.length);
     } catch (error) {
       console.error('Error loading categories:', error);
     }
@@ -433,30 +436,46 @@ export default function Feed() {
     itemVisiblePercentThreshold: 50, // O item é considerado visível se 50% dele aparecer
   }).current;
 
-  const handleLike = async (postId: string, isLiked: boolean) => {
+  const handleLike = async (id: string, isLiked: boolean) => {
     if (!user) return;
 
-    if (isLiked) {
-      await supabase
-        .from('post_likes')
-        .delete()
-        .eq('post_id', postId)
-        .eq('user_id', user.id);
+    // Detect if it's an event or a post
+    const targetPost = posts.find(p => p.id === id || p.events?.id === id);
+    const isEvent = !!targetPost?.events && targetPost.events.id === id;
+
+    if (isEvent) {
+      if (isLiked) {
+        await supabase.from('event_likes').delete().eq('event_id', id).eq('user_id', user.id);
+      } else {
+        await supabase.from('event_likes').insert({ event_id: id, user_id: user.id });
+      }
     } else {
-      await supabase
-        .from('post_likes')
-        .insert({ post_id: postId, user_id: user.id });
+      if (isLiked) {
+        await supabase.from('post_likes').delete().eq('post_id', id).eq('user_id', user.id);
+      } else {
+        await supabase.from('post_likes').insert({ post_id: id, user_id: user.id });
+      }
     }
 
-    setPosts(posts.map(post =>
-      post.id === postId
-        ? {
-            ...post,
+    setPosts(posts.map(p => {
+      if (isEvent && p.events?.id === id) {
+        return {
+          ...p,
+          events: {
+            ...p.events,
             is_liked: !isLiked,
-            likes_count: isLiked ? (post.likes_count || 1) - 1 : (post.likes_count || 0) + 1
+            likes_count: isLiked ? (p.events.likes_count || 1) - 1 : (p.events.likes_count || 0) + 1
           }
-        : post
-    ));
+        };
+      } else if (!isEvent && p.id === id) {
+        return {
+          ...p,
+          is_liked: !isLiked,
+          likes_count: isLiked ? (p.likes_count || 1) - 1 : (p.likes_count || 0) + 1
+        };
+      }
+      return p;
+    }));
   };
 
   const renderItem = ({ item, index }: { item: ExtendedPost; index: number }) => {
@@ -465,6 +484,11 @@ export default function Feed() {
         {item.events ? (
           <EventCard 
             event={item.events} 
+            onLike={handleLike}
+            onParticipantsPress={(id) => {
+              setSelectedEventIdForParticipants(id);
+              setParticipantsModalVisible(true);
+            }}
             isVisible={visibleItems.includes(item.id)} 
           />
         ) : (
@@ -498,7 +522,7 @@ export default function Feed() {
           borderBottomWidth: 1,
           height: HEADER_HEIGHT,
           paddingTop: insets.top,
-          paddingHorizontal: s(12), // Reduzi um pouco o padding lateral para telas pequenas
+          paddingHorizontal: s(12),
         }
       ]}>
         <View style={styles.headerLeft}>
@@ -547,9 +571,9 @@ export default function Feed() {
         scrollEventThrottle={16}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        windowSize={3} // Mantém menos itens na memória
+        windowSize={3}
         initialNumToRender={5}
-        removeClippedSubviews={Platform.OS === 'android'} // Remove itens fora da tela (Android)
+        removeClippedSubviews={Platform.OS === 'android'}
         maxToRenderPerBatch={5}
         refreshControl={
           <RefreshControl 
@@ -576,89 +600,129 @@ export default function Feed() {
         transparent
         onRequestClose={() => setShowFilters(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={[styles.modalContent, { backgroundColor: backgroundSecondary }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
-              <Text style={[styles.modalTitle, { color: textPrimary }]}>Filtros</Text>
-              <TouchableOpacity onPress={() => setShowFilters(false)}>
-                <X size={24} color={textPrimary} />
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={() => setShowFilters(false)} 
+          />
+          <Animated.View 
+            entering={FadeInUp.springify().damping(20)}
+            style={[styles.modalContent, { backgroundColor: backgroundSecondary, borderTopLeftRadius: ms(32), borderTopRightRadius: ms(32) }]}
+          >
+            <View style={styles.modalIndicator} />
+            
+            <View style={[styles.modalHeader, { borderBottomWidth: 0 }]}>
+              <View>
+                <Text style={[styles.modalTitle, { color: textPrimary }]}>Filtrar Experiências</Text>
+                <Text style={[styles.modalSubtitle, { color: textSecondary }]}>Encontre exatamente o que você busca</Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setShowFilters(false)}
+                style={[styles.modalCloseButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
+              >
+                <X size={20} color={textPrimary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
-                  <Calendar size={20} color={accent} />
-                  <Text style={[styles.filterSectionTitle, { color: textPrimary }]}>Data do Evento</Text>
+                  <Calendar size={18} color={accent} />
+                  <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>Quando?</Text>
                 </View>
-                <View style={styles.filterOptions}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  contentContainerStyle={styles.dateChipsContainer}
+                >
                   {[
-                    { key: 'all', label: 'Todos' },
+                    { key: 'all', label: 'Tudo' },
                     { key: 'today', label: 'Hoje' },
                     { key: 'week', label: 'Esta Semana' },
                     { key: 'month', label: 'Este Mês' }
                   ].map(option => (
                     <TouchableOpacity
                       key={option.key}
-                      style={[styles.filterOption, dateFilter === option.key && styles.filterOptionActive, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
-                      onPress={() => setDateFilter(option.key as any)}
+                      style={[
+                        styles.dateChip, 
+                        dateFilter === option.key && { backgroundColor: accent, borderColor: accent },
+                        { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }
+                      ]}
+                      onPress={() => {
+                        setDateFilter(option.key as any);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
                     >
-                      <Text style={[styles.filterOptionText, { color: textSecondary }, dateFilter === option.key && styles.filterOptionTextActive]}>
+                      <Text style={[
+                        styles.dateChipText, 
+                        { color: textSecondary }, 
+                        dateFilter === option.key && { color: '#fff', fontWeight: '800' }
+                      ]}>
                         {option.label}
                       </Text>
                     </TouchableOpacity>
                   ))}
-                </View>
+                </ScrollView>
               </View>
 
               <View style={styles.filterSection}>
-                <Text style={[styles.filterSectionTitle, { color: textPrimary }]}>Categorias</Text>
-                <View style={styles.filterOptions}>
+                <View style={styles.filterSectionHeader}>
+                  <Filter size={18} color={accent} />
+                  <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>O que te interessa?</Text>
+                </View>
+                <View style={styles.modernCategoryGrid}>
                   {categories.map(category => {
                     const isSelected = selectedCategories.includes(category.id);
                     const isExpanded = expandedCategory === category.id;
 
                     return (
-                      <View key={category.id}>
+                      <View key={category.id} style={styles.modernCategoryWrapper}>
                         <TouchableOpacity
-                          style={[styles.categoryCard, isSelected && styles.categoryCardActive, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
+                          style={[
+                            styles.modernCategoryCard, 
+                            isSelected && { borderColor: accent, backgroundColor: isDark ? accent + '11' : accent + '08' },
+                            { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }
+                          ]}
                           onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                             if (isSelected) {
-                              setSelectedCategories(prev => prev.filter(id => id !== category.id));
-                              setSelectedSubcategories(prev => prev.filter(subId => {
-                                const sub = subcategories.find(s => s.id === subId);
-                                return sub?.category_id !== category.id;
-                              }));
+                                setSelectedCategories(prev => prev.filter(id => id !== category.id));
+                                setSelectedSubcategories(prev => prev.filter(subId => {
+                                  const sub = subcategories.find(s => s.id === subId);
+                                  return sub?.category_id !== category.id;
+                                }));
                             } else {
-                              setSelectedCategories(prev => [...prev, category.id]);
+                                setSelectedCategories(prev => [...prev, category.id]);
                             }
                             setExpandedCategory(isExpanded ? null : category.id);
                           }}
                         >
-                          <View style={styles.categoryCardContent}>
-                            <View style={styles.categoryCardLeft}>
-                               <Text style={styles.categoryCardIcon}>{category.icon}</Text>
-                               <Text style={[styles.categoryCardText, { color: textPrimary }, isSelected && styles.categoryCardTextActive]}>
-                                 {category.name}
-                               </Text>
-                             </View>
-                             <ChevronRight
-                               size={20}
-                               color={isSelected ? accent : textSecondary}
-                               style={{ transform: [{ rotate: isExpanded ? '90deg' : '0deg' }] }}
-                             />
-                          </View>
+                          <Text style={styles.modernCategoryIcon}>{category.icon}</Text>
+                          <Text style={[styles.modernCategoryLabel, { color: textPrimary }, isSelected && { color: accent, fontWeight: '800' }]} numberOfLines={1}>
+                            {category.name}
+                          </Text>
+                          {isSelected && (
+                            <View style={[styles.modernCategoryBadge, { backgroundColor: accent }]}>
+                              <Check size={10} color="#fff" strokeWidth={4} />
+                            </View>
+                          )}
                         </TouchableOpacity>
 
                         {isExpanded && subcategories.length > 0 && (
-                          <View style={styles.subcategoriesContainer}>
+                          <Animated.View entering={FadeInUp.duration(300)} style={styles.modernSubcategoriesContainer}>
                             {subcategories.map(subcategory => {
                               const isSubSelected = selectedSubcategories.includes(subcategory.id);
                               return (
                                 <TouchableOpacity
                                   key={subcategory.id}
-                                  style={[styles.subcategoryCard, isSubSelected && styles.subcategoryCardActive, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.03)' }]}
+                                  style={[
+                                    styles.modernSubcategoryChip, 
+                                    isSubSelected && { backgroundColor: accent, borderColor: accent },
+                                    { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
+                                  ]}
                                   onPress={() => {
+                                    Haptics.selectionAsync();
                                     if (isSubSelected) {
                                       setSelectedSubcategories(prev => prev.filter(id => id !== subcategory.id));
                                     } else {
@@ -666,13 +730,17 @@ export default function Feed() {
                                     }
                                   }}
                                 >
-                                  <Text style={[styles.subcategoryCardText, { color: textSecondary }, isSubSelected && styles.subcategoryCardTextActive]}>
+                                  <Text style={[
+                                    styles.modernSubcategoryText, 
+                                    { color: textSecondary }, 
+                                    isSubSelected && { color: '#fff', fontWeight: '700' }
+                                  ]}>
                                     {subcategory.name}
                                   </Text>
                                 </TouchableOpacity>
                               );
                             })}
-                          </View>
+                          </Animated.View>
                         )}
                       </View>
                     );
@@ -681,7 +749,7 @@ export default function Feed() {
               </View>
             </ScrollView>
 
-            <View style={[styles.modalFooter, { borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
+            <View style={[styles.modalFooter]}>
               <TouchableOpacity
                 style={styles.clearButton}
                 onPress={() => {
@@ -700,9 +768,15 @@ export default function Feed() {
                 <Text style={styles.applyButtonText}>Aplicar</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
+
+      <EventParticipantsModal
+        visible={participantsModalVisible}
+        onClose={() => setParticipantsModalVisible(false)}
+        eventId={selectedEventIdForParticipants || ''}
+      />
     </View>
     </PageTransition>
   );
@@ -810,174 +884,175 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: vs(16),
   },
-  modalContainer: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'flex-end',
   },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
   modalContent: {
-    backgroundColor: '#2d2d2d',
-    borderTopLeftRadius: ms(24),
-    borderTopRightRadius: ms(24),
     maxHeight: '85%',
+    paddingBottom: vs(40),
+  },
+  modalIndicator: {
+    width: 40,
+    height: 5,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginTop: 12,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: ms(20),
-    borderBottomWidth: 1,
-    borderBottomColor: '#3d3d3d',
+    paddingHorizontal: s(24),
+    paddingTop: vs(20),
+    paddingBottom: vs(16),
   },
   modalTitle: {
-    fontSize: ms(24),
-    fontWeight: '900',
-    color: '#fff',
+    fontSize: ms(22),
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  modalSubtitle: {
+    fontSize: ms(13),
+    marginTop: 2,
+    opacity: 0.7,
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalBody: {
-    padding: ms(20),
+    paddingHorizontal: s(24),
   },
   filterSection: {
-    marginBottom: vs(24),
+    marginBottom: vs(32),
   },
   filterSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: s(8),
-    marginBottom: vs(12),
+    marginBottom: vs(16),
   },
   filterSectionTitle: {
-    fontSize: ms(18),
+    fontSize: ms(15),
     fontWeight: '700',
-    color: '#fff',
-    marginBottom: vs(12),
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  filterOptions: {
-    gap: vs(8),
+  dateChipsContainer: {
+    gap: s(10),
+    paddingRight: s(24),
   },
-  filterOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: ms(16),
-    backgroundColor: '#1a1a1a',
-    borderRadius: ms(12),
+  dateChip: {
+    paddingHorizontal: s(20),
+    paddingVertical: vs(12),
+    borderRadius: ms(16),
     borderWidth: 1,
-    borderColor: '#3d3d3d',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
-  categoryOption: {
+  dateChipText: {
+    fontSize: ms(14),
+    fontWeight: '600',
+  },
+  modernCategoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: s(12),
   },
-  filterOptionActive: {
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
-    borderColor: '#00d9ff',
+  modernCategoryWrapper: {
+    width: (width - s(48) - s(12)) / 2, // 2 colunas com gap
   },
-  filterOptionText: {
-    fontSize: ms(16),
-    fontWeight: '600',
-    color: '#8E8E93',
-    flex: 1,
-  },
-  filterOptionTextActive: {
-    color: '#00d9ff',
-  },
-  categoryIcon: {
-    fontSize: ms(20),
-  },
-  categoryCard: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: ms(16),
-    borderWidth: 2,
-    borderColor: '#3d3d3d',
-    marginBottom: vs(12),
-    overflow: 'hidden',
-  },
-  categoryCardActive: {
-    backgroundColor: 'rgba(0, 217, 255, 0.08)',
-    borderColor: '#00d9ff',
-    shadowColor: '#00d9ff',
-    shadowOffset: { width: 0, height: vs(4) },
-    shadowOpacity: 0.3,
-    shadowRadius: ms(8),
-    elevation: 8,
-  },
-  categoryCardContent: {
-    flexDirection: 'row',
+  modernCategoryCard: {
+    height: vs(90),
+    borderRadius: ms(20),
+    padding: ms(12),
+    borderWidth: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: ms(18),
+    gap: vs(8),
+    position: 'relative',
   },
-  categoryCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(14),
-    flex: 1,
-  },
-  categoryCardIcon: {
+  modernCategoryIcon: {
     fontSize: ms(28),
   },
-  categoryCardText: {
-    fontSize: ms(17),
-    fontWeight: '700',
-    color: '#fff',
-    flex: 1,
+  modernCategoryLabel: {
+    fontSize: ms(12),
+    fontWeight: '600',
+    textAlign: 'center',
   },
-  categoryCardTextActive: {
-    color: '#00d9ff',
+  modernCategoryBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#0f0f18',
   },
-  subcategoriesContainer: {
-    backgroundColor: '#0d0d0d',
-    paddingHorizontal: s(18),
-    paddingVertical: vs(12),
-    gap: vs(8),
+  modernSubcategoriesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: s(6),
+    marginTop: vs(10),
+    paddingLeft: s(4),
   },
-  subcategoryCard: {
-    backgroundColor: '#1a1a1a',
+  modernSubcategoryChip: {
+    paddingHorizontal: s(12),
+    paddingVertical: vs(6),
     borderRadius: ms(10),
     borderWidth: 1,
-    borderColor: '#3d3d3d',
-    padding: ms(14),
+    backgroundColor: 'rgba(255,255,255,0.02)',
   },
-  subcategoryCardActive: {
-    backgroundColor: 'rgba(0, 217, 255, 0.15)',
-    borderColor: '#00d9ff',
-  },
-  subcategoryCardText: {
-    fontSize: ms(15),
-    fontWeight: '600',
-    color: '#8E8E93',
-  },
-  subcategoryCardTextActive: {
-    color: '#00d9ff',
+  modernSubcategoryText: {
+    fontSize: ms(11),
+    fontWeight: '500',
   },
   modalFooter: {
     flexDirection: 'row',
-    padding: ms(20),
-    gap: s(12),
-    borderTopWidth: 1,
-    borderTopColor: '#3d3d3d',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: s(24),
+    paddingTop: vs(20),
+    gap: s(16),
   },
   clearButton: {
     flex: 1,
-    padding: ms(16),
-    borderRadius: ms(12),
-    backgroundColor: '#3d3d3d',
+    height: vs(56),
+    justifyContent: 'center',
     alignItems: 'center',
   },
   clearButtonText: {
-    fontSize: ms(16),
+    color: '#FF3B30',
+    fontSize: ms(15),
     fontWeight: '700',
-    color: '#fff',
   },
   applyButton: {
-    flex: 1,
-    padding: ms(16),
-    borderRadius: ms(12),
+    flex: 2,
+    height: vs(56),
     backgroundColor: '#00d9ff',
+    borderRadius: ms(18),
+    justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#00d9ff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   applyButtonText: {
+    color: '#fff',
     fontSize: ms(16),
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: '800',
   },
 });

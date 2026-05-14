@@ -31,7 +31,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import EventCard from '@/components/EventCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { s, vs, ms } from '@/utils/responsive';
-import PageTransition from '@/components/PageTransition';
+import { BlurView } from 'expo-blur';
 import { useUI } from '@/contexts/UIContext';
 
 type TabType = 'created' | 'participating' | 'past';
@@ -126,7 +126,7 @@ export default function Profile() {
     let data: any[] = [];
     try {
       if (activeTab === 'created') {
-        const r = await supabase.from('events').select('*, categories:category_id (name, icon), subcategories:subcategory_id (name)').eq('creator_id', user?.id).order('event_date', { ascending: true });
+        const r = await supabase.from('events').select('*, categories:category_id (name, icon), subcategories:subcategory_id (name)').eq('creator_id', user?.id).order('event_date', { ascending: false });
         data = r.data || [];
       } else if (activeTab === 'participating') {
         const r = await supabase.from('event_participants').select('event_id, events:event_id (*, categories:category_id (name, icon), subcategories:subcategory_id (name))').eq('user_id', user?.id);
@@ -175,8 +175,7 @@ export default function Profile() {
   });
 
   return (
-    <PageTransition>
-      <View style={[styles.root, { backgroundColor: backgroundPrimary }]}>
+    <View style={[styles.root, { backgroundColor: backgroundPrimary }]}>
       <Animated.ScrollView
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -202,23 +201,27 @@ export default function Profile() {
           />
         </Animated.View>
 
-        {/* HEADER ACTIONS */}
-        <View style={[styles.topActions, { top: insets.top + 10 }]}>
+        {/* HEADER ACTIONS (Glass) */}
+        <Animated.View style={[styles.topActions, { top: insets.top + 10, opacity: headerOpacity }]}>
           <TouchableOpacity onPress={toggleTheme} style={styles.glassBtn}>
+            <BlurView intensity={isDark ? 30 : 60} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
             {isDark ? <Sun size={20} color="#fff" /> : <Moon size={20} color="#fff" />}
           </TouchableOpacity>
           <View style={styles.topActionsRight}>
             <TouchableOpacity onPress={() => router.push('/search-users')} style={styles.glassBtn}>
+              <BlurView intensity={isDark ? 30 : 60} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
               <Search size={20} color="#fff" />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/profile/edit')} style={styles.glassBtn}>
+              <BlurView intensity={isDark ? 30 : 60} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
               <Settings size={20} color="#fff" />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleSignOut} style={styles.glassBtn}>
+              <BlurView intensity={isDark ? 30 : 60} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
               <LogOut size={20} color="#fff" />
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
         {/* PROFILE INFO */}
         <View style={styles.profileInfo}>
@@ -270,28 +273,30 @@ export default function Profile() {
           </TouchableOpacity>
         </View>
 
-        {/* STATS */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: textPrimary }]}>{eventsCount}</Text>
-            <Text style={[styles.statLabel, { color: textSecondary }]}>Eventos</Text>
+        {/* STATS (Glassmorphism Card) */}
+        <View style={styles.statsWrapper}>
+          <View style={[styles.statsContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, { color: textPrimary }]}>{eventsCount}</Text>
+              <Text style={[styles.statLabel, { color: textSecondary }]}>Eventos</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
+            <TouchableOpacity 
+              style={styles.statItem}
+              onPress={() => router.push(`/profile/${user?.id}/followers`)}
+            >
+              <Text style={[styles.statValue, { color: textPrimary }]}>{followersCount}</Text>
+              <Text style={[styles.statLabel, { color: textSecondary }]}>Seguidores</Text>
+            </TouchableOpacity>
+            <View style={[styles.statDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
+            <TouchableOpacity 
+              style={styles.statItem}
+              onPress={() => router.push(`/profile/${user?.id}/following`)}
+            >
+              <Text style={[styles.statValue, { color: textPrimary }]}>{followingCount}</Text>
+              <Text style={[styles.statLabel, { color: textSecondary }]}>Seguindo</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.statDivider} />
-          <TouchableOpacity 
-            style={styles.statItem}
-            onPress={() => router.push(`/profile/${user?.id}/followers`)}
-          >
-            <Text style={[styles.statValue, { color: textPrimary }]}>{followersCount}</Text>
-            <Text style={[styles.statLabel, { color: textSecondary }]}>Seguidores</Text>
-          </TouchableOpacity>
-          <View style={styles.statDivider} />
-          <TouchableOpacity 
-            style={styles.statItem}
-            onPress={() => router.push(`/profile/${user?.id}/following`)}
-          >
-            <Text style={[styles.statValue, { color: textPrimary }]}>{followingCount}</Text>
-            <Text style={[styles.statLabel, { color: textSecondary }]}>Seguindo</Text>
-          </TouchableOpacity>
         </View>
 
         {/* MODERN TABS */}
@@ -347,7 +352,6 @@ export default function Profile() {
         </Animated.View>
       </Animated.ScrollView>
     </View>
-    </PageTransition>
   );
 }
 
@@ -357,28 +361,29 @@ const styles = StyleSheet.create({
   bannerContainer: { height: vs(180), width: '100%', position: 'absolute', top: 0 },
   topActions: { position: 'absolute', left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 100 },
   topActionsRight: { flexDirection: 'row', gap: 10 },
-  glassBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  glassBtn: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   profileInfo: { alignItems: 'center', marginTop: vs(120), paddingHorizontal: 20 },
   avatarWrapper: { position: 'relative', marginBottom: 20, elevation: 20, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 15 },
-  avatarGradient: { width: 130, height: 130, borderRadius: 65, padding: 4, justifyContent: 'center', alignItems: 'center' },
-  avatarImg: { width: 122, height: 122, borderRadius: 61, borderWidth: 4, borderColor: '#fff' },
-  avatarPlaceholder: { width: 122, height: 122, borderRadius: 61, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#fff' },
+  avatarGradient: { width: 136, height: 136, borderRadius: 68, padding: 4, justifyContent: 'center', alignItems: 'center' },
+  avatarImg: { width: 128, height: 128, borderRadius: 64, borderWidth: 4, borderColor: '#fff' },
+  avatarPlaceholder: { width: 128, height: 128, borderRadius: 64, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#fff' },
   avatarInitials: { fontSize: ms(48), fontWeight: '900', color: '#fff' },
-  verifiedBadge: { position: 'absolute', bottom: 5, right: 5, backgroundColor: '#00d9ff', width: 32, height: 32, borderRadius: 16, borderWidth: 4, borderColor: '#fff', justifyContent: 'center', alignItems: 'center' },
-  profileName: { fontSize: ms(28), fontWeight: '900', letterSpacing: -1, marginBottom: 4 },
-  profileUsername: { fontSize: ms(16), fontWeight: '600', marginBottom: 16 },
-  profileBio: { fontSize: ms(15), textAlign: 'center', lineHeight: 22, marginBottom: 20, paddingHorizontal: 20 },
-  interestsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 24 },
-  interestChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, gap: 6 },
+  verifiedBadge: { position: 'absolute', bottom: 5, right: 5, backgroundColor: '#00d9ff', width: 34, height: 34, borderRadius: 17, borderWidth: 4, borderColor: '#fff', justifyContent: 'center', alignItems: 'center', elevation: 5 },
+  profileName: { fontSize: ms(30), fontWeight: '900', letterSpacing: -1, marginBottom: 4 },
+  profileUsername: { fontSize: ms(16), fontWeight: '600', marginBottom: 20 },
+  profileBio: { fontSize: ms(15), textAlign: 'center', lineHeight: 24, marginBottom: 24, paddingHorizontal: 20 },
+  interestsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 28 },
+  interestChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 25, borderWidth: 1, gap: 6 },
   interestEmoji: { fontSize: ms(16) },
-  interestText: { fontSize: ms(13), fontWeight: '700' },
-  mainEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 30, marginBottom: 32, elevation: 4 },
-  mainEditBtnText: { color: '#fff', fontWeight: '800', fontSize: ms(14) },
-  statsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 20, marginHorizontal: 20, marginBottom: 32 },
+  interestText: { fontSize: ms(14), fontWeight: '700' },
+  mainEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 30, marginBottom: 32, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 },
+  mainEditBtnText: { color: '#fff', fontWeight: '800', fontSize: ms(15) },
+  statsWrapper: { paddingHorizontal: 20, marginBottom: 32 },
+  statsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 24, borderRadius: 28, borderWidth: 1 },
   statItem: { alignItems: 'center', flex: 1 },
-  statValue: { fontSize: ms(22), fontWeight: '900' },
-  statLabel: { fontSize: ms(12), fontWeight: '700', textTransform: 'uppercase', marginTop: 4, letterSpacing: 1 },
-  statDivider: { width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.1)' },
+  statValue: { fontSize: ms(24), fontWeight: '900', marginBottom: 4 },
+  statLabel: { fontSize: ms(11), fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2 },
+  statDivider: { width: 1, height: 40 },
   tabsContainer: { paddingHorizontal: 16, marginBottom: 20 },
   tabsTrack: { flexDirection: 'row', borderRadius: 30, height: 56, padding: 4, position: 'relative' },
   tabIndicator: { position: 'absolute', top: 4, bottom: 4, left: 4, width: (Dimensions.get('window').width - 32) / 3 - 2.6, borderRadius: 26, elevation: 2 },

@@ -80,6 +80,8 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+  const rotation = useSharedValue(0);
+  const savedRotation = useSharedValue(0);
 
   const viewShotRef = useRef<ViewShot>(null);
   
@@ -121,10 +123,23 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
       savedTranslateY.value = translateY.value;
     });
 
-  const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+  const rotationGesture = Gesture.Rotation()
+    .onUpdate((e) => {
+      rotation.value = savedRotation.value + e.rotation;
+    })
+    .onEnd(() => {
+      savedRotation.value = rotation.value;
+    });
+
+  const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture, rotationGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }] as any
+    transform: [
+      { translateX: translateX.value }, 
+      { translateY: translateY.value }, 
+      { scale: scale.value },
+      { rotateZ: `${(rotation.value / Math.PI) * 180}deg` }
+    ] as any
   }));
 
   const saveText = () => {
@@ -170,11 +185,13 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
            <TouchableOpacity onPress={() => { if(audioPlayer) audioPlayer.pause(); if(videoPlayer) videoPlayer.pause(); onClose(); }} style={styles.iconBtn}>
               <X size={28} color="#fff" strokeWidth={2.5} />
            </TouchableOpacity>
-           <View style={styles.headerRight}>
-              <TouchableOpacity onPress={() => setShowMusicModal(true)} style={styles.iconBtn}><Music size={24} color="#fff" /></TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowLocationInput(true)} style={styles.iconBtn}><MapPin size={24} color="#fff" /></TouchableOpacity>
-              <TouchableOpacity onPress={() => { setEditingTextId('new'); setCurrentText(''); }} style={styles.iconBtn}><Type size={24} color="#fff" /></TouchableOpacity>
-           </View>
+           {mode === 'story' && (
+             <View style={styles.headerRight}>
+                <TouchableOpacity onPress={() => setShowMusicModal(true)} style={styles.iconBtn}><Music size={24} color="#fff" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowLocationInput(true)} style={styles.iconBtn}><MapPin size={24} color="#fff" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => { setEditingTextId('new'); setCurrentText(''); }} style={styles.iconBtn}><Type size={24} color="#fff" /></TouchableOpacity>
+             </View>
+           )}
         </View>
 
         <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 0.8 }} style={styles.canvas}>
@@ -185,11 +202,11 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
                      <VideoView
                         player={videoPlayer}
                         style={styles.mainMedia}
-                        contentFit="cover"
+                        contentFit="contain"
                         nativeControls={false}
                      />
                    ) : (
-                     <Image source={{ uri: mediaUri }} style={styles.mainMedia} resizeMode="cover" />
+                     <Image source={{ uri: mediaUri }} style={styles.mainMedia} resizeMode="contain" />
                    )}
                 </Animated.View>
              </View>

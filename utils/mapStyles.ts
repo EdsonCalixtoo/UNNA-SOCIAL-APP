@@ -1,19 +1,19 @@
 export const lightMapStyle = [
   {
     "elementType": "geometry",
-    "stylers": [{ "color": "#f5f5f5" }]
+    "stylers": [{ "color": "#f8f9fa" }]
   },
   {
     "elementType": "labels.icon",
-    "stylers": [{ "visibility": "off" }]
+    "stylers": [{ "visibility": "on" }, { "saturation": -20 }, { "lightness": 20 }]
   },
   {
     "elementType": "labels.text.fill",
-    "stylers": [{ "color": "#616161" }]
+    "stylers": [{ "color": "#3c4043" }]
   },
   {
     "elementType": "labels.text.stroke",
-    "stylers": [{ "color": "#f5f5f5" }]
+    "stylers": [{ "color": "#ffffff" }]
   },
   {
     "featureType": "administrative.land_parcel",
@@ -23,17 +23,22 @@ export const lightMapStyle = [
   {
     "featureType": "poi",
     "elementType": "geometry",
-    "stylers": [{ "color": "#eeeeee" }]
+    "stylers": [{ "color": "#f1f3f4" }]
   },
   {
     "featureType": "poi",
     "elementType": "labels.text.fill",
-    "stylers": [{ "color": "#757575" }]
+    "stylers": [{ "color": "#70757a" }]
   },
   {
     "featureType": "poi.park",
     "elementType": "geometry",
-    "stylers": [{ "color": "#e5e5e5" }]
+    "stylers": [{ "color": "#e8f5e9" }]
+  },
+  {
+    "featureType": "poi.park",
+    "elementType": "labels.text.fill",
+    "stylers": [{ "color": "#1b5e20" }]
   },
   {
     "featureType": "road",
@@ -48,7 +53,7 @@ export const lightMapStyle = [
   {
     "featureType": "road.highway",
     "elementType": "geometry",
-    "stylers": [{ "color": "#dadada" }]
+    "stylers": [{ "color": "#e9ecef" }]
   },
   {
     "featureType": "road.highway",
@@ -73,12 +78,12 @@ export const lightMapStyle = [
   {
     "featureType": "water",
     "elementType": "geometry",
-    "stylers": [{ "color": "#c9c9c9" }]
+    "stylers": [{ "color": "#c6e2ff" }]
   },
   {
     "featureType": "water",
     "elementType": "labels.text.fill",
-    "stylers": [{ "color": "#9e9e9e" }]
+    "stylers": [{ "color": "#007bff" }]
   }
 ];
 

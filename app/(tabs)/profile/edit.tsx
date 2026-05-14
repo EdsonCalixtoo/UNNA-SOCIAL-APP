@@ -115,19 +115,41 @@ export default function EditProfile() {
 
   const loadData = async () => {
     const [cats, subcats] = await Promise.all([
-      supabase.from('categories').select('*').order('name'),
+      supabase.from('categories').select('*').order('order'),
       supabase.from('subcategories').select('*').order('name')
     ]);
     if (cats.data) setCategories(cats.data);
     if (subcats.data) setSubcategories(subcats.data);
   };
 
+  const takePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permissão negada', 'Precisamos de acesso à sua câmera para tirar fotos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setSelectedImageUri(result.assets[0].uri);
+        setShowImageEditor(true);
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível abrir a câmera');
+    }
+  };
+
   const pickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        quality: 0.9,
+        allowsEditing: false, 
+        quality: 0.8,
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -137,6 +159,18 @@ export default function EditProfile() {
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível selecionar a imagem');
     }
+  };
+
+  const handleImageSource = () => {
+    Alert.alert(
+      'Foto de Perfil',
+      'Como deseja atualizar sua foto?',
+      [
+        { text: 'Tirar Foto', onPress: takePhoto },
+        { text: 'Escolher da Galeria', onPress: pickImage },
+        { text: 'Cancelar', style: 'cancel' }
+      ]
+    );
   };
 
   const handleSaveEditedAvatar = (editedUri: string) => {
@@ -235,6 +269,7 @@ export default function EditProfile() {
           bio: formData.bio.trim() || null,
           avatar_url: avatarUrl || null,
           primary_color: formData.primary_color,
+          secondary_color: formData.secondary_color,
           accent_color: formData.accent_color,
           is_private: formData.is_private,
           preferred_categories: formData.preferred_categories,
@@ -265,6 +300,62 @@ export default function EditProfile() {
     ]);
   };
 
+  const handleDeleteAccount = () => {
+    if (loading) return;
+    
+    Alert.alert(
+      'Excluir Conta',
+      'Tem certeza absoluta? Esta ação não pode ser desfeita e todos os seus dados serão perdidos.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Excluir Permanentemente', 
+          style: 'destructive', 
+          onPress: async () => {
+            console.log('Iniciando exclusão de conta para usuário:', user?.id);
+            setLoading(true);
+            try {
+              if (!user) {
+                console.error('Tentativa de exclusão sem usuário logado');
+                return;
+              }
+
+              // Remove o perfil primeiro
+              const { error: profileError } = await supabase
+                .from('profiles')
+                .delete()
+                .eq('id', user.id);
+              
+              if (profileError) {
+                console.error('Erro ao excluir perfil:', profileError);
+                throw profileError;
+              }
+
+              console.log('Perfil excluído com sucesso. Saindo...');
+
+              // Logout
+              const { error: signOutError } = await supabase.auth.signOut();
+              if (signOutError) {
+                console.error('Erro ao sair:', signOutError);
+              }
+              
+              router.replace('/(auth)/login');
+              Alert.alert('Conta Excluída', 'Sua conta e dados foram removidos com sucesso.');
+            } catch (error: any) {
+              console.error('Erro completo na exclusão:', error);
+              Alert.alert(
+                'Erro ao Excluir', 
+                `Não foi possível excluir sua conta: ${error.message || 'Tente novamente mais tarde.'}`
+              );
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: backgroundPrimary }]}>
       {/* HEADER */}
@@ -291,7 +382,7 @@ export default function EditProfile() {
           
           {/* AVATAR SECTION */}
           <View style={styles.avatarContainer}>
-            <LinearGradient colors={[formData.primary_color || accent, '#ff1493']} style={styles.avatarRing}>
+            <View style={[styles.avatarRing, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
               { (newAvatarUri || formData.avatar_url) ? (
                 <Image source={{ uri: newAvatarUri || formData.avatar_url }} style={styles.avatarImg} />
               ) : (
@@ -299,11 +390,11 @@ export default function EditProfile() {
                   <Text style={styles.avatarText}>{formData.username.charAt(0).toUpperCase()}</Text>
                 </View>
               )}
-              <TouchableOpacity onPress={pickImage} style={styles.cameraBtn}>
-                <Camera size={20} color="#fff" />
+              <TouchableOpacity onPress={handleImageSource} style={[styles.cameraBtn, { backgroundColor: accent }]}>
+                <Camera size={22} color="#fff" />
               </TouchableOpacity>
-            </LinearGradient>
-            <Text style={[styles.changeText, { color: accent }]}>Alterar foto do perfil</Text>
+            </View>
+            <Text style={[styles.changeText, { color: accent }]}>Mudar foto do perfil</Text>
           </View>
 
           {/* BASIC INFO */}
@@ -474,7 +565,7 @@ export default function EditProfile() {
               {['#00d9ff', '#ff1493', '#34C759', '#AF52DE', '#FF9500', '#1a1a1a'].map(c => (
                 <TouchableOpacity 
                   key={c} 
-                  onPress={() => setFormData({ ...formData, primary_color: c })}
+                  onPress={() => setFormData({ ...formData, primary_color: c, accent_color: c })}
                   style={[styles.colorCircle, { backgroundColor: c }, formData.primary_color === c && { borderColor: textPrimary, borderWidth: 3 }]}
                 />
               ))}
@@ -521,7 +612,12 @@ export default function EditProfile() {
               <Text style={[styles.dangerText, { color: textSecondary }]}>Sair da Conta</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.deleteBtn}>
+            <TouchableOpacity 
+              style={[styles.deleteBtn, loading && { opacity: 0.5 }]}
+              onPress={handleDeleteAccount}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
               <Trash2 size={18} color="#FF3B30" />
               <Text style={styles.deleteText}>Excluir Minha Conta</Text>
             </TouchableOpacity>
@@ -710,23 +806,17 @@ const styles = StyleSheet.create({
     paddingVertical: vs(32),
   },
   avatarRing: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    padding: 5,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    elevation: 10,
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
   },
   avatarImg: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    borderWidth: 4,
-    borderColor: '#fff',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
   },
   avatarPlaceholder: {
     width: 130,
@@ -745,16 +835,20 @@ const styles = StyleSheet.create({
   },
   cameraBtn: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#00d9ff',
-    borderWidth: 4,
-    borderColor: '#fff',
+    bottom: 5,
+    right: 5,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#0f0f18',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   changeText: {
     marginTop: 14,

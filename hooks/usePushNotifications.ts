@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInAppNotification } from '@/contexts/InAppNotificationContext';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -39,8 +40,9 @@ export const usePushNotifications = () => {
         // Registrar para notificações - Apenas se não for Expo Go em SDK 53+
         // Ou simplesmente envolver em try/catch para evitar crash
         try {
+          const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId ?? '805a59da-5728-4d83-9531-e768d92fe6b9';
           const token = await Notifications.getExpoPushTokenAsync({
-            projectId: '805a59da-5728-4d83-9531-e768d92fe6b9',
+            projectId,
           });
 
           if (isMounted && token?.data) {
@@ -105,10 +107,19 @@ export const usePushNotifications = () => {
 
         if (data?.conversation_id) {
           // Se for mensagem, vai para o chat
-          router.push(`/messages/${data.conversation_id}`);
+          router.push(`/messages/${data.conversation_id}${data.sender_id ? `?userId=${data.sender_id}` : ''}`);
         } else if (data?.event_id) {
           // Se for evento, vai para os detalhes do evento
           router.push(`/event/${data.event_id}`);
+        } else if (data?.story_id) {
+          // Se for story, vai para o index onde os stories são exibidos (ou implementar StoryViewer direto)
+          router.push('/(tabs)');
+        } else if (data?.follower_id || data?.user_id) {
+          // Se for novo seguidor ou perfil, vai para o perfil
+          router.push(`/profile/${data.follower_id || data.user_id}`);
+        } else if (data?.story_id) {
+          // Se for story, vai para a home onde os stories são carregados
+          router.push('/(tabs)');
         } else {
           // Fallback para a aba de notificações
           router.push('/(tabs)/notifications');

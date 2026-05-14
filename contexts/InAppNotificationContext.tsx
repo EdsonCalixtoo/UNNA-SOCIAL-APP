@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Platform, Image } from 'react-native';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -19,10 +19,11 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { BlurView } from 'expo-blur';
 
 const { width } = Dimensions.get('window');
 
-type NotificationType = 'message' | 'success' | 'error' | 'info' | 'alert' | 'event' | 'default' | 'new_message' | 'event_created' | 'follow_request' | 'follow_accepted' | 'event_joined' | 'event_reminder';
+type NotificationType = 'message' | 'success' | 'error' | 'info' | 'alert' | 'event' | 'default' | 'new_message' | 'event_created' | 'follow_request' | 'follow_accepted' | 'event_joined' | 'event_reminder' | 'story_like' | 'story_reply';
 
 interface Notification {
   id: string;
@@ -90,7 +91,7 @@ export function InAppNotificationProvider({ children }: { children: React.ReactN
           const newNotif = payload.new as any;
           if (newNotif) {
             showNotification({
-              title: newNotif.title || 'Nova Interação',
+              title: newNotif.title || 'UNNA',
               message: newNotif.message || '',
               type: (newNotif.type as NotificationType) || 'info',
               data: newNotif.data || {}
@@ -185,13 +186,24 @@ function NotificationItem({ notification, index, total, onHide, onPress }: {
   const getIcon = () => {
     const size = 18;
     const color = "#fff";
+    
+    if (notification.type === 'default' || notification.type === 'info') {
+      return (
+        <View style={[styles.iconBg, { backgroundColor: 'transparent' }]}>
+          <Image 
+            source={require('../assets/images/icon.png')} 
+            style={{ width: 32, height: 32, borderRadius: 10 }} 
+          />
+        </View>
+      );
+    }
+
     switch (notification.type) {
       case 'message': return <View style={[styles.iconBg, { backgroundColor: '#34C759' }]}><MessageCircle size={size} color={color} /></View>;
       case 'success': return <View style={[styles.iconBg, { backgroundColor: '#28a745' }]}><CheckCircle size={size} color={color} /></View>;
       case 'error': return <View style={[styles.iconBg, { backgroundColor: '#FF3B30' }]}><AlertCircle size={size} color={color} /></View>;
       case 'alert': return <View style={[styles.iconBg, { backgroundColor: '#FF9500' }]}><AlertCircle size={size} color={color} /></View>;
       case 'event': return <View style={[styles.iconBg, { backgroundColor: '#7b2fff' }]}><Calendar size={size} color={color} /></View>;
-      case 'info': return <View style={[styles.iconBg, { backgroundColor: '#007AFF' }]}><Info size={size} color={color} /></View>;
       default: return <View style={[styles.iconBg, { backgroundColor: '#666' }]}><Bell size={size} color={color} /></View>;
     }
   };
@@ -210,17 +222,19 @@ function NotificationItem({ notification, index, total, onHide, onPress }: {
           onPressIn={() => isPressed.value = withTiming(0.97, { duration: 100 })}
           onPressOut={() => isPressed.value = withTiming(1, { duration: 100 })}
         >
-          <View style={styles.bannerHeader}>
-            <View style={styles.headerLeft}>
-              {getIcon()}
-              <Text style={styles.titleText}>{notification.title}</Text>
+          <BlurView intensity={Platform.OS === 'ios' ? 40 : 80} tint="dark" style={styles.blur}>
+            <View style={styles.bannerHeader}>
+              <View style={styles.headerLeft}>
+                {getIcon()}
+                <Text style={styles.titleText}>{notification.title}</Text>
+              </View>
+              <Text style={styles.timeText}>agora</Text>
             </View>
-            <Text style={styles.timeText}>agora</Text>
-          </View>
-          <View style={styles.body}>
-            <Text style={styles.messageText} numberOfLines={2}>{notification.message}</Text>
-          </View>
-          <View style={styles.handle} />
+            <View style={styles.body}>
+              <Text style={styles.messageText} numberOfLines={2}>{notification.message}</Text>
+            </View>
+            <View style={styles.handle} />
+          </BlurView>
         </Pressable>
       </Animated.View>
     </GestureDetector>
@@ -273,16 +287,19 @@ const styles = StyleSheet.create({
   },
   banner: {
     width: '100%',
-    backgroundColor: 'rgba(30, 45, 50, 0.92)',
-    borderRadius: 24,
-    padding: 16,
+    borderRadius: 26,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    elevation: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  blur: {
+    padding: 16,
+    paddingBottom: 14,
   },
   pressable: {
     width: '100%',
@@ -291,47 +308,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   iconBg: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   titleText: {
     color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.4,
   },
   timeText: {
     color: 'rgba(255,255,255,0.4)',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   body: {
     width: '100%',
+    paddingLeft: 2,
   },
   messageText: {
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(255,255,255,0.9)',
     fontSize: 14,
-    lineHeight: 19,
-    fontWeight: '400',
+    lineHeight: 20,
+    fontWeight: '500',
   },
   handle: {
-    width: 30,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 2,
+    width: 36,
+    height: 5,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 3,
     alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: -8,
+    marginTop: 14,
+    marginBottom: -2,
   }
 });

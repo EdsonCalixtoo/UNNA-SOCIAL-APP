@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Dimensions, RefreshControl, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { Search, Sparkles, ChevronRight, Filter } from 'lucide-react-native';
@@ -7,22 +7,23 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { 
-  FadeInUp, 
-  FadeInDown, 
-  Layout, 
-  useAnimatedStyle, 
   useSharedValue, 
-  withSpring,
-  withDelay
+  useAnimatedStyle, 
+  useAnimatedScrollHandler, 
+  withTiming,
+  interpolate,
+  Extrapolation,
+  runOnJS,
+  withSpring
 } from 'react-native-reanimated';
 
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
-import PageTransition from '@/components/PageTransition';
 import { useUI } from '@/contexts/UIContext';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = (width - s(48)) / 2;
+
 interface Category {
   id: string;
   name: string;
@@ -32,23 +33,121 @@ interface Category {
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
+const GRADIENTS = [
+  ['#00d9ff', '#0055ff'],
+  ['#ff1493', '#8000ff'],
+  ['#34C759', '#1e5a2d'],
+  ['#FF9500', '#ff5e00'],
+  ['#AF52DE', '#5856D6'],
+  ['#FF3B30', '#8b0000'],
+  ['#00C9A7', '#008080'],
+  ['#FF6B35', '#ff3d00'],
+];
+
+const CategoryCard = React.memo(({ item, index, handleCategoryPress }: { item: Category; index: number; handleCategoryPress: (c: Category) => void }) => {
+  const gradient = GRADIENTS[index % GRADIENTS.length];
+
+  return (
+    <TouchableOpacity
+      style={styles.categoryCard}
+      onPress={() => handleCategoryPress(item)}
+      activeOpacity={0.8}
+    >
+      <LinearGradient
+        colors={gradient as [string, string, ...string[]]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.categoryGradient}
+      >
+        <View style={styles.glassOverlay} />
+        
+        <View style={styles.cardHeader}>
+          <View style={styles.iconContainer}>
+            <Text style={styles.categoryIcon}>{item.icon}</Text>
+          </View>
+          <View style={styles.sparkleContainer}>
+            <Sparkles size={14} color="rgba(255,255,255,0.8)" />
+          </View>
+        </View>
+
+        <View style={styles.cardFooter}>
+          <Text style={styles.categoryName} numberOfLines={2}>{item.name}</Text>
+          <ChevronRight size={16} color="rgba(255,255,255,0.6)" />
+        </View>
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+}, (prevProps, nextProps) => prevProps.item.id === nextProps.item.id);
+
+const SearchResultItem = React.memo(({ item, index, handleCategoryPress, handleSubcategoryPress, isDark, backgroundSecondary, accent, textPrimary, textSecondary }: any) => {
+  if (item.type === 'category') {
+    return <CategoryCard item={item} index={index} handleCategoryPress={handleCategoryPress} />;
+  }
+
+  return (
+    <TouchableOpacity
+      style={[styles.subcategoryResult, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+      onPress={() => handleSubcategoryPress(item, item.parentCategory)}
+      activeOpacity={0.8}
+    >
+      <View style={[styles.subcategoryIconContainer, { backgroundColor: accent + '22' }]}>
+        <Text style={styles.subcategoryIcon}>{item.parentCategory.icon}</Text>
+      </View>
+      <View style={styles.subcategoryInfo}>
+        <Text style={[styles.subcategoryNameResult, { color: textPrimary }]}>{item.name}</Text>
+        <Text style={[styles.subcategoryParentName, { color: textSecondary }]}>em {item.parentCategory.name}</Text>
+      </View>
+      <ChevronRight size={18} color={textSecondary} />
+    </TouchableOpacity>
+  );
+}, (prevProps, nextProps) => prevProps.item.id === nextProps.item.id);
+
 export default function Categories() {
   const insets = useSafeAreaInsets();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
-  const { showTabBar } = useUI();
+  const { hideTabBar, showTabBar } = useUI();
+  
+  const scrollY = useSharedValue(0);
+  const headerTranslateY = useSharedValue(0);
+  const lastScrollY = useSharedValue(0);
+  const isHeaderHidden = useSharedValue(false);
+  const HEADER_HEIGHT = insets.top + vs(58);
 
-  useEffect(() => {
-    showTabBar();
-  }, []);
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      const currentY = event.contentOffset.y;
+      const diff = currentY - lastScrollY.value;
+      
+      if (currentY > 50 && diff > 10 && !isHeaderHidden.value) {
+        isHeaderHidden.value = true;
+        headerTranslateY.value = withTiming(-HEADER_HEIGHT, { duration: 300 });
+        runOnJS(hideTabBar)();
+      } else if ((currentY <= 50 || diff < -10) && isHeaderHidden.value) {
+        isHeaderHidden.value = false;
+        headerTranslateY.value = withTiming(0, { duration: 300 });
+        runOnJS(showTabBar)();
+      }
+      
+      scrollY.value = currentY;
+      lastScrollY.value = currentY;
+    },
+  });
+
+  const headerAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: headerTranslateY.value }],
+    opacity: interpolate(headerTranslateY.value, [-HEADER_HEIGHT, 0], [0, 1], Extrapolation.CLAMP),
+  }));
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    loadCategories();
+    showTabBar();
   }, []);
 
   useFocusEffect(
@@ -57,6 +156,13 @@ export default function Categories() {
     }, [])
   );
 
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
   const loadCategories = async (isRefreshing = false) => {
     try {
       if (isRefreshing) setRefreshing(true);
@@ -64,8 +170,7 @@ export default function Categories() {
       const { data, error } = await supabase
         .from('categories')
         .select('*, subcategories(id, name)')
-        .order('order', { ascending: true })
-        .order('name', { ascending: true });
+        .order('order', { ascending: true });
 
       if (error) throw error;
       if (data) setCategories(data as any);
@@ -77,9 +182,9 @@ export default function Categories() {
     }
   };
 
-  const onRefresh = () => loadCategories(true);
+  const onRefresh = useCallback(() => loadCategories(true), []);
 
-  const handleCategoryPress = (category: Category) => {
+  const handleCategoryPress = useCallback((category: Category) => {
     router.push({
       pathname: '/subcategories',
       params: { 
@@ -88,32 +193,9 @@ export default function Categories() {
         initialSearch: searchQuery
       }
     });
-  };
+  }, [searchQuery, router]);
 
-  const filteredResults = searchQuery.trim() === '' 
-    ? categories.map(c => ({ ...c, type: 'category' }))
-    : (() => {
-        const results: any[] = [];
-        const searchLower = searchQuery.toLowerCase();
-
-        categories.forEach(cat => {
-          // Se a categoria combina, adiciona ela
-          if (cat.name.toLowerCase().includes(searchLower)) {
-            results.push({ ...cat, type: 'category' });
-          }
-
-          // Busca nas subcategorias
-          cat.subcategories?.forEach(sub => {
-            if (sub.name.toLowerCase().includes(searchLower)) {
-              results.push({ ...sub, type: 'subcategory', parentCategory: cat });
-            }
-          });
-        });
-
-        return results;
-      })();
-
-  const handleSubcategoryPress = (subcategory: any, category: any) => {
+  const handleSubcategoryPress = useCallback((subcategory: any, category: any) => {
     router.push({
       pathname: '/(tabs)',
       params: {
@@ -123,86 +205,30 @@ export default function Categories() {
         filterSubcategoryName: subcategory.name
       }
     });
-  };
+  }, [router]);
 
-  const SearchResultItem = ({ item, index }: { item: any; index: number }) => {
-    if (item.type === 'category') {
-      return <CategoryCard item={item} index={index} />;
+  const filteredResults = useMemo(() => {
+    if (debouncedQuery.trim() === '') {
+      return categories.map(c => ({ ...c, type: 'category' }));
     }
-
-    // Renderiza subcategoria diretamente
-    return (
-      <AnimatedTouchableOpacity
-        entering={FadeInUp.duration(400).delay(index * 30)}
-        style={[styles.subcategoryResult, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
-        onPress={() => handleSubcategoryPress(item, item.parentCategory)}
-      >
-        <View style={[styles.subcategoryIconContainer, { backgroundColor: accent + '22' }]}>
-          <Text style={styles.subcategoryIcon}>{item.parentCategory.icon}</Text>
-        </View>
-        <View style={styles.subcategoryInfo}>
-          <Text style={[styles.subcategoryNameResult, { color: textPrimary }]}>{item.name}</Text>
-          <Text style={[styles.subcategoryParentName, { color: textSecondary }]}>em {item.parentCategory.name}</Text>
-        </View>
-        <ChevronRight size={18} color={textSecondary} />
-      </AnimatedTouchableOpacity>
-    );
-  };
-
-  const CategoryCard = ({ item, index }: { item: Category; index: number }) => {
-    const scale = useSharedValue(1);
     
-    const animatedStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: scale.value }],
-    }));
+    const results: any[] = [];
+    const searchLower = debouncedQuery.toLowerCase();
 
-    const gradients = [
-      ['#00d9ff', '#0055ff'],
-      ['#ff1493', '#8000ff'],
-      ['#34C759', '#1e5a2d'],
-      ['#FF9500', '#ff5e00'],
-      ['#AF52DE', '#5856D6'],
-      ['#FF3B30', '#8b0000'],
-      ['#00C9A7', '#008080'],
-      ['#FF6B35', '#ff3d00'],
-    ];
+    categories.forEach(cat => {
+      if (cat.name.toLowerCase().includes(searchLower)) {
+        results.push({ ...cat, type: 'category' });
+      }
 
-    const gradient = gradients[index % gradients.length];
+      cat.subcategories?.forEach(sub => {
+        if (sub.name.toLowerCase().includes(searchLower)) {
+          results.push({ ...sub, type: 'subcategory', parentCategory: cat });
+        }
+      });
+    });
 
-    return (
-      <AnimatedTouchableOpacity
-        entering={FadeInUp.duration(600).delay(index * 50)}
-        style={[styles.categoryCard, animatedStyle]}
-        onPressIn={() => (scale.value = withSpring(0.98, { damping: 20 }))}
-        onPressOut={() => (scale.value = withSpring(1, { damping: 20 }))}
-        onPress={() => handleCategoryPress(item)}
-        activeOpacity={1}
-      >
-        <LinearGradient
-          colors={gradient as [string, string, ...string[]]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.categoryGradient}
-        >
-          <View style={styles.glassOverlay} />
-          
-          <View style={styles.cardHeader}>
-            <View style={styles.iconContainer}>
-              <Text style={styles.categoryIcon}>{item.icon}</Text>
-            </View>
-            <View style={styles.sparkleContainer}>
-              <Sparkles size={14} color="rgba(255,255,255,0.8)" />
-            </View>
-          </View>
-
-          <View style={styles.cardFooter}>
-            <Text style={styles.categoryName} numberOfLines={2}>{item.name}</Text>
-            <ChevronRight size={16} color="rgba(255,255,255,0.6)" />
-          </View>
-        </LinearGradient>
-      </AnimatedTouchableOpacity>
-    );
-  };
+    return results;
+  }, [categories, debouncedQuery]);
 
   if (loading && !refreshing) {
     return (
@@ -213,27 +239,37 @@ export default function Categories() {
   }
 
   return (
-    <PageTransition>
-      <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
+    <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
       <Animated.View 
-        entering={FadeInDown.duration(800)}
-        style={[styles.headerContainer, { paddingTop: insets.top + vs(20), backgroundColor: backgroundSecondary, borderBottomColor: isDark ? 'transparent' : 'rgba(0,0,0,0.05)', borderBottomWidth: isDark ? 0 : 1 }]}
+        style={[
+          styles.headerContainer, 
+          headerAnimatedStyle,
+          { 
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 100,
+            paddingTop: insets.top + vs(8),
+            backgroundColor: backgroundSecondary, 
+            borderBottomColor: isDark ? 'transparent' : 'rgba(0,0,0,0.05)', 
+            borderBottomWidth: isDark ? 0 : 1 
+          }
+        ]}
       >
         <LinearGradient
           colors={isDark ? ['rgba(255,255,255,0.05)', 'transparent'] : ['rgba(0,0,0,0.02)', 'transparent']}
           style={StyleSheet.absoluteFill}
         />
         
-        <View style={{ height: insets.top }} />
-
         <View style={[
           styles.searchContainer,
           isSearchFocused && styles.searchContainerActive,
           { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)', borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)' }
         ]}>
-          <Search size={20} color={isSearchFocused ? accent : textSecondary} style={styles.searchIcon} />
+          <Search size={18} color={isSearchFocused ? accent : textSecondary} style={styles.searchIcon} />
           <TextInput
-            style={[styles.searchInput, { color: textPrimary }]}
+            style={[styles.searchInput, { color: textPrimary, fontSize: ms(14) }]}
             placeholder="O que você está procurando?"
             placeholderTextColor={textSecondary}
             value={searchQuery}
@@ -242,30 +278,46 @@ export default function Categories() {
             onBlur={() => setIsSearchFocused(false)}
           />
         </View>
-
-
       </Animated.View>
 
-      <FlatList
+      <Animated.FlatList
         data={filteredResults}
         keyExtractor={(item) => item.type === 'category' ? `cat-${item.id}` : `sub-${item.id}`}
-        renderItem={({ item, index }) => <SearchResultItem item={item} index={index} />}
-        numColumns={searchQuery.trim() === '' ? 2 : 1}
-        key={searchQuery.trim() === '' ? 'grid' : 'list'}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: insets.bottom + 100 }
-        ]}
-        columnWrapperStyle={searchQuery.trim() === '' ? styles.columnWrapper : null}
+        renderItem={({ item, index }) => (
+          <SearchResultItem 
+            item={item} 
+            index={index} 
+            handleCategoryPress={handleCategoryPress}
+            handleSubcategoryPress={handleSubcategoryPress}
+            isDark={isDark}
+            backgroundSecondary={backgroundSecondary}
+            accent={accent}
+            textPrimary={textPrimary}
+            textSecondary={textSecondary}
+          />
+        )}
+        numColumns={debouncedQuery.trim() === '' ? 2 : 1}
+        key={debouncedQuery.trim() === '' ? 'grid' : 'list'}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.listContent, 
+          { paddingTop: HEADER_HEIGHT + 20, paddingBottom: insets.bottom + 100 }
+        ]}
+        columnWrapperStyle={debouncedQuery.trim() === '' ? styles.columnWrapper : undefined}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={accent}
-            colors={[accent]}
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            tintColor={accent} 
+            progressViewOffset={HEADER_HEIGHT}
           />
         }
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
             <Search size={48} color={isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"} />
@@ -274,7 +326,6 @@ export default function Categories() {
         )}
       />
     </View>
-    </PageTransition>
   );
 }
 
@@ -289,9 +340,9 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     paddingHorizontal: s(20),
-    paddingBottom: vs(24),
-    borderBottomLeftRadius: ms(32),
-    borderBottomRightRadius: ms(32),
+    paddingBottom: vs(16), // Aumentado de 12 para 16
+    borderBottomLeftRadius: ms(24),
+    borderBottomRightRadius: ms(24),
     overflow: 'hidden',
   },
   headerTop: {
@@ -321,11 +372,11 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: ms(18),
+    borderRadius: ms(12),
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: s(16),
-    height: vs(56),
+    height: vs(40), // Reduzido para 40
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
   },

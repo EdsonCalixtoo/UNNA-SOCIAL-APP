@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Modal,
-  Image,
   TouchableOpacity,
   Dimensions,
   ActivityIndicator,
@@ -13,127 +12,230 @@ import {
   Alert,
   FlatList,
   StatusBar,
-  Easing,
-  Animated,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Keyboard
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Audio } from 'expo-av';
-import { X, Heart, Send, Trash2, Share2 } from 'lucide-react-native';
+import { Image } from 'expo-image';
+import { X, Heart, Send, Trash2, Share2, MoreVertical } from 'lucide-react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+  runOnJS,
+  SharedValue,
+  cancelAnimation,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+
 import { Story } from '@/types/database';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { notifyStoryLike, notifyMessageRecipient } from '@/lib/notifications';
 
 const { width: W, height: H } = Dimensions.get('window');
 
-// ─── StoryItem: componente de topo, NUNCA dentro de outro componente ───────────
-interface StoryItemProps {
-  item: Story;
-  index: number;
-  currentIndex: number;
-  visible: boolean;
-  onNext: () => void;
-  onPrev: () => void;
-}
+// --- TIPOS ---
+type StoryState = 'IDLE' | 'LOADING' | 'BUFFERING' | 'READY' | 'PLAYING' | 'PAUSED' | 'ENDED' | 'ERROR';
 
-function StoryItem({ item, index, currentIndex, visible, onNext, onPrev }: StoryItemProps) {
-  const isCurrent = index === currentIndex;
-  const [loaded, setLoaded] = useState(false);
-  const isVideo = item.media_type === 'video';
+// --- COMPONENTES AUXILIARES ---
 
-  // Cria o player de vídeo (expo-video) — Pré-carrega o próximo para ser instantâneo
-  const player = useVideoPlayer(
-    (isCurrent || index === currentIndex + 1) && isVideo ? { uri: item.media_url } : null,
-    (p) => {
-      p.loop = false;
-      p.muted = false;
-      if (visible && isCurrent) p.play();
-    }
-  );
-
-  // Controla play/pause quando o item entra/sai do foco
-  useEffect(() => {
-    if (!isVideo || !player) return;
-    if (visible && isCurrent) {
-      player.play();
-    } else {
-      player.pause();
-    }
-  }, [isCurrent, visible]);
-
-  // Timeout de segurança: 6s sem carregar → remove spinner
-  useEffect(() => {
-    if (!isCurrent) return;
-    // Se mudar o item, resetamos o loaded local se for vídeo para o novo buffering
-    // mas se for imagem e já pre-fetchada, o onLoad do Image cuidará disso.
-    const t = setTimeout(() => setLoaded(true), 6000);
-    return () => clearTimeout(t);
-  }, [item.id, isCurrent]);
-
-  // Efeito de Auto-Advance para Imagens
-  useEffect(() => {
-    if (!isCurrent || !visible || isVideo) return;
-    
-    // Timer de 5 segundos para imagens
-    const timer = setTimeout(() => {
-      onNext();
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, [isCurrent, visible, isVideo]);
-
-  // Efeito de Auto-Advance para Vídeos (ao terminar)
-  useEffect(() => {
-    if (!isCurrent || !visible || !isVideo || !player) return;
-
-    const subscription = player.addListener('playToEnd', () => {
-      onNext();
-    });
-
-    return () => subscription.remove();
-  }, [isCurrent, visible, isVideo, player]);
+const ProgressBar = memo(({ 
+  index, 
+  currentIndex, 
+  progress 
+}: { 
+  index: number, 
+  currentIndex: number, 
+  progress: SharedValue<number> 
+}) => {
+  const animatedStyle = useAnimatedStyle(() => {
+    if (index < currentIndex) return { width: '100%' };
+    if (index > currentIndex) return { width: '0%' };
+    return { width: `${progress.value * 100}%` };
+  });
 
   return (
-    <View style={s.page}>
-      <View style={s.mediaWrap}>
-        {isVideo ? (
-          isCurrent ? (
-            <VideoView
-              player={player}
-              style={s.media}
-              contentFit="cover"
-              nativeControls={false}
-              onFirstFrameRender={() => setLoaded(true)}
-            />
-          ) : (
-            <View style={[s.media, { backgroundColor: '#000' }]} />
-          )
-        ) : (
-          <Image
-            source={{ uri: item.media_url }}
-            style={s.media}
-            resizeMode="cover"
-            onLoad={() => setLoaded(true)}
-            onError={() => setLoaded(true)}
-          />
-        )}
-
-        {!loaded && isCurrent && (
-          <View style={s.loadingBox}>
-            <ActivityIndicator size="large" color="#fff" />
-          </View>
-        )}
-      </View>
-
-      <View style={s.tapRow} pointerEvents="box-none">
-        <TouchableOpacity style={s.tap} onPress={onPrev} activeOpacity={1} />
-        <TouchableOpacity style={[s.tap, { flex: 2 }]} onPress={onNext} activeOpacity={1} />
-      </View>
+    <View style={st.progressBg}>
+      <Animated.View style={[st.progressFill, animatedStyle]} />
     </View>
   );
-}
+});
 
+// --- RENDERIZADOR DE IMAGEM ---
+const StoryImageRenderer = memo(({ 
+  item, 
+  isActive, 
+  isPaused, 
+  onNext, 
+  progress 
+}: { 
+  item: Story, 
+  isActive: boolean, 
+  isPaused: boolean, 
+  onNext: () => void, 
+  progress: SharedValue<number> 
+}) => {
+  const [status, setStatus] = useState<StoryState>('LOADING');
+  const IMAGE_DURATION = 5000;
 
-// ─── StoryViewer principal ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isActive) {
+      setStatus('IDLE');
+      return;
+    }
+
+    if (status === 'READY' || status === 'PLAYING') {
+      if (isPaused) {
+        cancelAnimation(progress);
+        setStatus('PAUSED');
+      } else {
+        const remaining = IMAGE_DURATION * (1 - progress.value);
+        progress.value = withTiming(1, { 
+          duration: remaining, 
+          easing: Easing.linear 
+        }, (finished) => {
+          if (finished) runOnJS(onNext)();
+        });
+        setStatus('PLAYING');
+      }
+    }
+  }, [isActive, isPaused, status]);
+
+  const handleDisplay = () => {
+    if (isActive) {
+      progress.value = 0;
+      setStatus('READY');
+    }
+  };
+
+  return (
+    <View style={st.page}>
+      <Image
+        source={{ uri: item.media_url }}
+        style={st.media}
+        contentFit="contain"
+        cachePolicy="memory-disk"
+        onDisplay={handleDisplay}
+      />
+      {status === 'LOADING' && (
+        <View style={st.loadingBox}>
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      )}
+    </View>
+  );
+});
+
+// --- RENDERIZADOR DE VÍDEO ---
+import { getCachedVideoUri } from '@/lib/videoCache';
+
+const StoryVideoRenderer = memo(({ item, isActive, isPaused, onNext, progress, isNext }: { 
+  item: Story, 
+  isActive: boolean, 
+  isPaused: boolean, 
+  onNext: () => void, 
+  progress: SharedValue<number>,
+  isNext?: boolean
+}) => {
+  const [status, setStatus] = useState<StoryState>('LOADING');
+  const [localUri, setLocalUri] = useState<string | null>(null);
+  
+  // Resolve o cache antes de criar o player
+  useEffect(() => {
+    if (isActive || isNext) {
+      getCachedVideoUri(item.media_url).then(setLocalUri);
+    }
+  }, [isActive, isNext, item.media_url]);
+
+  const player = useVideoPlayer(localUri, (p) => {
+    p.loop = false;
+    p.muted = false;
+  });
+
+  useEffect(() => {
+    if (!isActive || !player || !localUri) {
+      if (!isActive) setStatus('IDLE');
+      progress.value = 0;
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (player.duration > 0) {
+        progress.value = player.currentTime / player.duration;
+      }
+    }, 16); // Sync 60fps
+
+    const statusSub = player.addListener('statusChange', (s: any) => {
+      if (s.status === 'readyToPlay') setStatus('READY');
+      if (s.status === 'loading') setStatus('LOADING');
+    });
+
+    // Verificação imediata: Se o player já estiver pronto (cache local), muda o status agora
+    if (player.status === 'readyToPlay') {
+      setStatus('READY');
+    }
+
+    const playSub = player.addListener('playingChange', (event: { isPlaying: boolean }) => {
+      if (event.isPlaying) setStatus('PLAYING');
+      else if (isActive && !isPaused) setStatus('BUFFERING');
+    });
+
+    const finishSub = player.addListener('playToEnd', () => {
+      runOnJS(onNext)();
+    });
+
+    return () => {
+      clearInterval(interval);
+      statusSub.remove();
+      playSub.remove();
+      finishSub.remove();
+    };
+  }, [isActive, player]);
+
+  useEffect(() => {
+    if (!player || !isActive) return;
+    if (isPaused || status === 'LOADING' || status === 'BUFFERING') {
+      player.pause();
+    } else {
+      player.play();
+    }
+  }, [isPaused, status, isActive]);
+
+  return (
+    <View style={st.page}>
+      {/* Thumbnail de fundo para evitar flickering */}
+      <Image 
+        source={{ uri: item.thumbnail_url || item.media_url }} 
+        style={[st.media, { position: 'absolute' }]} 
+        contentFit="contain"
+        blurRadius={isActive ? 0 : 10}
+      />
+      
+      {isActive && (
+        <VideoView
+          player={player}
+          style={st.media}
+          contentFit="contain"
+          nativeControls={false}
+        />
+      )}
+
+      {(status === 'LOADING' || status === 'BUFFERING') && isActive && (
+        <View style={st.loadingBox}>
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      )}
+    </View>
+  );
+});
+
+// --- MAIN VIEWER ---
 interface Props {
   visible: boolean;
   stories: Story[];
@@ -143,77 +245,66 @@ interface Props {
 }
 
 export default function StoryViewer({ visible, stories, initialIndex = 0, onClose, onRefresh }: Props) {
+  const router = useRouter();
   const { user } = useAuth();
   const listRef = useRef<FlatList>(null);
   const [idx, setIdx] = useState(initialIndex);
+  const [isPaused, setIsPaused] = useState(false);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [liked, setLiked] = useState(false);
+  const [isReplying, setIsReplying] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  
+  const progress = useSharedValue(0);
 
-  // Animação da barra de progresso
   useEffect(() => {
-    if (!visible) return;
-    
-    progressAnim.setValue(0);
-    const story = stories[idx];
-    const duration = story.media_type === 'video' ? 15000 : 5000; // 15s max para vídeo se não soubermos a duração
-
-    Animated.timing(progressAnim, {
-      toValue: 1,
-      duration: duration,
-      easing: Easing.linear,
-      useNativeDriver: false,
-    }).start();
-
-    return () => progressAnim.stopAnimation();
-  }, [idx, visible]);
-
-  // Configura áudio ao abrir (resolve vídeo mudo no iOS modo silencioso)
-  useEffect(() => {
-    if (!visible) return;
-    Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
-    setIdx(initialIndex);
-    setLiked(false);
-
-    // Scroll para o índice inicial após o FlatList montar
-    const t = setTimeout(() => {
-      listRef.current?.scrollToIndex({ index: initialIndex, animated: false });
-      // Pré-carrega próximas 2 imagens
-      prefetch(initialIndex);
-    }, 150);
-    return () => clearTimeout(t);
-  }, [visible]);
-
-  const prefetch = (i: number) => {
-    // Pré-carrega as próximas 4 imagens para garantir fluidez total
-    for (let k = 1; k <= 4; k++) {
-      const next = stories[i + k];
-      if (next?.media_type === 'image') {
-        Image.prefetch(next.media_url);
-      }
+    if (visible) {
+      setIdx(initialIndex);
+      progress.value = 0;
+      setTimeout(() => {
+        listRef.current?.scrollToIndex({ index: initialIndex, animated: false });
+      }, 50);
+      checkIfLiked(stories[initialIndex].id);
     }
+  }, [visible, initialIndex]);
+
+  useEffect(() => {
+    if (stories[idx]) {
+      checkIfLiked(stories[idx].id);
+    }
+  }, [idx]);
+
+  const checkIfLiked = async (storyId: string) => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('story_likes')
+      .select('id')
+      .eq('story_id', storyId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    setLiked(!!data);
   };
 
-  const goNext = useCallback(() => {
+  const handleNext = useCallback(() => {
     if (idx < stories.length - 1) {
-      const n = idx + 1;
-      listRef.current?.scrollToIndex({ index: n, animated: true });
-      setIdx(n);
-      setLiked(false);
-      prefetch(n);
+      progress.value = 0;
+      const nextIdx = idx + 1;
+      setIdx(nextIdx);
+      listRef.current?.scrollToIndex({ index: nextIdx, animated: true });
     } else {
       onClose();
     }
-  }, [idx, stories.length]);
+  }, [idx, stories, onClose]);
 
-  const goPrev = useCallback(() => {
+  const handlePrev = useCallback(() => {
     if (idx > 0) {
-      const n = idx - 1;
-      listRef.current?.scrollToIndex({ index: n, animated: true });
-      setIdx(n);
-      setLiked(false);
+      progress.value = 0;
+      const prevIdx = idx - 1;
+      setIdx(prevIdx);
+      listRef.current?.scrollToIndex({ index: prevIdx, animated: true });
+    } else {
+      progress.value = 0;
     }
   }, [idx]);
 
@@ -222,35 +313,85 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
     setSending(true);
     try {
       const ownerId = stories[idx].user_id;
-      const { data: chat } = await supabase
-        .from('chats').select('id')
-        .or(`and(user1_id.eq.${user.id},user2_id.eq.${ownerId}),and(user1_id.eq.${ownerId},user2_id.eq.${user.id})`)
+      
+      // Procurar conversa 1:1 existente
+      const { data: myConvs } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', user.id);
+      
+      const myConvIds = myConvs?.map(c => c.conversation_id) || [];
+
+      const { data: targetConv } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', ownerId)
+        .in('conversation_id', myConvIds)
         .maybeSingle();
 
-      let chatId = chat?.id;
+      let chatId = targetConv?.conversation_id;
+
       if (!chatId) {
+        // Criar nova conversa
         const { data: nc } = await supabase
-          .from('chats').insert({ user1_id: user.id, user2_id: ownerId }).select().single();
+          .from('conversations').insert({ is_group: false }).select().single();
         chatId = nc?.id;
+        
+        await supabase.from('conversation_participants').insert([
+          { conversation_id: chatId, user_id: user.id },
+          { conversation_id: chatId, user_id: ownerId }
+        ]);
       }
+
+      const content = `Respondeu ao seu story: "${message}"`;
+      
       await supabase.from('messages').insert({
-        chat_id: chatId,
+        conversation_id: chatId,
         sender_id: user.id,
-        content: `Respondeu ao seu story: "${message}"`,
-        metadata: { story_id: stories[idx].id },
+        content: content,
+        read: false
       });
+
+      // Notificar o dono
+      await notifyMessageRecipient(ownerId, user.id, content, chatId);
+
       setMessage('');
-      Alert.alert('✅', 'Mensagem enviada!');
-    } catch {
-      Alert.alert('Erro', 'Não foi possível enviar.');
+      setIsReplying(false);
+      Keyboard.dismiss();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Erro', 'Não foi possível enviar sua resposta.');
     } finally {
       setSending(false);
     }
   };
 
+  const handleLike = async () => {
+    if (!user || sending) return;
+    const storyId = stories[idx].id;
+    const ownerId = stories[idx].user_id;
+    const newLiked = !liked;
+    
+    setLiked(newLiked);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      if (newLiked) {
+        await supabase.from('story_likes').insert({ story_id: storyId, user_id: user.id });
+        await notifyStoryLike(storyId, user.id, ownerId);
+      } else {
+        await supabase.from('story_likes').delete().eq('story_id', storyId).eq('user_id', user.id);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleDelete = () => {
+    setIsPaused(true);
     Alert.alert('Deletar story?', 'Esta ação não pode ser desfeita.', [
-      { text: 'Cancelar' },
+      { text: 'Cancelar', style: 'cancel', onPress: () => setIsPaused(false) },
       {
         text: 'Deletar', style: 'destructive', onPress: async () => {
           setDeleting(true);
@@ -262,175 +403,197 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
     ]);
   };
 
-  const renderItem = useCallback(({ item, index }: { item: Story; index: number }) => (
-    <StoryItem
-      item={item}
-      index={index}
-      currentIndex={idx}
-      visible={visible}
-      onNext={goNext}
-      onPrev={goPrev}
-    />
-  ), [idx, visible, goNext, goPrev]);
-
   if (!visible || stories.length === 0) return null;
 
   const story = stories[idx];
-  const profile = Array.isArray(story.profiles) ? story.profiles[0] : story.profiles;
+  // Tenta extrair perfil de múltiplas fontes possíveis (Edge Function vs Query Direta)
+  const rawProfile = story.profiles || (story as any).user || (story as any).profile;
+  const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
+  
+  // Garantia: se não houver objeto de perfil, usamos o user_id da história para o redirecionamento
+  const targetProfileId = profile?.id || story.user_id;
   const isOwner = user?.id === story.user_id;
 
   return (
     <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
       <StatusBar hidden />
-      <View style={s.root}>
+      <View style={st.root}>
+        {/* Fundo para Blur */}
+        <Image 
+          source={{ uri: story.thumbnail_url || story.media_url }} 
+          style={StyleSheet.absoluteFill} 
+          contentFit="cover" 
+          blurRadius={50}
+        />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
 
-        {/* LISTA HORIZONTAL DE STORIES */}
         <FlatList
           ref={listRef}
           data={stories}
-          renderItem={renderItem}
+          renderItem={({ item, index }) => {
+            const isActive = index === idx;
+            const isNext = index === idx + 1;
+            
+            return item.media_type === 'video' ? (
+              <StoryVideoRenderer
+                item={item}
+                isActive={isActive}
+                isNext={isNext}
+                isPaused={isPaused}
+                onNext={handleNext}
+                progress={progress}
+              />
+            ) : (
+              <StoryImageRenderer
+                item={item}
+                isActive={isActive}
+                isPaused={isPaused}
+                onNext={handleNext}
+                progress={progress}
+              />
+            );
+          }}
           keyExtractor={item => item.id}
           horizontal
           pagingEnabled
-          scrollEnabled={false}          // navegação só por toque
-          showsHorizontalScrollIndicator={false}
+          scrollEnabled={false}
           getItemLayout={(_, i) => ({ length: W, offset: W * i, index: i })}
-          windowSize={5}
-          updateCellsBatchingPeriod={10}
-          maxToRenderPerBatch={5}
-          initialNumToRender={2}
+          removeClippedSubviews={true}
         />
 
-        {/* BARRAS DE PROGRESSO (ESTILO INSTAGRAM) */}
-        <View style={s.progressContainer}>
-          {stories.map((_, i) => (
-            <View key={i} style={s.progressBarBg}>
-              <Animated.View 
-                style={[
-                  s.progressBarFill, 
-                  { 
-                    width: i < idx ? '100%' : i === idx ? progressAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0%', '100%']
-                    }) : '0%',
-                    backgroundColor: i === idx ? '#fff' : 'rgba(255,255,255,0.3)' 
-                  }
-                ]} 
-              />
-            </View>
-          ))}
+        {/* GESTURE OVERLAY */}
+        <View style={st.gestureOverlay}>
+          <TouchableWithoutFeedback onPressIn={() => setIsPaused(true)} onPressOut={() => setIsPaused(false)} onPress={handlePrev}>
+            <View style={st.gestureLeft} />
+          </TouchableWithoutFeedback>
+          <TouchableWithoutFeedback onPressIn={() => setIsPaused(true)} onPressOut={() => setIsPaused(false)} onPress={handleNext}>
+            <View style={st.gestureRight} />
+          </TouchableWithoutFeedback>
         </View>
 
-        {/* HUD FIXO: avatar + botões */}
-        <View style={s.hud} pointerEvents="box-none">
-          {/* Cabeçalho */}
-          <View style={s.header} pointerEvents="box-none">
-            <View style={s.userRow}>
+        {/* HUD TOP */}
+        <View style={st.hudTop}>
+          <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={st.topGradient} />
+          
+          <View style={st.progressContainer}>
+            {stories.map((_, i) => (
+              <ProgressBar key={i} index={i} currentIndex={idx} progress={progress} />
+            ))}
+          </View>
+
+          <View style={[st.header, { zIndex: 999 }]}>
+            <TouchableOpacity 
+              style={st.headerLeft} 
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 100 }}
+              onPress={() => {
+                console.log('👤 [StoryViewer] Navegando para perfil:', targetProfileId);
+                if (targetProfileId) {
+                  onClose();
+                  router.push(`/profile/${targetProfileId}`);
+                }
+              }}
+            >
               {profile?.avatar_url
-                ? <Image source={{ uri: profile.avatar_url }} style={s.avatar} />
-                : <View style={s.avatarFallback}><Text style={s.avatarLetter}>{profile?.username?.[0]?.toUpperCase()}</Text></View>
+                ? <Image source={profile.avatar_url} style={st.avatar} cachePolicy="memory-disk" />
+                : <View style={st.avatarFallback}><Text style={st.avatarLetter}>{profile?.username?.[0]?.toUpperCase()}</Text></View>
               }
               <View>
-                <Text style={s.username}>{profile?.username}</Text>
-                <Text style={s.timeLabel}>agora</Text>
+                <Text style={st.username}>{profile?.username}</Text>
+                <Text style={st.timeLabel}>agora</Text>
               </View>
-            </View>
-            <View style={s.headerRight}>
+            </TouchableOpacity>
+            <View style={st.headerRight}>
               {isOwner && (
-                <TouchableOpacity onPress={handleDelete} style={s.btn} disabled={deleting}>
-                  <Trash2 size={22} color="#ff3b30" />
+                <TouchableOpacity onPress={handleDelete} style={st.iconBtn} disabled={deleting}>
+                  <MoreVertical size={24} color="#fff" />
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={onClose} style={s.btn}>
-                <X size={26} color="#fff" />
+              <TouchableOpacity onPress={onClose} style={st.iconBtn}>
+                <X size={28} color="#fff" />
               </TouchableOpacity>
             </View>
           </View>
-
-          {/* Rodapé */}
-          <View style={s.footer}>
-            {!isOwner ? (
-              <View style={s.replyRow}>
-                <View style={s.inputWrap}>
-                  <TextInput
-                    style={s.input}
-                    placeholder="Responder..."
-                    placeholderTextColor="rgba(255,255,255,0.6)"
-                    value={message}
-                    onChangeText={setMessage}
-                    returnKeyType="send"
-                    onSubmitEditing={handleSendMessage}
-                  />
-                </View>
-                <TouchableOpacity onPress={handleSendMessage} style={s.btn} disabled={sending}>
-                  <Send size={22} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setLiked(l => !l)} style={s.btn}>
-                  <Heart size={24} color={liked ? '#ff3b30' : '#fff'} fill={liked ? '#ff3b30' : 'transparent'} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={s.ownerRow}>
-                <TouchableOpacity style={s.shareBtn} onPress={() => Alert.alert('Compartilhar', 'Em breve!')}>
-                  <Share2 size={20} color="#fff" />
-                  <Text style={s.shareTxt}>Compartilhar</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
         </View>
 
+        {/* HUD BOTTOM */}
+        {(!isPaused || isReplying) && (
+          <View style={st.hudBottom}>
+            <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={st.bottomGradient} />
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+              <View style={st.footer}>
+                {!isOwner ? (
+                  <View style={st.replyRow}>
+                    <BlurView intensity={30} tint="dark" style={st.inputWrap}>
+                      <TextInput
+                        style={st.input}
+                        placeholder="Responder..."
+                        placeholderTextColor="rgba(255,255,255,0.8)"
+                        value={message}
+                        onChangeText={setMessage}
+                        onFocus={() => {
+                          setIsPaused(true);
+                          setIsReplying(true);
+                        }}
+                        onBlur={() => {
+                          setIsPaused(false);
+                          setIsReplying(false);
+                        }}
+                      />
+                    </BlurView>
+                    <TouchableOpacity onPress={handleLike} style={st.actionBtn}>
+                      <Heart size={28} color={liked ? '#ff1493' : '#fff'} fill={liked ? '#ff1493' : 'transparent'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleSendMessage} style={st.actionBtn}>
+                      <Send size={26} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={st.ownerRow}>
+                    <TouchableOpacity style={st.shareBtn}>
+                      <Share2 size={20} color="#000" />
+                      <Text style={st.shareTxt}>Compartilhar</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        )}
       </View>
     </Modal>
   );
 }
 
-const s = StyleSheet.create({
-  root:          { flex: 1, backgroundColor: '#000' },
-  page:          { width: W, height: H },
-  mediaWrap:     { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  media:         { width: W, height: H },
-  placeholder:   { width: W, height: H, backgroundColor: '#000' },
-  loadingBox:    { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
-  tapRow:        { ...StyleSheet.absoluteFillObject, flexDirection: 'row', zIndex: 5 },
-  tap:           { flex: 1 },
-  hud:           { ...StyleSheet.absoluteFillObject, zIndex: 10, justifyContent: 'space-between' },
-  header:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingTop: Platform.OS === 'ios' ? 55 : 40 },
-  userRow:       { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar:        { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderColor: '#fff' },
-  avatarFallback:{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#00d9ff', justifyContent: 'center', alignItems: 'center' },
-  avatarLetter:  { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  username:      { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-  timeLabel:     { color: 'rgba(255,255,255,0.6)', fontSize: 11 },
-  headerRight:   { flexDirection: 'row', gap: 8 },
-  btn:           { padding: 6 },
-  footer:        { paddingHorizontal: 14, paddingBottom: Platform.OS === 'ios' ? 44 : 28 },
-  replyRow:      { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  inputWrap:     { flex: 1, height: 44, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', paddingHorizontal: 16, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
-  input:         { color: '#fff', fontSize: 14 },
-  ownerRow:      { alignItems: 'center' },
-  shareBtn:      { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.18)', paddingVertical: 10, paddingHorizontal: 24, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  shareTxt:      { color: '#fff', fontWeight: '700', fontSize: 14 },
-  
-  // Progress Bar
-  progressContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 45 : 20,
-    left: 10,
-    right: 10,
-    flexDirection: 'row',
-    gap: 4,
-    zIndex: 20,
-  },
-  progressBarBg: {
-    flex: 1,
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 1,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#fff',
-  },
+const st = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#000' },
+  page: { width: W, height: H, justifyContent: 'center', alignItems: 'center' },
+  media: { width: W, height: H },
+  loadingBox: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
+  gestureOverlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', zIndex: 5 },
+  gestureLeft: { flex: 1 },
+  gestureRight: { flex: 2 },
+  hudTop: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
+  topGradient: { ...StyleSheet.absoluteFillObject, height: 120 },
+  progressContainer: { flexDirection: 'row', gap: 4, paddingHorizontal: 10, paddingTop: Platform.OS === 'ios' ? 60 : 45, marginBottom: 15 },
+  progressBg: { flex: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#fff', borderRadius: 2 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: '#fff' },
+  avatarFallback: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#00d9ff', justifyContent: 'center', alignItems: 'center' },
+  avatarLetter: { color: '#fff', fontWeight: '900', fontSize: 16 },
+  username: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  timeLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11 },
+  headerRight: { flexDirection: 'row', gap: 12 },
+  iconBtn: { padding: 4 },
+  hudBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10 },
+  bottomGradient: { ...StyleSheet.absoluteFillObject, height: 150 },
+  footer: { paddingHorizontal: 16, paddingBottom: Platform.OS === 'ios' ? 40 : 24 },
+  replyRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  inputWrap: { flex: 1, height: 48, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  input: { flex: 1, color: '#fff', fontSize: 14, paddingHorizontal: 18 },
+  actionBtn: { padding: 4 },
+  ownerRow: { alignItems: 'center' },
+  shareBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 24 },
+  shareTxt: { color: '#000', fontWeight: '700', fontSize: 14 },
 });

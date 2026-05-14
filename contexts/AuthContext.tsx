@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types/database';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 interface AuthContextType {
   session: Session | null;
@@ -13,6 +14,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, username: string, fullName: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signInWithGoogle: () => Promise<{ error: any }>;
+  signInWithApple: () => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -141,7 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
 
-      const redirectUrl = Linking.createURL('(auth)/login');
+      const redirectUrl = Linking.createURL('(auth)/login', { scheme: 'unna-social-app' });
       console.log('--- LOGIN GOOGLE INICIADO ---');
       console.log('URL de Redirecionamento esperada:', redirectUrl);
 
@@ -194,6 +196,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signInWithApple = async () => {
+    try {
+      if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
+      
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (credential.identityToken) {
+        const { data, error } = await supabase.auth.signInWithIdToken({
+          provider: 'apple',
+          token: credential.identityToken,
+        });
+        if (error) throw error;
+        return { error: null };
+      } else {
+        throw new Error('No identity token found');
+      }
+    } catch (error: any) {
+      if (error.code === 'ERR_CANCELED') {
+        return { error: null };
+      }
+      return { error: { message: error?.message || 'Erro ao fazer login com Apple' } };
+    }
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
@@ -208,6 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signUp,
         signIn,
         signInWithGoogle,
+        signInWithApple,
         signOut,
         refreshProfile,
       }}

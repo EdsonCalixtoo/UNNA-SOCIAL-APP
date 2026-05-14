@@ -45,6 +45,7 @@ export function EventParticipantsModal({
   }, [visible, eventId]);
 
   const loadParticipants = async () => {
+    if (!eventId || eventId === 'undefined') return;
     setLoading(true);
     try {
       const { data, error } = await supabase

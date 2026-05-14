@@ -174,7 +174,7 @@ export default function Map() {
       const { data, error } = await supabase
         .from('categories')
         .select('id, name, icon')
-        .order('name', { ascending: true });
+        .order('order', { ascending: true });
 
       if (error) {
         console.error('❌ Supabase error:', error);

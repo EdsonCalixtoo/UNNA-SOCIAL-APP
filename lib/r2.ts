@@ -37,11 +37,12 @@ export async function uploadToR2(
 
     console.log(`[R2] Gerando URL pré-assinada para: ${path}`);
     
-    // 1. Gerar URL pré-assinada (Presigned URL)
+    // 1. Gerar URL pré-assinada (Presigned URL) com headers de Cache agressivos
     const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,
       Key: path,
       ContentType: contentType,
+      CacheControl: 'public, max-age=31536000, immutable', // 1 ano de cache imutável no Edge e no App
     });
 
     const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });

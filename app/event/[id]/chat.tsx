@@ -183,6 +183,9 @@ export default function EventChat() {
   const [selectedReportType, setSelectedReportType] = useState<'event' | 'user'>('event');
   const [reportingUserId, setReportingUserId] = useState<string | null>(null);
   const [reportingUsername, setReportingUsername] = useState<string | null>(null);
+  const [participants, setParticipants] = useState<any[]>([]);
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
   
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -242,10 +245,26 @@ export default function EventChat() {
       }
       setConversationId(convId);
       await loadMessages(convId);
+      await loadParticipants();
     } catch (error) {
       console.error('Error initializing chat:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadParticipants = async () => {
+    try {
+      const eventId = Array.isArray(id) ? id[0] : id;
+      const { data, error } = await supabase
+        .from('event_participants')
+        .select('user_id, profiles:user_id(id, username, full_name, avatar_url)')
+        .eq('event_id', eventId);
+      
+      if (error) throw error;
+      setParticipants(data?.map(p => p.profiles) || []);
+    } catch (err) {
+      console.error('Error loading participants:', err);
     }
   };
 
@@ -479,6 +498,31 @@ export default function EventChat() {
         ))}
       </ScrollView>
 
+      {showMentions && (
+        <View style={[styles.mentionsContainer, { backgroundColor: backgroundSecondary }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {participants
+              .filter(p => p.username.toLowerCase().includes(mentionQuery.toLowerCase()) || p.full_name.toLowerCase().includes(mentionQuery.toLowerCase()))
+              .map((p) => (
+                <TouchableOpacity 
+                  key={p.id} 
+                  style={styles.mentionItem}
+                  onPress={() => {
+                    const words = messageText.split(' ');
+                    words.pop();
+                    setMessageText([...words, `@${p.username} `].join(' '));
+                    setShowMentions(false);
+                  }}
+                >
+                  <Image source={{ uri: p.avatar_url }} style={styles.mentionAvatar} />
+                  <Text style={[styles.mentionText, { color: textPrimary }]}>{p.username}</Text>
+                </TouchableOpacity>
+              ))
+            }
+          </ScrollView>
+        </View>
+      )}
+
       <View style={[styles.inputWrapper, { backgroundColor: backgroundPrimary }]}>
         <View style={[styles.inputContainer, { backgroundColor: backgroundSecondary }]}>
           <TouchableOpacity style={styles.attachButton} onPress={sendMediaMessage}>
@@ -490,7 +534,16 @@ export default function EventChat() {
             placeholder="Diga algo incrível..."
             placeholderTextColor={textSecondary}
             value={messageText}
-            onChangeText={setMessageText}
+            onChangeText={(text) => {
+              setMessageText(text);
+              const lastWord = text.split(' ').pop();
+              if (lastWord?.startsWith('@')) {
+                setMentionQuery(lastWord.slice(1));
+                setShowMentions(true);
+              } else {
+                setShowMentions(false);
+              }
+            }}
             multiline
           />
 
@@ -794,5 +847,30 @@ const styles = StyleSheet.create({
   reasonText: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  mentionsContainer: {
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  mentionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginRight: 10,
+    gap: 8,
+  },
+  mentionAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  mentionText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

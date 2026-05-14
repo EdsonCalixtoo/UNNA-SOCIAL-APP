@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Story } from '@/types/database';
 import StoryCreator from './StoryCreator';
 import StoryViewer from './StoryViewer';
+import { getCachedVideoUri } from '@/lib/videoCache';
 
 export default function StoriesBar() {
   const { user, profile } = useAuth();
@@ -43,11 +44,24 @@ export default function StoriesBar() {
       setUserStories(myStories);
       setAllStories(otherStories);
 
-      // Pré-carrega as primeiras 3 mídias para abertura instantânea
-      const firstOnes = data.slice(0, 3);
-      firstOnes.forEach((s: any) => {
-        if (s.type === 'image') Image.prefetch(s.main_url);
-      });
+      // PRÉ-CARREGAMENTO AGRESSIVO (Instagram Style)
+      // Carrega as metadatas e já inicia o download das mídias em background
+      if (data && data.length > 0) {
+        data.forEach((s: any, i: number) => {
+          // 1. Sempre baixa a thumbnail (leve) de todos os stories
+          if (s.thumbnail_url) Image.prefetch(s.thumbnail_url);
+          
+          // 2. Baixa a mídia full-res dos 5 primeiros para abertura instantânea
+          if (i < 5 && s.media_url) {
+             if (s.media_type === 'video') {
+                getCachedVideoUri(s.media_url); // Baixa pro cache de disco
+             } else {
+                Image.prefetch(s.media_url);
+             }
+          }
+        });
+        console.log(`⚡ [Preload] ${data.length} histórias pré-carregadas.`);
+      }
     } catch (error) {
       console.error('Erro ao carregar stories:', error);
       await loadStoriesDirect();
@@ -91,6 +105,13 @@ export default function StoriesBar() {
 
       if (otherError) throw otherError;
       setAllStories(otherStories || []);
+
+      // Preload para query direta
+      const combined = [...(myStories || []), ...(otherStories || [])];
+      combined.slice(0, 5).forEach(s => {
+        if (s.media_type === 'video') getCachedVideoUri(s.media_url);
+        else Image.prefetch(s.media_url);
+      });
     } catch (err) {
       console.error('Fallback load failed:', err);
     }
