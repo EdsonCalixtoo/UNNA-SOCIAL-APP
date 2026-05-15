@@ -85,7 +85,7 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
       ) : null}
 
       <Animated.View style={contentAnimatedStyle}>
-        {post.events && (
+        {post.events && post.events.title && post.events.event_date && (
           <TouchableOpacity 
             activeOpacity={0.9}
             onPress={() => router.push(`/event/${post.events.id}`)}
@@ -95,7 +95,7 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
             <View style={styles.eventInfo}>
               <Text style={[styles.eventTitle, { color: textPrimary }]}>{post.events.title}</Text>
               <Text style={[styles.eventDetails, { color: textSecondary }]}>
-                {post.events.event_date.split('-').reverse().join('/')} às {post.events.event_time.slice(0, 5)}
+                {post.events.event_date ? post.events.event_date.split('-').reverse().join('/') : ''} às {post.events.event_time ? post.events.event_time.slice(0, 5) : ''}
               </Text>
               <Text style={[styles.eventLocation, { color: textSecondary }]}>{post.events.location_name}</Text>
             </View>

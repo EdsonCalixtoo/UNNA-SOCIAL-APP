@@ -26,6 +26,8 @@ import Animated, {
   runOnJS
 } from 'react-native-reanimated';
 import { useUI } from '@/contexts/UIContext';
+import { notifyEventLike } from '@/lib/notifications';
+
 
 const { width } = Dimensions.get('window');
 
@@ -235,17 +237,19 @@ export default function Feed() {
   }, []);
 
   useEffect(() => {
-    if (params.filterCategoryId && params.filterSubcategoryId) {
+    if (params.filterCategoryId) {
       const categoryId = params.filterCategoryId as string;
-      const subcategoryId = params.filterSubcategoryId as string;
-
       setSelectedCategories([categoryId]);
-      setSelectedSubcategories([subcategoryId]);
       setExpandedCategory(categoryId);
 
-      setTimeout(() => {
-        setShowFilters(true);
-      }, 500);
+      if (params.filterSubcategoryId) {
+        setSelectedSubcategories([params.filterSubcategoryId as string]);
+      } else {
+        setSelectedSubcategories([]);
+      }
+
+      // Removido o setTimeout que abria o modal de filtros automaticamente
+      // para permitir que o usuário veja o feed filtrado direto.
     }
   }, [params.filterCategoryId, params.filterSubcategoryId]);
 
@@ -392,28 +396,50 @@ export default function Feed() {
       }
 
       const postsWithLikes = await Promise.all(
-        filteredData.map(async (post) => {
-          const { count: likesCount } = await supabase
-            .from('post_likes')
-            .select('*', { count: 'exact', head: true })
-            .eq('post_id', post.id);
+        filteredData
+          .filter(post => {
+            if (post.event_id && !post.events) return false;
+            return post && post.profiles;
+          })
+          .map(async (post) => {
+            try {
+              // Determine if we should look for event likes or post likes
+              const isEventPost = !!post.event_id && !!post.events;
+              const targetTable = isEventPost ? 'event_likes' : 'post_likes';
+              const targetColumn = isEventPost ? 'event_id' : 'post_id';
+              const targetId = isEventPost ? post.events!.id : post.id;
 
-          const { data: userLike } = await supabase
-            .from('post_likes')
-            .select('id')
-            .eq('post_id', post.id)
-            .eq('user_id', user?.id)
-            .maybeSingle();
+              const { count: likesCount } = await supabase
+                .from(targetTable)
+                .select('*', { count: 'exact', head: true })
+                .eq(targetColumn, targetId);
 
-          return {
-            ...post,
-            likes_count: likesCount || 0,
-            is_liked: !!userLike,
-          };
-        })
+              const { data: userLike } = await supabase
+                .from(targetTable)
+                .select('id')
+                .eq(targetColumn, targetId)
+                .eq('user_id', user?.id)
+                .maybeSingle();
+
+              return {
+                ...post,
+                likes_count: likesCount || 0,
+                is_liked: !!userLike,
+                events: post.events ? {
+                  ...post.events,
+                  likes_count: isEventPost ? (likesCount || 0) : post.events.likes_count,
+                  is_liked: isEventPost ? !!userLike : post.events.is_liked
+                } : undefined
+              };
+            } catch (err) {
+              console.error('Error processing post:', post.id, err);
+              return post;
+            }
+          })
       );
 
-      setPosts(postsWithLikes);
+
+      setPosts(postsWithLikes.filter(p => p !== null));
     } catch (error) {
       console.error('Error loading posts:', error);
     } finally {
@@ -448,7 +474,18 @@ export default function Feed() {
         await supabase.from('event_likes').delete().eq('event_id', id).eq('user_id', user.id);
       } else {
         await supabase.from('event_likes').insert({ event_id: id, user_id: user.id });
+        
+        // Notificar o criador do evento
+        if (targetPost?.events) {
+          notifyEventLike(
+            id, 
+            user.id, 
+            (targetPost.events as any).creator_id, 
+            (targetPost.events as any).title
+          );
+        }
       }
+
     } else {
       if (isLiked) {
         await supabase.from('post_likes').delete().eq('post_id', id).eq('user_id', user.id);
@@ -581,9 +618,10 @@ export default function Feed() {
             onRefresh={handleRefresh} 
             tintColor={accent} 
             colors={[accent]}
-            progressViewOffset={HEADER_HEIGHT}
+            progressViewOffset={HEADER_HEIGHT + vs(10)}
           />
         }
+
         contentContainerStyle={[
           styles.listContent, 
           { 
@@ -686,16 +724,20 @@ export default function Feed() {
                           ]}
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            if (isSelected) {
-                                setSelectedCategories(prev => prev.filter(id => id !== category.id));
-                                setSelectedSubcategories(prev => prev.filter(subId => {
-                                  const sub = subcategories.find(s => s.id === subId);
-                                  return sub?.category_id !== category.id;
-                                }));
+                            const isExpanded = expandedCategory === category.id;
+                            
+                            if (isSelected && !isExpanded) {
+                              // Se já selecionada mas não expandida, apenas expande
+                              setExpandedCategory(category.id);
+                            } else if (isSelected && isExpanded) {
+                              // Se já selecionada e já expandida, desmarca tudo
+                              setSelectedCategories(prev => prev.filter(id => id !== category.id));
+                              setExpandedCategory(null);
                             } else {
-                                setSelectedCategories(prev => [...prev, category.id]);
+                              // Se não selecionada, marca e expande
+                              setSelectedCategories([category.id]);
+                              setExpandedCategory(category.id);
                             }
-                            setExpandedCategory(isExpanded ? null : category.id);
                           }}
                         >
                           <Text style={styles.modernCategoryIcon}>{category.icon}</Text>
@@ -722,11 +764,12 @@ export default function Feed() {
                                     { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
                                   ]}
                                   onPress={() => {
-                                    Haptics.selectionAsync();
+                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                                     if (isSubSelected) {
                                       setSelectedSubcategories(prev => prev.filter(id => id !== subcategory.id));
                                     } else {
-                                      setSelectedSubcategories(prev => [...prev, subcategory.id]);
+                                      setSelectedSubcategories([subcategory.id]);
+                                      setShowFilters(false);
                                     }
                                   }}
                                 >

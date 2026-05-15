@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,450 +7,217 @@ import {
   Image,
   TouchableOpacity,
   Dimensions,
-  TextInput,
-  PanResponder,
-  Animated,
-  Platform,
   ActivityIndicator,
-  FlatList,
+  StatusBar,
 } from 'react-native';
-import { X, Check, Type, RotateCw, Music, MapPin, Search, ChevronRight } from 'lucide-react-native';
-import { BlurView } from 'expo-blur';
-import { Audio } from 'expo-av';
-import ViewShot from 'react-native-view-shot';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { useAuth } from '@/contexts/AuthContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring,
+  runOnJS,
+} from 'react-native-reanimated';
+import { 
+  Gesture, 
+  GestureDetector, 
+  GestureHandlerRootView 
+} from 'react-native-gesture-handler';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const VIEWPORT_SIZE = SCREEN_WIDTH;
 
 interface UniversalImageEditorProps {
   visible: boolean;
   imageUri: string;
   onClose: () => void;
   onSave: (finalUri: string) => void;
-  mode?: 'story' | 'profile' | 'event';
 }
 
-interface TextItem {
-  id: string;
-  text: string;
-  color: string;
-  fontSize: number;
-  x: number;
-  y: number;
-}
-
-const COLORS = ['#FFFFFF', '#000000', '#FF1493', '#00D9FF', '#FFD700', '#34C759', '#FF3B30'];
-
-const MOCK_SONGS = [
-  { id: '1', title: 'Birds of a Feather', artist: 'Billie Eilish', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
-  { id: '2', title: 'Espresso', artist: 'Sabrina Carpenter', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
-  { id: '3', title: 'Dancing in the Dark', artist: 'Lana Del Rey', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
-  { id: '4', title: 'Midnight Sun', artist: 'The Weeknd', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
-];
-
-export default function UniversalImageEditor({ visible, imageUri, onClose, onSave, mode = 'story' }: UniversalImageEditorProps) {
-  const { profile } = useAuth();
-  const [textItems, setTextItems] = useState<TextItem[]>([]);
-  const [editingTextId, setEditingTextId] = useState<string | null>(null);
-  const [currentText, setCurrentText] = useState('');
-  const [currentColor, setCurrentColor] = useState('#FFFFFF');
-  const [currentFontSize, setCurrentFontSize] = useState(32);
+export default function UniversalImageEditor({ visible, imageUri, onClose, onSave }: UniversalImageEditorProps) {
+  const insets = useSafeAreaInsets();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [originalSize, setOriginalSize] = useState({ width: 0, height: 0 });
+
+  // Estados Animados (Reanimated)
+  const scale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
   
-  const [showMusicModal, setShowMusicModal] = useState(false);
-  const [selectedSong, setSelectedSong] = useState<any>(null);
-  const [showLocationInput, setShowLocationInput] = useState(false);
-  const [location, setLocation] = useState('');
+  // Backups para gestos
+  const savedScale = useSharedValue(1);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
 
-  // Pinch/Pan logic for the Background Image
-  const imgScale = useRef(new Animated.Value(1)).current;
-  const imgTranslateX = useRef(new Animated.Value(0)).current;
-  const imgTranslateY = useRef(new Animated.Value(0)).current;
-  const lastImgScale = useRef(1);
-  const lastImgTranslateX = useRef(0);
-  const lastImgTranslateY = useRef(0);
-  const dist = useRef(0);
-
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const viewShotRef = useRef<ViewShot>(null);
-
+  // Carregar dimensões reais da imagem ao abrir
   useEffect(() => {
-    if (visible) {
-      configureAudio();
-    }
-    return () => {
-      if (sound) sound.unloadAsync();
-    };
-  }, [visible]);
-
-  const configureAudio = async () => {
-    try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
+    if (visible && imageUri) {
+      Image.getSize(imageUri, (w, h) => {
+        setOriginalSize({ width: w, height: h });
+        
+        // Reset para estado inicial "Cover"
+        const ratio = w / h;
+        const initialScale = ratio > 1 ? (VIEWPORT_SIZE / (VIEWPORT_SIZE / ratio)) : (VIEWPORT_SIZE / (VIEWPORT_SIZE * ratio));
+        
+        scale.value = initialScale;
+        savedScale.value = initialScale;
+        translateX.value = 0;
+        translateY.value = 0;
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
       });
-    } catch (e) {
-      console.log('Audio mode error:', e);
     }
+  }, [visible, imageUri]);
+
+  // Lógica de Restrições (Não deixa a imagem sair do círculo)
+  const applyConstraints = (isEnd = false) => {
+    'worklet';
+    if (originalSize.width === 0) return;
+
+    const ratio = originalSize.width / originalSize.height;
+    const currentW = ratio > 1 ? (VIEWPORT_SIZE * ratio * scale.value) : (VIEWPORT_SIZE * scale.value);
+    const currentH = ratio > 1 ? (VIEWPORT_SIZE * scale.value) : (VIEWPORT_SIZE / ratio * scale.value);
+
+    // Zoom mínimo: preencher o viewport
+    const minScaleW = VIEWPORT_SIZE / (ratio > 1 ? VIEWPORT_SIZE * ratio : VIEWPORT_SIZE);
+    const minScaleH = VIEWPORT_SIZE / (ratio > 1 ? VIEWPORT_SIZE : VIEWPORT_SIZE / ratio);
+    const minScale = Math.max(minScaleW, minScaleH);
+
+    if (scale.value < minScale) {
+      scale.value = isEnd ? withSpring(minScale) : minScale;
+    }
+
+    // Limites de translação
+    const maxTx = Math.max(0, (currentW - VIEWPORT_SIZE) / 2);
+    const maxTy = Math.max(0, (currentH - VIEWPORT_SIZE) / 2);
+
+    if (translateX.value > maxTx) translateX.value = isEnd ? withSpring(maxTx) : maxTx;
+    if (translateX.value < -maxTx) translateX.value = isEnd ? withSpring(-maxTx) : -maxTx;
+    if (translateY.value > maxTy) translateY.value = isEnd ? withSpring(maxTy) : maxTy;
+    if (translateY.value < -maxTy) translateY.value = isEnd ? withSpring(-maxTy) : -maxTy;
   };
 
-  async function playSound(url: string) {
-    try {
-      if (sound) await sound.unloadAsync();
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: url },
-        { shouldPlay: true, isLooping: true }
-      );
-      setSound(newSound);
-    } catch (e) {
-      console.log('Playback error:', e);
-    }
-  }
+  // Gestos
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((e) => {
+      scale.value = savedScale.value * e.scale;
+      applyConstraints();
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+      applyConstraints(true);
+    });
 
-  const saveText = () => {
-    if (!currentText.trim()) {
-      setEditingTextId(null);
-      return;
-    }
-    if (editingTextId === 'new') {
-      setTextItems([...textItems, {
-        id: Date.now().toString(),
-        text: currentText,
-        color: currentColor,
-        fontSize: currentFontSize,
-        x: SCREEN_WIDTH / 2 - 50,
-        y: SCREEN_HEIGHT / 2 - 20,
-      }]);
-    } else {
-      setTextItems(items => items.map(i => i.id === editingTextId ? { ...i, text: currentText, color: currentColor, fontSize: currentFontSize } : i));
-    }
-    setEditingTextId(null);
-  };
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      translateX.value = savedTranslateX.value + e.translationX;
+      translateY.value = savedTranslateY.value + e.translationY;
+      applyConstraints();
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+      applyConstraints(true);
+    });
 
-  const handleCapture = async () => {
-    if (!viewShotRef.current || !viewShotRef.current.capture) return;
+  const composed = Gesture.Simultaneous(pinchGesture, panGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ] as any,
+  }));
+
+  // O CROP REAL (Pixel-Perfect)
+  const handleSave = async () => {
     setIsProcessing(true);
     try {
-      await new Promise(r => setTimeout(r, 1200));
-      const uri = await viewShotRef.current.capture();
-      if (sound) await sound.stopAsync();
-      onSave(uri);
-    } catch (error) {
-      console.error(error);
+      const ratio = originalSize.width / originalSize.height;
+      
+      // 1. Calcular o tamanho da imagem como ela aparece na "viewport" virtual (VIEWPORT_SIZE)
+      const displayW = ratio > 1 ? VIEWPORT_SIZE * ratio : VIEWPORT_SIZE;
+      const displayH = ratio > 1 ? VIEWPORT_SIZE : VIEWPORT_SIZE / ratio;
+
+      // 2. Fator de conversão: Pixels reais / Pixels da viewport
+      const conv = originalSize.width / (displayW * scale.value);
+
+      // 3. Calcular a origem do crop baseada no translate da UI
+      // Centralizado (0,0) significa que estamos pegando o meio da imagem.
+      const cropWidth = VIEWPORT_SIZE * conv;
+      const originX = (originalSize.width - cropWidth) / 2 - (translateX.value * conv);
+      const originY = (originalSize.height - cropWidth) / 2 - (translateY.value * conv);
+
+      const result = await ImageManipulator.manipulateAsync(
+        imageUri,
+        [{ crop: { originX, originY, width: cropWidth, height: cropWidth } }, { resize: { width: 800, height: 800 } }],
+        { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      onSave(result.uri);
+    } catch (err) {
+      console.error("Crop error:", err);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const calcDistance = (x1: number, y1: number, x2: number, y2: number) => {
-    return Math.sqrt(Math.pow(Math.abs(x1 - x2), 2) + Math.pow(Math.abs(y1 - y2), 2));
-  };
-
-  const imagePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e, gs) => {
-        if (gs.numberActiveTouches === 2) {
-          let touches = e.nativeEvent.touches;
-          dist.current = calcDistance(touches[0].pageX, touches[0].pageY, touches[1].pageX, touches[1].pageY);
-        }
-      },
-      onPanResponderMove: (e, gs) => {
-        if (gs.numberActiveTouches === 2) {
-          let touches = e.nativeEvent.touches;
-          let newDist = calcDistance(touches[0].pageX, touches[0].pageY, touches[1].pageX, touches[1].pageY);
-          let zoom = (newDist / dist.current) * lastImgScale.current;
-          imgScale.setValue(Math.min(Math.max(zoom, 0.5), 5));
-        } else if (gs.numberActiveTouches === 1) {
-          imgTranslateX.setValue(lastImgTranslateX.current + gs.dx);
-          imgTranslateY.setValue(lastImgTranslateY.current + gs.dy);
-        }
-      },
-      onPanResponderRelease: () => {
-        // @ts-ignore
-        lastImgScale.current = imgScale._value;
-        // @ts-ignore
-        lastImgTranslateY.current = imgTranslateY._value;
-        // @ts-ignore
-        lastImgTranslateX.current = imgTranslateX._value;
-      },
-    })
-  ).current;
+  if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
-      <View style={styles.container}>
-        <View style={styles.header}>
-          {mode === 'profile' ? (
-            <View style={styles.profileHeader}>
-              <Text style={styles.profileHeaderTitle}>Mover e redimensionar</Text>
-            </View>
-          ) : (
-            <>
-              <TouchableOpacity onPress={() => { if(sound) sound.stopAsync(); onClose(); }} style={styles.iconButton}>
-                <X size={28} color="#fff" strokeWidth={2.5} />
-              </TouchableOpacity>
-              <View style={styles.headerRight}>
-                <TouchableOpacity onPress={() => setShowMusicModal(true)} style={styles.iconButton}>
-                  <Music size={24} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowLocationInput(true)} style={styles.iconButton}>
-                  <MapPin size={24} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setEditingTextId('new')} style={styles.iconButton}>
-                  <Type size={24} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
+    <Modal visible={visible} transparent animationType="fade">
+      <GestureHandlerRootView style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        
+        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+          <TouchableOpacity onPress={onClose}><Text style={styles.btnText}>Cancelar</Text></TouchableOpacity>
+          <Text style={styles.title}>Mover e Escalar</Text>
+          <View style={{ width: 60 }} />
         </View>
 
-        <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 1.0 }} style={styles.canvas}>
-          <View style={styles.imageWrapper} collapsable={false} {...imagePanResponder.panHandlers}>
-            <Animated.Image 
-              source={{ uri: imageUri }} 
-              style={[
-                styles.mainImage,
-                {
-                  transform: [
-                    { scale: imgScale },
-                    { translateX: imgTranslateX },
-                    { translateY: imgTranslateY },
-                  ]
-                }
-              ]} 
-              resizeMode="cover"
-            />
-            <View style={styles.overlay} collapsable={false} pointerEvents="none">
-              {mode === 'profile' && (
-                <View style={styles.profileCropOverlay}>
-                  <View style={styles.cropTop} />
-                  <View style={styles.cropMiddle}>
-                    <View style={styles.cropSide} />
-                    <View style={styles.cropCircle} />
-                    <View style={styles.cropSide} />
-                  </View>
-                  <View style={styles.cropBottom} />
-                </View>
-              )}
+        <View style={styles.viewportContainer}>
+          <GestureDetector gesture={composed}>
+            <Animated.View style={[styles.imageContainer, animatedStyle as any]}>
+              <Image source={{ uri: imageUri }} style={styles.fullImage} resizeMode="contain" />
+            </Animated.View>
+          </GestureDetector>
+
+          {/* O OVERLAY É REAL E REPRESENTA O CROP */}
+          <View style={styles.overlay} pointerEvents="none">
+            <View style={styles.dimmed} />
+            <View style={styles.centerRow}>
+              <View style={styles.dimmed} />
+              <View style={styles.circleHole} />
+              <View style={styles.dimmed} />
             </View>
-            
-            {selectedSong && (
-              <DraggableItem x={50} y={150}>
-                <View style={styles.musicSticker}>
-                   <Music size={14} color="#ff1493" />
-                   <View>
-                     <Text style={styles.musicTitle}>{selectedSong.title}</Text>
-                     <Text style={styles.musicArtist}>{selectedSong.artist}</Text>
-                   </View>
-                </View>
-              </DraggableItem>
-            )}
-
-            {location && (
-              <DraggableItem x={100} y={100}>
-                <View style={styles.locationSticker}>
-                   <MapPin size={16} color="#00D9FF" />
-                   <Text style={styles.locationText}>{location.toUpperCase()}</Text>
-                </View>
-              </DraggableItem>
-            )}
-
-            {textItems.map(item => (
-              <DraggableText key={item.id} item={item} onPress={() => { setEditingTextId(item.id); setCurrentText(item.text); setCurrentColor(item.color); }} onDelete={() => setTextItems(it => it.filter(i => i.id !== item.id))} />
-            ))}
+            <View style={styles.dimmed} />
           </View>
-        </ViewShot>
-
-        <View style={styles.footer}>
-           {mode === 'profile' ? (
-             <View style={styles.profileFooter}>
-               <TouchableOpacity onPress={onClose} style={styles.profileFooterBtn}>
-                 <Text style={styles.profileFooterBtnText}>Cancelar</Text>
-               </TouchableOpacity>
-               <TouchableOpacity onPress={handleCapture} style={styles.profileFooterBtn}>
-                 <Text style={styles.profileFooterBtnText}>Escolher</Text>
-               </TouchableOpacity>
-             </View>
-           ) : mode === 'story' ? (
-             <>
-               <TouchableOpacity style={styles.storyBtn} activeOpacity={0.8} onPress={handleCapture}>
-                  <View style={styles.avatarCircle}>
-                     <Image source={{ uri: profile?.avatar_url }} style={styles.avatarImage} />
-                  </View>
-                  <Text style={styles.storyBtnText}>Seu story</Text>
-               </TouchableOpacity>
-               <TouchableOpacity style={styles.publishMainBtn} onPress={handleCapture} disabled={isProcessing}>
-                 {isProcessing ? <ActivityIndicator color="#000" /> : <ChevronRight size={24} color="#000" strokeWidth={3} />}
-               </TouchableOpacity>
-             </>
-           ) : (
-             <TouchableOpacity style={styles.confirmMainBtn} activeOpacity={0.8} onPress={handleCapture}>
-                <Check size={20} color="#fff" strokeWidth={3} />
-                <Text style={styles.confirmMainBtnText}>CONCLUIR</Text>
-             </TouchableOpacity>
-           )}
         </View>
 
-        {/* Music Modal */}
-        <Modal visible={showMusicModal} animationType="slide" transparent>
-           <BlurView intensity={95} tint="dark" style={styles.modalOverlay}>
-              <View style={styles.modalHeader}>
-                 <Text style={styles.modalTitle}>Música</Text>
-                 <TouchableOpacity onPress={() => setShowMusicModal(false)}><X size={24} color="#fff" /></TouchableOpacity>
-              </View>
-              <FlatList 
-                data={MOCK_SONGS}
-                keyExtractor={item => item.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.songItem} onPress={() => { setSelectedSong(item); playSound(item.url); setShowMusicModal(false); }}>
-                    <View style={styles.songArtwork} />
-                    <View><Text style={styles.songTitle}>{item.title}</Text><Text style={styles.songArtist}>{item.artist}</Text></View>
-                  </TouchableOpacity>
-                )}
-              />
-           </BlurView>
-        </Modal>
-
-        {/* Location Modal */}
-        <Modal visible={showLocationInput} animationType="slide" transparent>
-           <BlurView intensity={95} tint="dark" style={styles.modalOverlay}>
-              <View style={styles.modalHeader}><Text style={styles.modalTitle}>Localização</Text><TouchableOpacity onPress={() => setShowLocationInput(false)}><X size={24} color="#fff" /></TouchableOpacity></View>
-              <TextInput style={styles.locationInput} value={location} onChangeText={setLocation} autoFocus placeholder="ONDE VOCÊ ESTÁ?" placeholderTextColor="#999" />
-              <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowLocationInput(false)}><Text style={styles.confirmText}>CONCLUIR</Text></TouchableOpacity>
-           </BlurView>
-        </Modal>
-
-        {/* Text Editor Overlay */}
-        {editingTextId && (
-          <Modal transparent animationType="fade">
-            <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill}>
-               <View style={styles.textEditHeader}>
-                  <TouchableOpacity onPress={() => setEditingTextId(null)}><Text style={styles.headerAction}>Cancelar</Text></TouchableOpacity>
-                  <TouchableOpacity onPress={saveText}><Text style={styles.headerActionBold}>Concluir</Text></TouchableOpacity>
-               </View>
-               <TextInput autoFocus multiline style={[styles.mainInput, { color: currentColor }]} value={currentText} onChangeText={setCurrentText} selectionColor={currentColor} />
-               <View style={styles.colorRow}>
-                  {COLORS.map(c => <TouchableOpacity key={c} onPress={() => setCurrentColor(c)} style={[styles.colorDot, { backgroundColor: c }, currentColor === c && styles.activeDot]} />)}
-               </View>
-            </BlurView>
-          </Modal>
-        )}
-      </View>
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+          <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isProcessing}>
+            {isProcessing ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>Escolher</Text>}
+          </TouchableOpacity>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
-  );
-}
-
-function DraggableItem({ children, x, y }: any) {
-  const pan = useRef(new Animated.ValueXY({ x, y })).current;
-  const responder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => { pan.setOffset({ x: (pan.x as any)._value, y: (pan.y as any)._value }); },
-    onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
-    onPanResponderRelease: () => pan.flattenOffset(),
-  })).current;
-  return <Animated.View {...responder.panHandlers} style={[styles.dragItem, { transform: pan.getTranslateTransform() }]}>{children}</Animated.View>;
-}
-
-function DraggableText({ item, onPress, onDelete }: any) {
-  const pan = useRef(new Animated.ValueXY({ x: item.x, y: item.y })).current;
-  const responder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => { pan.setOffset({ x: (pan.x as any)._value, y: (pan.y as any)._value }); },
-    onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
-    onPanResponderRelease: () => pan.flattenOffset(),
-  })).current;
-  return (
-    <Animated.View {...responder.panHandlers} style={[styles.dragItem, { transform: pan.getTranslateTransform() }]}>
-      <TouchableOpacity onPress={onPress} onLongPress={onDelete} activeOpacity={0.8}>
-        <Text style={[styles.canvasText, { color: item.color }]}>{item.text}</Text>
-      </TouchableOpacity>
-    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  header: { position: 'absolute', top: 60, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, zIndex: 100 },
-  headerRight: { flexDirection: 'row', gap: 15 },
-  iconButton: { padding: 8 },
-  canvas: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
-  imageWrapper: { flex: 1, backgroundColor: '#000', overflow: 'hidden' },
-  mainImage: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.02)' },
-  dragItem: { position: 'absolute', zIndex: 100, top: 100, left: 100 },
-  musicSticker: { backgroundColor: '#fff', padding: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  musicTitle: { color: '#000', fontSize: 13, fontWeight: '900' },
-  musicArtist: { color: '#666', fontSize: 11 },
-  locationSticker: { backgroundColor: '#fff', padding: 12, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  locationText: { color: '#00D9FF', fontSize: 13, fontWeight: '900' },
-  canvasText: { fontSize: 32, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.3)', textShadowRadius: 10 },
-  footer: { position: 'absolute', bottom: 50, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 100 },
-  storyBtn: { backgroundColor: 'rgba(255,255,255,0.15)', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 30, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  confirmMainBtn: { backgroundColor: '#34C759', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  confirmMainBtnText: { color: '#fff', fontSize: 14, fontWeight: '900' },
-  avatarCircle: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#ff1493' },
-  avatarImage: { width: '100%', height: '100%', borderRadius: 12 },
-  storyBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  publishMainBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
-  modalOverlay: { flex: 1, paddingTop: 60 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 20 },
-  modalTitle: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
-  songItem: { flexDirection: 'row', alignItems: 'center', padding: 15, gap: 12 },
-  songArtwork: { width: 45, height: 45, backgroundColor: '#222', borderRadius: 4 },
-  songTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  songArtist: { color: '#aaa', fontSize: 12 },
-  locationInput: { backgroundColor: 'rgba(255,255,255,0.1)', margin: 20, padding: 18, borderRadius: 12, color: '#fff', textAlign: 'center', fontSize: 16, fontWeight: 'bold' },
-  confirmBtn: { backgroundColor: '#fff', marginHorizontal: 20, padding: 16, borderRadius: 30, alignItems: 'center' },
-  confirmText: { color: '#000', fontWeight: '900' },
-  textEditHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, marginTop: 40 },
-  headerAction: { color: '#fff', fontSize: 17 },
-  headerActionBold: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
-  mainInput: { flex: 1, textAlign: 'center', fontSize: 40, fontWeight: '900' },
-  colorRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, paddingBottom: 40 },
-  colorDot: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: 'transparent' },
-  activeDot: { borderColor: '#fff' },
-  profileHeader: { 
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
-    alignItems: 'center', 
-    justifyContent: 'center',
-    zIndex: 1000,
-  },
-  profileHeaderTitle: { color: '#fff', fontSize: 17, fontWeight: '400' },
-  profileFooter: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center',
-    paddingHorizontal: 25,
-    paddingBottom: 20,
-  },
-  profileFooterBtn: { padding: 10 },
-  profileFooterBtnText: { color: '#fff', fontSize: 18, fontWeight: '400' },
-  profileCropOverlay: { 
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 100,
-  },
-  cropTop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)' },
-  cropMiddle: { flexDirection: 'row', height: SCREEN_WIDTH },
-  cropSide: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)' },
-  cropCircle: { 
-    width: SCREEN_WIDTH, 
-    height: SCREEN_WIDTH, 
-    borderRadius: SCREEN_WIDTH / 2, 
-    borderWidth: 1, 
-    borderColor: 'rgba(255,255,255,0.4)',
-    overflow: 'hidden',
-  },
-  cropBottom: { flex: 1.5, backgroundColor: 'rgba(0,0,0,0.85)' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, zIndex: 10 },
+  btnText: { color: '#fff', fontSize: 17 },
+  title: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  viewportContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  imageContainer: { width: VIEWPORT_SIZE, height: VIEWPORT_SIZE, justifyContent: 'center', alignItems: 'center' },
+  fullImage: { width: '100%', height: '100%' },
+  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
+  dimmed: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)' },
+  centerRow: { flexDirection: 'row', height: VIEWPORT_SIZE },
+  circleHole: { width: VIEWPORT_SIZE, height: VIEWPORT_SIZE, borderRadius: VIEWPORT_SIZE / 2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
+  footer: { alignItems: 'center' },
+  saveBtn: { backgroundColor: '#fff', paddingHorizontal: 40, paddingVertical: 12, borderRadius: 25 },
+  saveBtnText: { color: '#000', fontSize: 16, fontWeight: 'bold' },
 });

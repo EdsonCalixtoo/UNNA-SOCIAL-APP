@@ -186,14 +186,13 @@ export default function Categories() {
 
   const handleCategoryPress = useCallback((category: Category) => {
     router.push({
-      pathname: '/subcategories',
+      pathname: '/(tabs)',
       params: { 
-        categoryId: category.id, 
-        categoryName: category.name,
-        initialSearch: searchQuery
+        filterCategoryId: category.id, 
+        filterCategoryName: category.name,
       }
     });
-  }, [searchQuery, router]);
+  }, [router]);
 
   const handleSubcategoryPress = useCallback((subcategory: any, category: any) => {
     router.push({

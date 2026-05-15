@@ -24,14 +24,11 @@ interface MapFiltersModalProps {
 }
 
 const DEFAULT_CATEGORIES = [
-  { id: '1', name: 'Festas', color: '#FF1B6D', icon: '🎉' },
-  { id: '2', name: 'Esportes', color: '#00D084', icon: '⚽' },
-  { id: '3', name: 'Música', color: '#FF6B00', icon: '🎵' },
-  { id: '4', name: 'Arte', color: '#667EEA', icon: '🎨' },
-  { id: '5', name: 'Tecnologia', color: '#00B4DB', icon: '💻' },
-  { id: '6', name: 'Gastronomia', color: '#FF9500', icon: '🍽️' },
-  { id: '7', name: 'Bem-estar', color: '#34C759', icon: '🧘' },
-  { id: '8', name: 'Educação', color: '#764BA2', icon: '📚' },
+  { id: '1', name: 'Esportes', color: '#00D084', icon: '⚽' },
+  { id: '2', name: 'Pets', color: '#FF9500', icon: '🐾' },
+  { id: '3', name: 'Rolês e Festas', color: '#FF1B6D', icon: '🎉' },
+  { id: '4', name: 'Voluntariados', color: '#34C759', icon: '🤝' },
+  { id: '5', name: 'Achados e Perdidos', color: '#00B4DB', icon: '🔎' },
 ];
 
 export function MapFiltersModal({

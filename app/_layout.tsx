@@ -11,13 +11,15 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { PushNotificationProvider } from '@/contexts/PushNotificationContext';
 import { LanguageProvider } from '@/lib/i18n';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { Audio } from 'expo-av';
 import { InAppNotificationProvider } from '@/contexts/InAppNotificationContext';
 import { UIProvider } from '@/contexts/UIContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as NavigationBar from 'expo-navigation-bar';
+import * as SystemUI from 'expo-system-ui';
 
 // Configuração global de áudio
 Audio.setAudioModeAsync({
@@ -75,8 +77,29 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 function MainAppContent() {
-  const { isDark } = useTheme();
-  
+  const { isDark, backgroundPrimary } = useTheme();
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      // Garantir que a barra de navegação seja transparente e os ícones mudem com o tema
+      const setupNavBar = async () => {
+        try {
+          await NavigationBar.setPositionAsync('absolute');
+          await NavigationBar.setBackgroundColorAsync('#00000000');
+          await NavigationBar.setButtonStyleAsync(isDark ? 'light' : 'dark');
+          // Configura o comportamento para não ocultar os botões mas permitir conteúdo atrás
+          await NavigationBar.setBehaviorAsync('inset-touch');
+          
+          // Sincroniza a cor de fundo do Root View (evita flash branco)
+          await SystemUI.setBackgroundColorAsync(backgroundPrimary);
+        } catch (e) {
+          console.log('Error setting up NavigationBar:', e);
+        }
+      };
+      setupNavBar();
+    }
+  }, [isDark, backgroundPrimary]);
+
   return (
     <View style={styles.container}>
       <Stack 
@@ -89,7 +112,9 @@ function MainAppContent() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="event/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
+
       </Stack>
       <StatusBar style={isDark ? "light" : "dark"} translucent />
     </View>
@@ -98,6 +123,13 @@ function MainAppContent() {
 
 export default function RootLayout() {
   useFrameworkReady();
+
+  useEffect(() => {
+    // Inicialização básica
+    if (Platform.OS === 'android') {
+      NavigationBar.setBackgroundColorAsync('#00000000');
+    }
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

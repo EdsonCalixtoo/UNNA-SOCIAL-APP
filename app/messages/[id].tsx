@@ -476,9 +476,12 @@ export default function ChatScreen() {
         throw error;
       }
 
-      // Adicionar a mensagem ao estado localmente para aparecer imediatamente
+      // Adicionar a mensagem ao estado localmente para aparecer imediatamente (otimista)
       if (insertedData) {
-        setMessages((prev) => [...prev, insertedData as Message]);
+        setMessages((prev) => {
+          if (prev.some(m => m.id === insertedData.id)) return prev;
+          return [...prev, insertedData as Message];
+        });
       }
 
       await supabase

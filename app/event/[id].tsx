@@ -43,7 +43,7 @@ const MemoizedCard = memo(({ children, style, onPress }: any) => (
   </TouchableOpacity>
 ));
 
-const MemoizedInfoGrid = memo(({ date, time, accent, textPrimary, backgroundSecondary, formatDate }: any) => (
+const MemoizedInfoGrid = memo(({ date, time, endTime, accent, textPrimary, backgroundSecondary, formatDate }: any) => (
   <View style={styles.grid}>
     <View style={[styles.infoCard, { backgroundColor: backgroundSecondary }]}>
       <Calendar size={20} color={accent} />
@@ -53,7 +53,9 @@ const MemoizedInfoGrid = memo(({ date, time, accent, textPrimary, backgroundSeco
     <View style={[styles.infoCard, { backgroundColor: backgroundSecondary }]}>
       <Clock size={20} color="#ff1493" />
       <Text style={[styles.label, { color: textPrimary, opacity: 0.5 }]}>HORÁRIO</Text>
-      <Text style={[styles.val, { color: textPrimary }]}>{time.slice(0, 5)}</Text>
+      <Text style={[styles.val, { color: textPrimary }]}>
+        {time?.slice(0, 5)} {endTime ? `às ${endTime.slice(0, 5)}` : ''}
+      </Text>
     </View>
   </View>
 ));
@@ -86,11 +88,22 @@ export default function EventDetails() {
       const { data, error } = await supabase.from('events').select(`
         *, categories:category_id (name, icon),
         profiles:creator_id (id, username, full_name, avatar_url)
-      `).eq('id', id).single();
+      `).eq('id', id).maybeSingle(); // Usar maybeSingle para evitar erro se não existir
+      
       if (error) throw error;
+      
+      if (!data) {
+        Alert.alert('Evento não encontrado', 'Este evento pode ter sido removido ou não existe mais.', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+        return;
+      }
+      
       setEvent(data);
     } catch (e) { 
-      Alert.alert('Erro', 'Não foi possível carregar o evento'); 
+      console.error('Error loading event:', e);
+      Alert.alert('Erro', 'Não foi possível carregar os detalhes do evento.'); 
+      router.back();
     } finally { 
       setLoading(false); 
     }
@@ -123,28 +136,44 @@ export default function EventDetails() {
       return;
     }
     
-    const latLng = `${event.latitude},${event.longitude}`;
+    const lat = event.latitude;
+    const lng = event.longitude;
     const label = event.location_name;
     
-    const nativeUrl = Platform.select({
-      ios: `maps:0,0?q=${encodeURIComponent(label)}@${latLng}`,
-      android: `geo:0,0?q=${latLng}(${encodeURIComponent(label)})`
-    });
-
-    const wazeUrl = `https://waze.com/ul?ll=${latLng}&navigate=yes`;
-    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${latLng}`;
+    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    const wazeUrl = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`;
+    const appleMapsUrl = `https://maps.apple.com/?q=${encodeURIComponent(label)}&ll=${lat},${lng}`;
 
     Alert.alert(
       'Abrir no GPS',
       'Como deseja chegar ao local?',
       [
-        { text: 'Waze', onPress: () => Linking.openURL(wazeUrl) },
-        { text: 'Google Maps', onPress: () => Linking.openURL(googleMapsUrl) },
-        { text: 'Mapas Padrão', onPress: () => Linking.openURL(nativeUrl!) },
+        { 
+          text: 'Waze', 
+          onPress: () => {
+            Linking.openURL(wazeUrl).catch(() => Alert.alert('Erro', 'Não foi possível abrir o Waze'));
+          } 
+        },
+        { 
+          text: 'Google Maps', 
+          onPress: () => {
+            Linking.openURL(googleMapsUrl).catch(() => Alert.alert('Erro', 'Não foi possível abrir o Google Maps'));
+          } 
+        },
+        { 
+          text: 'Mapas Apple', 
+          onPress: () => {
+            const url = Platform.OS === 'ios' 
+              ? `maps://?q=${encodeURIComponent(label)}&ll=${lat},${lng}`
+              : appleMapsUrl;
+            Linking.openURL(url).catch(() => Alert.alert('Erro', 'Não foi possível abrir o Mapas'));
+          } 
+        },
         { text: 'Cancelar', style: 'cancel' }
       ]
     );
   };
+
 
   const handleDelete = () => {
     Alert.alert(
@@ -381,8 +410,13 @@ export default function EventDetails() {
 
                   {event.type === 'event' && (
                     <MemoizedInfoGrid 
-                      date={event.event_date} time={event.event_time}
-                      accent={accent} textPrimary={textPrimary} backgroundSecondary={backgroundSecondary} formatDate={formatDate}
+                      date={event.event_date} 
+                      time={event.event_time}
+                      endTime={event.end_time}
+                      accent={accent} 
+                      textPrimary={textPrimary} 
+                      backgroundSecondary={backgroundSecondary} 
+                      formatDate={formatDate}
                     />
                   )}
 

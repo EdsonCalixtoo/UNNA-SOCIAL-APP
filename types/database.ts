@@ -12,7 +12,12 @@ export interface Profile {
   onboarding_completed?: boolean;
   created_at: string;
   updated_at: string;
+  level?: number;
+  total_points?: number;
+  flaker_count?: number;
+  presence_score?: number;
 }
+
 
 export interface Category {
   id: string;
@@ -52,10 +57,14 @@ export interface Event {
   status?: string;
   created_at: string;
   updated_at: string;
+  likes_count?: number;
+  is_liked?: boolean;
+  participants_count?: number;
   profiles?: Profile;
   categories?: Category;
   subcategories?: Subcategory;
 }
+
 
 export interface EventParticipant {
   id: string;
@@ -126,3 +135,15 @@ export interface Message {
   created_at: string;
   profiles?: Profile;
 }
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  data: any;
+  read: boolean;
+  created_at: string;
+}
+

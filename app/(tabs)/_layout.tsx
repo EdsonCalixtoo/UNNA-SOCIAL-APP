@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Tabs } from 'expo-router';
 import { Home, Radio, PlusCircle, LayoutGrid, UserCircle2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -7,10 +7,10 @@ import { View, Image, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedTabBar } from '@/components/AnimatedTabBar';
+import { reputationService } from '@/services/reputationService';
 
 function ProfileIcon({ focused, avatarUrl }: { focused: boolean; avatarUrl?: string | null }) {
   const [error, setError] = useState(false);
-
   const { accent } = useTheme();
   
   if (avatarUrl && !error) {
@@ -39,6 +39,13 @@ function ProfileIcon({ focused, avatarUrl }: { focused: boolean; avatarUrl?: str
 export default function TabLayout() {
   const { accent, isDark } = useTheme();
   const { profile } = useAuth();
+
+  useEffect(() => {
+    if (profile?.id) {
+      // Tenta realizar o check-in automático ao carregar as abas
+      reputationService.checkAutomaticPresence(profile.id);
+    }
+  }, [profile?.id]);
 
   return (
     <Tabs
@@ -85,9 +92,8 @@ export default function TabLayout() {
           ),
         }}
       />
-      {/* Rotas ocultas */}
-      <Tabs.Screen name="notifications" options={{ href: null }} />
     </Tabs>
+
   );
 }
 
@@ -99,8 +105,8 @@ const tabStyles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1.5,
     borderColor: 'transparent',
-  },
-  avatarWrapActive: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   avatarImg: {
     width: '100%',

@@ -27,6 +27,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { s, vs, ms } from '@/utils/responsive';
 import EventCard from '@/components/EventCard';
+import FullscreenMediaViewer from '@/components/FullscreenMediaViewer';
+import { notifyNewFollower } from '@/lib/notifications';
+
 
 type TabType = 'created' | 'joined';
 
@@ -51,6 +54,7 @@ export default function UserProfile() {
   const [sharedInterests, setSharedInterests] = useState<any[]>([]);
   const [userInterests, setUserInterests] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [isViewerVisible, setIsViewerVisible] = useState(false);
 
   // Animations
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -143,20 +147,68 @@ export default function UserProfile() {
       if (activeTab === 'created') {
         const { data, error } = await supabase
           .from('events')
-          .select('*, categories:category_id (name, icon), subcategories:subcategory_id (name)')
+          .select('*, profiles:creator_id (id, username, full_name, avatar_url), categories:category_id (name, icon), subcategories:subcategory_id (name)')
           .eq('creator_id', id)
           .order('event_date', { ascending: true });
 
         if (error) throw error;
-        setEvents(data || []);
+
+        // Fetch likes count and is_liked status for each event
+        const eventsWithLikes = await Promise.all((data || []).map(async (event) => {
+          const { count: likesCount } = await supabase
+            .from('event_likes')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', event.id);
+
+          const { data: userLike } = await supabase
+            .from('event_likes')
+            .select('id')
+            .eq('event_id', event.id)
+            .eq('user_id', user?.id)
+            .maybeSingle();
+
+          return {
+            ...event,
+            likes_count: likesCount || 0,
+            is_liked: !!userLike
+          };
+        }));
+
+        setEvents(eventsWithLikes);
       } else {
         const { data: participantData, error: participantError } = await supabase
           .from('event_participants')
-          .select('event_id, events:event_id (*, categories:category_id (name, icon), subcategories:subcategory_id (name))')
+          .select('event_id, events:event_id (*, profiles:creator_id (id, username, full_name, avatar_url), categories:category_id (name, icon), subcategories:subcategory_id (name))')
           .eq('user_id', id);
 
         if (participantError) throw participantError;
-        setEvents((participantData || []).map((i: any) => i.events).filter(Boolean));
+
+        const participantEvents = (participantData || [])
+          .map(p => p.events)
+          .filter(Boolean) as any as Event[];
+
+        // Fetch likes count and is_liked status for each participant event
+        const eventsWithLikes = await Promise.all(participantEvents.map(async (event) => {
+          const { count: likesCount } = await supabase
+            .from('event_likes')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', event.id);
+
+          const { data: userLike } = await supabase
+            .from('event_likes')
+            .select('id')
+            .eq('event_id', event.id)
+            .eq('user_id', user?.id)
+            .maybeSingle();
+
+          return {
+            ...event,
+            likes_count: likesCount || 0,
+            is_liked: !!userLike
+          };
+        }));
+
+        setEvents(eventsWithLikes);
       }
     } catch (error) {
       console.error('Error loading events:', error);
@@ -182,6 +234,11 @@ export default function UserProfile() {
           await supabase.from('follows').insert({ follower_id: user?.id, following_id: id });
           setIsFollowing(true);
           setFollowersCount(prev => prev + 1);
+          
+          // Notificar o usuário
+          if (user?.id) {
+            notifyNewFollower(user.id, id as string);
+          }
         }
       }
     } catch (error) {
@@ -245,7 +302,11 @@ export default function UserProfile() {
         </View>
 
         <View style={styles.profileInfo}>
-          <View style={[styles.avatarWrapper, { shadowColor: profile.primary_color || accent }]}>
+          <TouchableOpacity 
+            activeOpacity={0.9} 
+            onPress={() => profile.avatar_url && setIsViewerVisible(true)}
+            style={[styles.avatarWrapper, { shadowColor: profile.primary_color || accent }]}
+          >
             <LinearGradient colors={[profile.primary_color || accent, '#ff1493']} style={styles.avatarGradient}>
               {profile.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
@@ -256,7 +317,7 @@ export default function UserProfile() {
             {profile.is_private && (
               <View style={[styles.privateBadge, { backgroundColor: '#FF3B30' }]}><Lock size={14} color="#fff" /></View>
             )}
-          </View>
+          </TouchableOpacity>
 
           <Text style={[styles.profileName, { color: textPrimary }]}>{profile.full_name}</Text>
           <Text style={[styles.profileUsername, { color: textSecondary }]}>@{profile.username}</Text>
@@ -363,6 +424,15 @@ export default function UserProfile() {
           </>
         )}
       </Animated.ScrollView>
+
+      {profile?.avatar_url && (
+        <FullscreenMediaViewer
+          visible={isViewerVisible}
+          onClose={() => setIsViewerVisible(false)}
+          mediaUrls={[profile.avatar_url]}
+          initialIndex={0}
+        />
+      )}
     </View>
   );
 }

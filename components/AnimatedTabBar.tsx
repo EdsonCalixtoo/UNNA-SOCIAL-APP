@@ -55,7 +55,14 @@ export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarP
   });
 
   return (
-    <Animated.View style={[styles.wrapper, containerStyle]} pointerEvents="box-none">
+    <Animated.View 
+      style={[
+        styles.wrapper, 
+        containerStyle, 
+        { bottom: Math.max(insets.bottom, 16) + (Platform.OS === 'ios' ? 10 : 0) }
+      ]} 
+      pointerEvents="box-none"
+    >
       {/* BARRA DE FUNDO COM BLUR E OVERFLOW HIDDEN */}
       <BlurView 
         intensity={isDark ? 40 : 80} 
@@ -140,11 +147,11 @@ export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarP
 const styles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 30 : 20,
     left: width * 0.05,
     right: width * 0.05,
     zIndex: 1000,
   },
+
   blurContainer: {
     width: '100%',
     height: 65,

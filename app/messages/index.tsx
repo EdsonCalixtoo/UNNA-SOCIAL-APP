@@ -24,6 +24,7 @@ interface ConversationWithDetails {
     sender_id: string;
   };
   unread_count: number;
+  is_online?: boolean;
 }
 
 export default function ConversationsList() {
@@ -85,7 +86,19 @@ export default function ConversationsList() {
         };
       });
 
-      setConversations(conversationDetails);
+      // Fetch presence for all other users
+      const otherUserIds = conversationDetails.map(c => c.other_user.id).filter(Boolean);
+      const { data: presenceData } = await supabase
+        .from('user_presence')
+        .select('user_id, is_online')
+        .in('user_id', otherUserIds);
+
+      const conversationsWithPresence = conversationDetails.map(conv => ({
+        ...conv,
+        is_online: presenceData?.find(p => p.user_id === conv.other_user.id)?.is_online || false
+      }));
+
+      setConversations(conversationsWithPresence);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -163,6 +176,9 @@ export default function ConversationsList() {
                 <View style={[styles.groupBadge, { borderColor: backgroundPrimary, backgroundColor: accent }]}>
                   <Users size={10} color="#fff" />
                 </View>
+              )}
+              {!item.is_group && item.is_online && (
+                <View style={[styles.onlineDot, { backgroundColor: '#34C759', borderColor: backgroundPrimary }]} />
               )}
             </View>
 
@@ -304,6 +320,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  onlineDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
   },
   conversationInfo: {
     flex: 1,
