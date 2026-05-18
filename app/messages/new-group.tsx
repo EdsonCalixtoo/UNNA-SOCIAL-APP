@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Image, ActivityIndicator, Alert, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert, Dimensions } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
@@ -10,6 +10,8 @@ import { decode } from 'base64-arraybuffer';
 import * as FileSystem from 'expo-file-system/legacy';
 import { uploadImage } from '@/lib/storage';
 import Animated, { FadeInRight, FadeInUp, Layout } from 'react-native-reanimated';
+import { useTheme } from '@/contexts/ThemeContext';
+import { Image } from 'expo-image';
 
 const { width } = Dimensions.get('window');
 
@@ -23,9 +25,11 @@ interface Profile {
 export default function NewGroupScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const [users, setUsers] = useState<Profile[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<Profile[]>([]);
   const [groupName, setGroupName] = useState('');
+  const [groupDescription, setGroupDescription] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -61,15 +65,26 @@ export default function NewGroupScreen() {
   };
 
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permissão necessária', 'Precisamos da permissão da galeria para selecionar uma imagem.');
+        return;
+      }
 
-    if (!result.canceled) {
-      setGroupAvatar(result.assets[0].uri);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled) {
+        setGroupAvatar(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error('Error launching library:', err);
+      Alert.alert('Erro', 'Não foi possível acessar a galeria.');
     }
   };
 
@@ -97,6 +112,7 @@ export default function NewGroupScreen() {
           name: groupName,
           is_group: true,
           avatar_url: avatarUrl,
+          description: groupDescription,
           updated_at: new Date().toISOString(),
         })
         .select()
@@ -104,10 +120,14 @@ export default function NewGroupScreen() {
 
       if (convError) throw convError;
 
-      const participants = [user?.id, ...selectedUsers.map(u => u.id)].map(uId => ({
-        conversation_id: conversation.id,
-        user_id: uId,
-      }));
+      const participants = [
+        { conversation_id: conversation.id, user_id: user?.id, is_admin: true },
+        ...selectedUsers.map(u => ({
+          conversation_id: conversation.id,
+          user_id: u.id,
+          is_admin: false
+        }))
+      ];
 
       const { error: partError } = await supabase
         .from('conversation_participants')
@@ -130,7 +150,7 @@ export default function NewGroupScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
       <LinearGradient
         colors={['#00d9ff', '#ff1493']}
         start={{ x: 0, y: 0 }}
@@ -154,7 +174,7 @@ export default function NewGroupScreen() {
         <View style={styles.groupInfoCard}>
           <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
             {groupAvatar ? (
-              <Image source={{ uri: groupAvatar }} style={styles.groupAvatar} />
+              <Image source={{ uri: groupAvatar }} style={styles.groupAvatar} cachePolicy="none" />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <Camera color="#fff" size={28} />
@@ -164,19 +184,30 @@ export default function NewGroupScreen() {
               <X size={12} color="#fff" style={{ transform: [{ rotate: '45deg' }] }} />
             </View>
           </TouchableOpacity>
-          <TextInput
-            style={styles.groupNameInput}
-            placeholder="Nome do Grupo"
-            placeholderTextColor="rgba(255,255,255,0.6)"
-            value={groupName}
-            onChangeText={setGroupName}
-            maxLength={30}
-          />
+          <View style={{ flex: 1, gap: 8 }}>
+            <TextInput
+              style={styles.groupNameInput}
+              placeholder="Nome do Grupo"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              value={groupName}
+              onChangeText={setGroupName}
+              maxLength={30}
+            />
+            <TextInput
+              style={styles.groupDescriptionInput}
+              placeholder="Descrição do Grupo (opcional)"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              value={groupDescription}
+              onChangeText={setGroupDescription}
+              maxLength={150}
+              multiline
+            />
+          </View>
         </View>
       </LinearGradient>
 
       {selectedUsers.length > 0 && (
-        <View style={styles.selectedContainer}>
+        <View style={[styles.selectedContainer, { borderBottomColor: isDark ? '#1a1a1a' : '#e5e5e7' }]}>
           <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -186,12 +217,18 @@ export default function NewGroupScreen() {
             renderItem={({ item }) => (
               <Animated.View entering={FadeInRight} layout={Layout.springify()} style={styles.selectedUser}>
                 <View>
-                  <Image source={{ uri: item.avatar_url || 'https://via.placeholder.com/150' }} style={styles.selectedAvatar} />
-                  <TouchableOpacity style={styles.removeUser} onPress={() => toggleUser(item)}>
+                  {item.avatar_url ? (
+                    <Image source={{ uri: item.avatar_url }} style={styles.selectedAvatar} cachePolicy="memory-disk" />
+                  ) : (
+                    <View style={[styles.selectedAvatarPlaceholder, { backgroundColor: isDark ? '#222' : '#e5e5e7' }]}>
+                      <Text style={[styles.selectedAvatarLetter, { color: textPrimary }]}>{item.full_name.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity style={[styles.removeUser, { borderColor: backgroundPrimary }]} onPress={() => toggleUser(item)}>
                     <X size={12} color="#fff" />
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.selectedName} numberOfLines={1}>{item.full_name.split(' ')[0]}</Text>
+                <Text style={[styles.selectedName, { color: textPrimary }]} numberOfLines={1}>{item.full_name.split(' ')[0]}</Text>
               </Animated.View>
             )}
           />
@@ -199,12 +236,12 @@ export default function NewGroupScreen() {
       )}
 
       <View style={styles.searchSection}>
-        <View style={styles.searchBar}>
-          <Search size={20} color="#8E8E93" />
+        <View style={[styles.searchBar, { backgroundColor: backgroundSecondary }]}>
+          <Search size={20} color={isDark ? '#8E8E93' : '#a1a1a6'} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: textPrimary }]}
             placeholder="Buscar amigos..."
-            placeholderTextColor="#8E8E93"
+            placeholderTextColor={isDark ? '#8E8E93' : '#a1a1a6'}
             value={search}
             onChangeText={setSearch}
           />
@@ -215,20 +252,37 @@ export default function NewGroupScreen() {
         data={filteredUsers}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.usersList}
+        initialNumToRender={15}
+        maxToRenderPerBatch={15}
+        windowSize={5}
+        removeClippedSubviews={true}
         renderItem={({ item, index }) => {
           const isSelected = selectedUsers.find(u => u.id === item.id);
           return (
             <Animated.View entering={FadeInUp.delay(index * 50)}>
               <TouchableOpacity 
-                style={[styles.userItem, isSelected && styles.userItemActive]} 
+                style={[
+                  styles.userItem, 
+                  isSelected && { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }
+                ]} 
                 onPress={() => toggleUser(item)}
               >
-                <Image source={{ uri: item.avatar_url || 'https://via.placeholder.com/150' }} style={styles.userAvatar} />
+                {item.avatar_url ? (
+                  <Image source={{ uri: item.avatar_url }} style={styles.userAvatar} cachePolicy="memory-disk" />
+                ) : (
+                  <View style={[styles.avatarPlaceholderCircle, { backgroundColor: isDark ? '#222' : '#e5e5e7' }]}>
+                    <Text style={[styles.avatarLetter, { color: textPrimary }]}>{item.full_name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
                 <View style={styles.userInfo}>
-                  <Text style={styles.userName}>{item.full_name}</Text>
-                  <Text style={styles.userUsername}>@{item.username}</Text>
+                  <Text style={[styles.userName, { color: textPrimary }]}>{item.full_name}</Text>
+                  <Text style={[styles.userUsername, { color: textSecondary }]}>@{item.username}</Text>
                 </View>
-                <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
+                <View style={[
+                  styles.checkbox, 
+                  { borderColor: isDark ? '#333' : '#d1d1d6' }, 
+                  isSelected && { backgroundColor: accent, borderColor: accent }
+                ]}>
                   {isSelected && <Check color="#fff" size={14} />}
                 </View>
               </TouchableOpacity>
@@ -236,11 +290,11 @@ export default function NewGroupScreen() {
           );
         }}
         ListEmptyComponent={loading ? (
-          <ActivityIndicator style={{ marginTop: 40 }} color="#00d9ff" />
+          <ActivityIndicator style={{ marginTop: 40 }} color={accent} />
         ) : (
           <View style={styles.emptyContainer}>
-            <Users size={48} color="#333" />
-            <Text style={styles.emptyText}>Nenhum amigo encontrado</Text>
+            <Users size={48} color={isDark ? '#333' : '#ccc'} />
+            <Text style={[styles.emptyText, { color: textSecondary }]}>Nenhum amigo encontrado</Text>
           </View>
         )}
       />
@@ -263,6 +317,7 @@ const styles = StyleSheet.create({
   avatarPlaceholder: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderStyle: 'dashed' },
   editBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#00d9ff', width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff' },
   groupNameInput: { flex: 1, fontSize: 24, fontWeight: '700', color: '#fff', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.3)', paddingVertical: 8 },
+  groupDescriptionInput: { fontSize: 13, color: 'rgba(255,255,255,0.8)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.2)', paddingVertical: 4, marginTop: 4 },
   selectedContainer: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
   selectedList: { paddingHorizontal: 20, gap: 15 },
   selectedUser: { alignItems: 'center', width: 60 },
@@ -283,4 +338,8 @@ const styles = StyleSheet.create({
   checkboxActive: { backgroundColor: '#00d9ff', borderColor: '#00d9ff' },
   emptyContainer: { alignItems: 'center', marginTop: 50, opacity: 0.5 },
   emptyText: { color: '#8E8E93', fontSize: 16, marginTop: 15 },
+  selectedAvatarPlaceholder: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, borderColor: '#00d9ff', justifyContent: 'center', alignItems: 'center' },
+  selectedAvatarLetter: { fontSize: 18, fontWeight: 'bold' },
+  avatarPlaceholderCircle: { width: 55, height: 55, borderRadius: 27.5, justifyContent: 'center', alignItems: 'center' },
+  avatarLetter: { fontSize: 20, fontWeight: 'bold' },
 });

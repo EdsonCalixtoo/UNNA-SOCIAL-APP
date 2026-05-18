@@ -30,7 +30,9 @@ Audio.setAudioModeAsync({
   playThroughEarpieceAndroid: false,
 });
 
+import { PresenceProvider } from '@/contexts/PresenceContext';
 import AnimatedSplashScreen from '@/components/AnimatedSplashScreen';
+import { mediaCacheService } from '@/services/mediaCacheService';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
@@ -64,9 +66,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [user, profile, loading, segments]);
 
   useEffect(() => {
-    if (!loading) {
-      SplashScreen.hideAsync();
-    }
+    // A Splash Screen nativa agora é controlada no RootLayout para aparecer o AnimatedSplashScreen mais rápido
   }, [loading]);
 
   if (loading) {
@@ -105,8 +105,7 @@ function MainAppContent() {
       <Stack 
         screenOptions={{ 
           headerShown: false,
-          animation: 'fade_from_bottom',
-          animationDuration: 400,
+          animation: 'none',
         }}
       >
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -126,6 +125,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     // Inicialização básica
+    mediaCacheService.init();
     if (Platform.OS === 'android') {
       NavigationBar.setBackgroundColorAsync('#00000000');
     }
@@ -136,18 +136,20 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <LanguageProvider>
           <AuthProvider>
-            <UIProvider>
-              <AuthGuard>
-                <InAppNotificationProvider>
-                  <PushNotificationProvider>
-                    <ThemeProvider>
-                      <MainAppContent />
-                      <ErrorDisplay />
-                    </ThemeProvider>
-                  </PushNotificationProvider>
-                </InAppNotificationProvider>
-              </AuthGuard>
-            </UIProvider>
+            <PresenceProvider>
+              <UIProvider>
+                <AuthGuard>
+                  <InAppNotificationProvider>
+                    <PushNotificationProvider>
+                      <ThemeProvider>
+                        <MainAppContent />
+                        <ErrorDisplay />
+                      </ThemeProvider>
+                    </PushNotificationProvider>
+                  </InAppNotificationProvider>
+                </AuthGuard>
+              </UIProvider>
+            </PresenceProvider>
           </AuthProvider>
         </LanguageProvider>
       </SafeAreaProvider>

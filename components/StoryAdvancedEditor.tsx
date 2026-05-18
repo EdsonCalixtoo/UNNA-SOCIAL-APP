@@ -185,13 +185,7 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
            <TouchableOpacity onPress={() => { if(audioPlayer) audioPlayer.pause(); if(videoPlayer) videoPlayer.pause(); onClose(); }} style={styles.iconBtn}>
               <X size={28} color="#fff" strokeWidth={2.5} />
            </TouchableOpacity>
-           {mode === 'story' && (
-             <View style={styles.headerRight}>
-                <TouchableOpacity onPress={() => setShowMusicModal(true)} style={styles.iconBtn}><Music size={24} color="#fff" /></TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowLocationInput(true)} style={styles.iconBtn}><MapPin size={24} color="#fff" /></TouchableOpacity>
-                <TouchableOpacity onPress={() => { setEditingTextId('new'); setCurrentText(''); }} style={styles.iconBtn}><Type size={24} color="#fff" /></TouchableOpacity>
-             </View>
-           )}
+
         </View>
 
         <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 0.8 }} style={styles.canvas}>

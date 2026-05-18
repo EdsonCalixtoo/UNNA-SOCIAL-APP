@@ -54,8 +54,13 @@ export const reputationService = {
 
       // 4. Rodar auditoria de furões (limpeza de eventos passados)
       await this.runFlakerAudit();
-    } catch (error) {
-      console.error('Error in automatic check-in:', error);
+    } catch (error: any) {
+      // Falha silenciosa se for apenas GPS desligado ou indisponível
+      if (error?.message?.includes('location') || error?.message?.includes('GPS')) {
+        console.log('[Check-in] Localização indisponível ou GPS desligado.');
+      } else {
+        console.error('Error in automatic check-in:', error);
+      }
     }
   },
 

@@ -39,20 +39,24 @@ import {
   ChevronRight,
   Heart,
   Edit3,
-  Search
+  Search,
+  FolderOpen
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { uploadImage } from '@/lib/storage';
 import UniversalImageEditor from '@/components/UniversalImageEditor';
 import { useTheme } from '@/contexts/ThemeContext';
+import PremiumConfirmationModal from '@/components/PremiumConfirmationModal';
 import { s, vs, ms } from '@/utils/responsive';
+import { ActionFeedback } from '@/components/ActionFeedback';
 
 const { width } = Dimensions.get('window');
 
 export default function EditProfile() {
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
-  const { profile, user, refreshProfile } = useAuth();
+  const { profile, user, refreshProfile, signOut } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -64,6 +68,7 @@ export default function EditProfile() {
     full_name: '',
     bio: '',
     avatar_url: '',
+    cover_url: '',
     primary_color: '#00d9ff',
     secondary_color: '#1a1a1a',
     accent_color: '#ff1493',
@@ -77,6 +82,9 @@ export default function EditProfile() {
   });
 
   const [newAvatarUri, setNewAvatarUri] = useState<string | null>(null);
+  const [newCoverUri, setNewCoverUri] = useState<string | null>(null);
+  const [imageEditTarget, setImageEditTarget] = useState<'avatar' | 'cover' | null>(null);
+  const [showImageSourceModal, setShowImageSourceModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showInterestsModal, setShowInterestsModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -88,6 +96,9 @@ export default function EditProfile() {
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(true);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const checkTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [feedback, setFeedback] = useState({ visible: false, type: 'success' as 'success' | 'error' | 'info', title: '', message: '' });
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showDeleteAccountConfirm, setShowDeleteAccountConfirm] = useState(false);
 
   const [subcategories, setSubcategories] = useState<any[]>([]);
 
@@ -99,6 +110,7 @@ export default function EditProfile() {
         full_name: profile.full_name || '',
         bio: profile.bio || '',
         avatar_url: profile.avatar_url || '',
+        cover_url: (profile as any).cover_url || '',
         primary_color: profile.primary_color || '#00d9ff',
         secondary_color: profile.secondary_color || '#1a1a1a',
         accent_color: profile.accent_color || '#ff1493',
@@ -127,6 +139,7 @@ export default function EditProfile() {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permissão negada', 'Precisamos de acesso à sua câmera para tirar fotos.');
+        setShowImageSourceModal(false);
         return;
       }
 
@@ -141,11 +154,20 @@ export default function EditProfile() {
       }
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível abrir a câmera');
+    } finally {
+      setShowImageSourceModal(false);
     }
   };
 
   const pickImage = async () => {
     try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permissão negada', 'Precisamos de acesso às suas fotos para selecionar imagens.');
+        setShowImageSourceModal(false);
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false, 
@@ -158,23 +180,27 @@ export default function EditProfile() {
       }
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível selecionar a imagem');
+    } finally {
+      setShowImageSourceModal(false);
     }
   };
 
   const handleImageSource = () => {
-    Alert.alert(
-      'Foto de Perfil',
-      'Como deseja atualizar sua foto?',
-      [
-        { text: 'Tirar Foto', onPress: takePhoto },
-        { text: 'Escolher da Galeria', onPress: pickImage },
-        { text: 'Cancelar', style: 'cancel' }
-      ]
-    );
+    setImageEditTarget('avatar');
+    setShowImageSourceModal(true);
+  };
+
+  const handleCoverImageSource = () => {
+    setImageEditTarget('cover');
+    setShowImageSourceModal(true);
   };
 
   const handleSaveEditedAvatar = (editedUri: string) => {
-    setNewAvatarUri(editedUri);
+    if (imageEditTarget === 'cover') {
+      setNewCoverUri(editedUri);
+    } else {
+      setNewAvatarUri(editedUri);
+    }
     setShowImageEditor(false);
   };
 
@@ -261,6 +287,12 @@ export default function EditProfile() {
         if (uploadedUrl) avatarUrl = uploadedUrl;
       }
 
+      let coverUrl = formData.cover_url;
+      if (newCoverUri) {
+        const uploadedCoverUrl = await uploadImage(newCoverUri, 'media', 'banners', user.id);
+        if (uploadedCoverUrl) coverUrl = uploadedCoverUrl;
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -268,6 +300,7 @@ export default function EditProfile() {
           full_name: formData.full_name.trim(),
           bio: formData.bio.trim() || null,
           avatar_url: avatarUrl || null,
+          cover_url: coverUrl || null,
           primary_color: formData.primary_color,
           secondary_color: formData.secondary_color,
           accent_color: formData.accent_color,
@@ -284,76 +317,83 @@ export default function EditProfile() {
 
       if (error) throw error;
       await refreshProfile();
-      Alert.alert('Sucesso', 'Perfil atualizado!');
-      router.back();
+      setFeedback({
+        visible: true,
+        type: 'success',
+        title: 'Sucesso',
+        message: 'Perfil atualizado com sucesso! ✨'
+      });
     } catch (error: any) {
-      Alert.alert('Erro', error.code === '23505' ? 'Usuário já existe' : 'Erro ao salvar');
+      setFeedback({
+        visible: true,
+        type: 'error',
+        title: 'Erro',
+        message: error.code === '23505' ? 'Usuário já existe' : 'Não foi possível salvar suas alterações.'
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = () => {
-    Alert.alert('Sair', 'Deseja sair da conta?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Sair', style: 'destructive', onPress: async () => { await supabase.auth.signOut(); router.replace('/(auth)/login'); } }
-    ]);
+    setShowLogoutConfirm(true);
+  };
+
+  const confirmLogout = async () => {
+    setShowLogoutConfirm(false);
+    await signOut(); 
+    router.replace('/(auth)/login');
   };
 
   const handleDeleteAccount = () => {
     if (loading) return;
-    
-    Alert.alert(
-      'Excluir Conta',
-      'Tem certeza absoluta? Esta ação não pode ser desfeita e todos os seus dados serão perdidos.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Excluir Permanentemente', 
-          style: 'destructive', 
-          onPress: async () => {
-            console.log('Iniciando exclusão de conta para usuário:', user?.id);
-            setLoading(true);
-            try {
-              if (!user) {
-                console.error('Tentativa de exclusão sem usuário logado');
-                return;
-              }
+    setShowDeleteAccountConfirm(true);
+  };
 
-              // Remove o perfil primeiro
-              const { error: profileError } = await supabase
-                .from('profiles')
-                .delete()
-                .eq('id', user.id);
-              
-              if (profileError) {
-                console.error('Erro ao excluir perfil:', profileError);
-                throw profileError;
-              }
+  const confirmDeleteAccount = async () => {
+    console.log('Iniciando exclusão de conta para usuário:', user?.id);
+    setLoading(true);
+    setShowDeleteAccountConfirm(false);
+    try {
+      if (!user) {
+        console.error('Tentativa de exclusão sem usuário logado');
+        return;
+      }
 
-              console.log('Perfil excluído com sucesso. Saindo...');
+      // Remove o perfil primeiro
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', user.id);
+      
+      if (profileError) {
+        console.error('Erro ao excluir perfil:', profileError);
+        throw profileError;
+      }
 
-              // Logout
-              const { error: signOutError } = await supabase.auth.signOut();
-              if (signOutError) {
-                console.error('Erro ao sair:', signOutError);
-              }
-              
-              router.replace('/(auth)/login');
-              Alert.alert('Conta Excluída', 'Sua conta e dados foram removidos com sucesso.');
-            } catch (error: any) {
-              console.error('Erro completo na exclusão:', error);
-              Alert.alert(
-                'Erro ao Excluir', 
-                `Não foi possível excluir sua conta: ${error.message || 'Tente novamente mais tarde.'}`
-              );
-            } finally {
-              setLoading(false);
-            }
-          }
-        }
-      ]
-    );
+      console.log('Perfil excluído com sucesso. Saindo...');
+
+      // Logout
+      await signOut();
+      
+      router.replace('/(auth)/login');
+      setFeedback({
+        visible: true,
+        type: 'success',
+        title: 'Conta Excluída',
+        message: 'Sua conta e dados foram removidos com sucesso.'
+      });
+    } catch (error: any) {
+      console.error('Erro completo na exclusão:', error);
+      setFeedback({
+        visible: true,
+        type: 'error',
+        title: 'Erro ao Excluir',
+        message: `Não foi possível excluir sua conta: ${error.message || 'Tente novamente mais tarde.'}`
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -380,13 +420,45 @@ export default function EditProfile() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}>
           
+          {/* BANNER COVER EDIT SECTION */}
+          <View style={styles.coverEditContainer}>
+            { (newCoverUri || formData.cover_url) ? (
+              <Image 
+                source={{ uri: newCoverUri || formData.cover_url }} 
+                style={styles.coverEditImg} 
+                resizeMode="cover"
+              />
+            ) : (
+              <LinearGradient 
+                colors={[accent, '#7b2fff', '#ff1493']} 
+                start={{ x: 0, y: 0 }} 
+                end={{ x: 1, y: 1 }} 
+                style={StyleSheet.absoluteFill} 
+              />
+            )}
+            <TouchableOpacity 
+              onPress={handleCoverImageSource} 
+              style={styles.coverChangeBtn}
+              activeOpacity={0.8}
+            >
+              <BlurView intensity={35} tint="dark" style={styles.coverBtnBlur}>
+                <Camera size={14} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.coverBtnText}>Alterar Capa</Text>
+              </BlurView>
+            </TouchableOpacity>
+          </View>
+
           {/* AVATAR SECTION */}
-          <View style={styles.avatarContainer}>
-            <View style={[styles.avatarRing, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+          <View pointerEvents="box-none" style={[styles.avatarContainer, { marginTop: -65, zIndex: 10 }]}>
+            <View style={[styles.avatarRing, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderWidth: 5, borderColor: backgroundPrimary }]}>
               { (newAvatarUri || formData.avatar_url) ? (
-                <Image source={{ uri: newAvatarUri || formData.avatar_url }} style={styles.avatarImg} />
+                <Image 
+                  source={{ uri: newAvatarUri || formData.avatar_url }} 
+                  style={styles.avatarImg} 
+                  resizeMode="cover"
+                />
               ) : (
-                <View style={styles.avatarPlaceholder}>
+                <View style={[styles.avatarPlaceholder, { borderWidth: 0 }]}>
                   <Text style={styles.avatarText}>{formData.username.charAt(0).toUpperCase()}</Text>
                 </View>
               )}
@@ -394,7 +466,7 @@ export default function EditProfile() {
                 <Camera size={22} color="#fff" />
               </TouchableOpacity>
             </View>
-            <Text style={[styles.changeText, { color: accent }]}>Mudar foto do perfil</Text>
+            <Text style={[styles.changeText, { color: accent, marginTop: 8 }]}>Mudar foto do perfil</Text>
           </View>
 
           {/* BASIC INFO */}
@@ -759,6 +831,106 @@ export default function EditProfile() {
           onSave={handleSaveEditedAvatar}
         />
       )}
+
+      <ActionFeedback 
+        {...feedback} 
+        onClose={() => {
+          setFeedback({ ...feedback, visible: false });
+          if (feedback.type === 'success' && feedback.title === 'Sucesso') {
+            router.back();
+          }
+        }} 
+      />
+
+      <PremiumConfirmationModal
+        visible={showLogoutConfirm}
+        title="Sair da Conta?"
+        description="Você precisará fazer login novamente para acessar seus rolês."
+        confirmText="Sair"
+        cancelText="Voltar"
+        onConfirm={confirmLogout}
+        onCancel={() => setShowLogoutConfirm(false)}
+        isDestructive
+      />
+
+      <PremiumConfirmationModal
+        visible={showDeleteAccountConfirm}
+        title="Excluir Conta?"
+        description="Esta ação é PERMANENTE. Todos os seus dados, fotos e rolês serão apagados para sempre."
+        confirmText="Excluir Tudo"
+        cancelText="Manter Conta"
+        onConfirm={confirmDeleteAccount}
+        onCancel={() => setShowDeleteAccountConfirm(false)}
+        isDestructive
+      />
+
+      {/* CUSTOM PREMIUM ACTION SHEET MODAL */}
+      <Modal
+        visible={showImageSourceModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowImageSourceModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.actionSheetOverlay} 
+          activeOpacity={1} 
+          onPress={() => setShowImageSourceModal(false)}
+        >
+          <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+          
+          <View style={[styles.actionSheetContainer, { backgroundColor: backgroundSecondary }]}>
+            <View style={[styles.actionSheetHandle, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} />
+            
+            <Text style={[styles.actionSheetTitle, { color: textPrimary }]}>
+              {imageEditTarget === 'cover' ? 'Alterar Imagem de Capa' : 'Alterar Foto de Perfil'}
+            </Text>
+            
+            <Text style={[styles.actionSheetSub, { color: textSecondary }]}>
+              Selecione o método de envio da sua foto
+            </Text>
+            
+            <View style={styles.actionSheetOptions}>
+              <TouchableOpacity 
+                style={[styles.actionSheetOption, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}
+                activeOpacity={0.8}
+                onPress={takePhoto}
+              >
+                <View style={[styles.actionSheetIconWrapper, { backgroundColor: accent + '15' }]}>
+                  <Camera size={22} color={accent} />
+                </View>
+                <View style={styles.actionSheetOptionText}>
+                  <Text style={[styles.actionSheetOptionTitle, { color: textPrimary }]}>Tirar Foto</Text>
+                  <Text style={[styles.actionSheetOptionDesc, { color: textSecondary }]}>Tirar foto agora com a câmera</Text>
+                </View>
+                <ChevronRight size={18} color={textSecondary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.actionSheetOption, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}
+                activeOpacity={0.8}
+                onPress={pickImage}
+              >
+                <View style={[styles.actionSheetIconWrapper, { backgroundColor: '#ff1493' + '15' }]}>
+                  <FolderOpen size={22} color="#ff1493" />
+                </View>
+                <View style={styles.actionSheetOptionText}>
+                  <Text style={[styles.actionSheetOptionTitle, { color: textPrimary }]}>Escolher da Galeria</Text>
+                  <Text style={[styles.actionSheetOptionDesc, { color: textSecondary }]}>Buscar foto no rolo da câmera</Text>
+                </View>
+                <ChevronRight size={18} color={textSecondary} />
+              </TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity 
+              style={[styles.actionSheetCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}
+              activeOpacity={0.8}
+              onPress={() => setShowImageSourceModal(false)}
+            >
+              <Text style={[styles.actionSheetCancelText, { color: textPrimary }]}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -801,9 +973,109 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
 
+  coverEditContainer: {
+    width: '100%',
+    height: 160,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  coverEditImg: {
+    width: '100%',
+    height: '100%',
+  },
+  coverChangeBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  coverBtnBlur: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  coverBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  actionSheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  actionSheetContainer: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 44 : 28,
+    alignItems: 'center',
+  },
+  actionSheetHandle: {
+    width: 48,
+    height: 5,
+    borderRadius: 3,
+    marginBottom: 20,
+  },
+  actionSheetTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  actionSheetSub: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  actionSheetOptions: {
+    width: '100%',
+    gap: 12,
+    marginBottom: 20,
+  },
+  actionSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 20,
+    width: '100%',
+  },
+  actionSheetIconWrapper: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  actionSheetOptionText: {
+    flex: 1,
+  },
+  actionSheetOptionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  actionSheetOptionDesc: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  actionSheetCancelBtn: {
+    width: '100%',
+    padding: 16,
+    borderRadius: 20,
+    alignItems: 'center',
+  },
+  actionSheetCancelText: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
   avatarContainer: {
     alignItems: 'center',
-    paddingVertical: vs(32),
+    paddingVertical: vs(24),
   },
   avatarRing: {
     width: 150,

@@ -8,7 +8,6 @@ import {
   ScrollView,
   Share,
   Alert,
-  Image,
   ActivityIndicator,
   FlatList,
 } from 'react-native';
@@ -27,6 +26,7 @@ import {
   Users,
   Check,
 } from 'lucide-react-native';
+import { Image } from 'expo-image';
 
 interface EventShareModalProps {
   visible: boolean;
@@ -53,7 +53,8 @@ export function EventShareModal({
 }: EventShareModalProps) {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [groupContacts, setGroupContacts] = useState<any[]>([]);
+  const [userContacts, setUserContacts] = useState<any[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [sharedIds, setSharedIds] = useState<string[]>([]);
 
@@ -115,8 +116,8 @@ export function EventShareModal({
         type: 'group'
       }));
 
-      // Unir e remover duplicatas se necessário (neste caso tipos diferentes ajudam)
-      setContacts([...followingContacts, ...groupContacts]);
+      setGroupContacts(groupContacts);
+      setUserContacts(followingContacts);
     } catch (err) {
       console.error('Error loading contacts for sharing:', err);
     } finally {
@@ -132,20 +133,43 @@ export function EventShareModal({
 
       // Se for um usuário, precisamos garantir que existe uma conversa
       if (contact.type === 'user') {
-        // Tentar encontrar conversa 1:1 existente
-        const { data: existingParticipant } = await supabase
+        // Tentar encontrar conversa 1:1 existente de forma ultra robusta
+        const { data: myConvs } = await supabase
           .from('conversation_participants')
           .select('conversation_id')
-          .eq('user_id', user?.id)
-          .filter('conversation_id', 'in', (
-            supabase
-              .from('conversation_participants')
-              .select('conversation_id')
-              .eq('user_id', contact.id)
-          ));
+          .eq('user_id', user?.id);
+        
+        const myConvIds = myConvs?.map(c => c.conversation_id) || [];
+        let existingChatId = null;
 
-        // Se não existir, criar uma nova
-        if (!existingParticipant || existingParticipant.length === 0) {
+        if (myConvIds.length > 0) {
+          const { data: targetConvs } = await supabase
+            .from('conversation_participants')
+            .select('conversation_id')
+            .eq('user_id', contact.id)
+            .in('conversation_id', myConvIds);
+          
+          const commonConvIds = targetConvs?.map(c => c.conversation_id) || [];
+
+          if (commonConvIds.length > 0) {
+            // Buscar conversa 1:1 real que NÃO é grupo
+            const { data: realConvs } = await supabase
+              .from('conversations')
+              .select('id')
+              .eq('is_group', false)
+              .in('id', commonConvIds)
+              .order('updated_at', { ascending: false });
+
+            if (realConvs && realConvs.length > 0) {
+              existingChatId = realConvs[0].id;
+            }
+          }
+        }
+
+        if (existingChatId) {
+          conversationId = existingChatId;
+        } else {
+          // Criar nova conversa 1:1
           const { data: newConv, error: convError } = await supabase
             .from('conversations')
             .insert({ is_group: false })
@@ -160,59 +184,16 @@ export function EventShareModal({
             { conversation_id: conversationId, user_id: user?.id },
             { conversation_id: conversationId, user_id: contact.id }
           ]);
-        } else {
-          // Precisamos encontrar o ID da conversa real entre as participações
-          // Uma forma mais robusta de buscar a conversa 1:1
-          const { data: commonConvs } = await supabase.rpc('get_common_conversations', {
-            user_a: user?.id,
-            user_b: contact.id
-          });
-
-          if (commonConvs && commonConvs.length > 0) {
-            conversationId = commonConvs[0].id;
-          } else {
-            // Fallback: busca manual se o RPC não existir
-            const { data: myConvs } = await supabase
-              .from('conversation_participants')
-              .select('conversation_id')
-              .eq('user_id', user?.id);
-            
-            const myConvIds = myConvs?.map(c => c.conversation_id) || [];
-
-            const { data: targetConv } = await supabase
-              .from('conversation_participants')
-              .select('conversation_id')
-              .eq('user_id', contact.id)
-              .in('conversation_id', myConvIds)
-              .single();
-            
-            if (targetConv) {
-              conversationId = targetConv.conversation_id;
-            } else {
-              // Realmente precisa criar
-              const { data: newConv, error: convError } = await supabase
-                .from('conversations')
-                .insert({ is_group: false })
-                .select()
-                .single();
-
-              if (convError) throw convError;
-              conversationId = newConv.id;
-              await supabase.from('conversation_participants').insert([
-                { conversation_id: conversationId, user_id: user?.id },
-                { conversation_id: conversationId, user_id: contact.id }
-              ]);
-            }
-          }
         }
       }
 
+      const eventAny = event as any;
       const eventCard = JSON.stringify({
         type: 'event_card',
         event_id: event.id,
         title: event.title,
-        date: event.event_date,
-        image: event.image_url
+        date: event.event_date || eventAny.date,
+        image: event.image_url || (eventAny.image_urls && eventAny.image_urls[0]) || eventAny.image
       });
 
       const { error } = await supabase.from('messages').insert({
@@ -320,15 +301,15 @@ export function EventShareModal({
             </View>
 
             <View style={styles.internalShareContainer}>
-              <Text style={styles.optionsTitle}>Compartilhar com quem você segue</Text>
+              <Text style={styles.optionsTitle}>Compartilhar nos Grupos ({groupContacts.length})</Text>
               {loadingContacts ? (
                 <ActivityIndicator color="#00d9ff" style={{ marginVertical: 20 }} />
               ) : (
                 <FlatList
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  data={contacts}
-                  keyExtractor={item => `${item.type}-${item.id}`}
+                  data={groupContacts}
+                  keyExtractor={item => `group-${item.id}`}
                   contentContainerStyle={styles.internalList}
                   renderItem={({ item }) => (
                     <TouchableOpacity style={styles.contactItem} onPress={() => shareToContact(item)}>
@@ -336,7 +317,7 @@ export function EventShareModal({
                         {item.avatar_url ? (
                           <Image source={{ uri: item.avatar_url }} style={styles.contactAvatar} />
                         ) : (
-                          <View style={styles.avatarPlaceholder}>
+                          <View style={[styles.avatarPlaceholder, { backgroundColor: '#ff1493' }]}>
                             <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
                           </View>
                         )}
@@ -345,9 +326,39 @@ export function EventShareModal({
                             <Check size={10} color="#fff" strokeWidth={4} />
                           </View>
                         )}
-                        {item.type === 'group' && (
-                          <View style={styles.groupBadge}>
-                            <Users size={8} color="#fff" />
+                      </View>
+                      <Text style={styles.contactName} numberOfLines={1}>{item.name}</Text>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={<Text style={styles.emptyText}>Você não participa de nenhum grupo</Text>}
+                />
+              )}
+            </View>
+
+            <View style={styles.internalShareContainer}>
+              <Text style={styles.optionsTitle}>Compartilhar com Contatos ({userContacts.length})</Text>
+              {loadingContacts ? (
+                <ActivityIndicator color="#00d9ff" style={{ marginVertical: 20 }} />
+              ) : (
+                <FlatList
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  data={userContacts}
+                  keyExtractor={item => `user-${item.id}`}
+                  contentContainerStyle={styles.internalList}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity style={styles.contactItem} onPress={() => shareToContact(item)}>
+                      <View style={styles.avatarContainer}>
+                        {item.avatar_url ? (
+                          <Image source={{ uri: item.avatar_url }} style={styles.contactAvatar} />
+                        ) : (
+                          <View style={[styles.avatarPlaceholder, { backgroundColor: '#00d9ff' }]}>
+                            <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+                          </View>
+                        )}
+                        {sharedIds.includes(item.id) && (
+                          <View style={styles.sharedBadge}>
+                            <Check size={10} color="#fff" strokeWidth={4} />
                           </View>
                         )}
                       </View>

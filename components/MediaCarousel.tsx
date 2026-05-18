@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -8,11 +8,15 @@ import {
   TouchableOpacity, 
   Platform 
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { ResizeMode } from 'expo-av';
 import { Volume2, VolumeX } from 'lucide-react-native';
 import { s, vs, ms } from '@/utils/responsive';
 import { useTheme } from '@/contexts/ThemeContext';
 import FullscreenMediaViewer from './FullscreenMediaViewer';
+import CachedVideo from './CachedVideo';
+import { useIsFocused } from '@react-navigation/native';
+
+import Animated from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -23,6 +27,8 @@ interface MediaCarouselProps {
   borderRadius?: number;
   isVisible?: boolean;
   onFullScreenChange?: (visible: boolean) => void;
+  eventId?: string;
+  onPress?: () => void;
 }
 
 export default function MediaCarousel({ 
@@ -31,24 +37,27 @@ export default function MediaCarousel({
   height = vs(240), 
   borderRadius = 0, // Padrao para premium e full width
   isVisible = true,
-  onFullScreenChange
+  onFullScreenChange,
+  eventId,
+  onPress
 }: MediaCarouselProps) {
   const { accent } = useTheme();
+  const isFocused = useIsFocused();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const [fullScreenVisible, setFullScreenVisible] = useState(false);
   const [fullScreenIndex, setFullScreenIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
-  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
+  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
+    if (viewableItems && viewableItems.length > 0) {
       setActiveIndex(viewableItems[0].index);
     }
-  }).current;
+  }, []);
 
-  const viewabilityConfig = useRef({
+  const viewabilityConfig = useMemo(() => ({
     itemVisiblePercentThreshold: 50
-  }).current;
+  }), []);
 
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: SCREEN_WIDTH,
@@ -60,44 +69,61 @@ export default function MediaCarousel({
     const type = mediaTypes ? mediaTypes[index] : (item.toLowerCase().endsWith('.mp4') ? 'video' : 'image');
     const isVideo = type === 'video';
 
+    const handleMediaPress = () => {
+      if (onPress) {
+        onPress();
+      } else {
+        setFullScreenIndex(index);
+        setFullScreenVisible(true);
+        onFullScreenChange?.(true);
+      }
+    };
+
     return (
-      <TouchableOpacity 
-        activeOpacity={1} 
-        onPress={() => {
-          setFullScreenIndex(index);
-          setFullScreenVisible(true);
-          onFullScreenChange?.(true);
-        }}
-        style={[styles.mediaWrapper, { width: SCREEN_WIDTH, height, borderRadius }]}
-      >
+      <View style={[styles.mediaWrapper, { width: SCREEN_WIDTH, height, borderRadius }]}>
         {isVideo ? (
           <View style={styles.videoContainer}>
-            <Video
-              source={{ uri: item }}
+            <TouchableOpacity 
+              activeOpacity={1} 
+              onPress={handleMediaPress}
               style={styles.media}
-              resizeMode={ResizeMode.COVER}
-              isLooping
-              shouldPlay={isVisible && activeIndex === index && !fullScreenVisible}
-              isMuted={isMuted}
-            />
+            >
+              <CachedVideo
+                source={{ uri: item }}
+                style={styles.media}
+                resizeMode={ResizeMode.COVER}
+                isLooping
+                shouldPlay={isFocused && isVisible && activeIndex === index && !fullScreenVisible}
+                isMuted={isMuted}
+              />
+            </TouchableOpacity>
+            
             <TouchableOpacity 
               style={styles.muteBtn} 
-              onPress={(e) => {
-                e.stopPropagation();
+              onPress={() => {
                 setIsMuted(!isMuted);
               }}
+              activeOpacity={0.7}
             >
               {isMuted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
             </TouchableOpacity>
           </View>
         ) : (
-          <Image 
-            source={{ uri: item }} 
-            style={styles.media} 
-            resizeMode="cover" 
-          />
+          <TouchableOpacity 
+            activeOpacity={1} 
+            onPress={handleMediaPress}
+            style={styles.media}
+          >
+            <Animated.Image 
+              source={{ uri: item }} 
+              style={styles.media as any} 
+              resizeMode="cover" 
+              // @ts-ignore - sharedTransitionTag existe no Reanimated 3+ mas pode falhar na tipagem dependendo da versao
+              sharedTransitionTag={eventId ? `event-image-${eventId}-${index}` : undefined}
+            />
+          </TouchableOpacity>
         )}
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -171,15 +197,22 @@ const styles = StyleSheet.create({
   },
   muteBtn: {
     position: 'absolute',
-    bottom: vs(12),
-    left: s(12),
-    width: s(32),
-    height: s(32),
-    borderRadius: ms(16),
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    bottom: vs(16),
+    left: s(22),
+    width: s(38),
+    height: s(38),
+    borderRadius: ms(19),
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
   pagination: {
     position: 'absolute',

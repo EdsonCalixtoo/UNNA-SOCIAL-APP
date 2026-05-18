@@ -59,7 +59,7 @@ export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarP
       style={[
         styles.wrapper, 
         containerStyle, 
-        { bottom: Math.max(insets.bottom, 16) + (Platform.OS === 'ios' ? 10 : 0) }
+        { bottom: insets.bottom > 0 ? insets.bottom + 4 : 16 }
       ]} 
       pointerEvents="box-none"
     >
@@ -154,8 +154,8 @@ const styles = StyleSheet.create({
 
   blurContainer: {
     width: '100%',
-    height: 65,
-    borderRadius: 33,
+    height: 60,
+    borderRadius: 30,
     overflow: 'hidden',
     borderWidth: 1,
   },

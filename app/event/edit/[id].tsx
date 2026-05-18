@@ -39,7 +39,8 @@ import {
   Sparkles,
   Search,
   Flag,
-  Check
+  Check,
+  Ticket
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { uploadFile } from '@/lib/storage';
@@ -109,6 +110,7 @@ export default function EditEvent() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [ticketUrl, setTicketUrl] = useState('');
 
   useEffect(() => {
     loadCategories();
@@ -141,6 +143,7 @@ export default function EditEvent() {
       setPrice(data.price?.toString() || '0');
       setMinAge(data.min_age?.toString() || '0');
       setMaxParticipants(data.max_participants?.toString() || '0');
+      setTicketUrl(data.ticket_url || '');
       
       // Populate media
       const media = (data.image_urls || [data.image_url]).map((url: string, index: number) => ({
@@ -167,6 +170,20 @@ export default function EditEvent() {
   const loadSubcategories = async (categoryId: string) => { const { data } = await supabase.from('subcategories').select('*').eq('category_id', categoryId).order('name'); if (data) setSubcategories(data); };
   
   useEffect(() => { if (selectedCategory) loadSubcategories(selectedCategory); }, [selectedCategory]);
+
+  // Reload categories when category modal is opened
+  useEffect(() => {
+    if (showCatModal) {
+      loadCategories();
+    }
+  }, [showCatModal]);
+
+  // Reload subcategories when subcategory modal is opened
+  useEffect(() => {
+    if (showSubcatModal && selectedCategory) {
+      loadSubcategories(selectedCategory);
+    }
+  }, [showSubcatModal, selectedCategory]);
 
   const handleCapture = (uri: string, type: 'image' | 'video') => { 
     setCapturedMedia({ uri, type }); 
@@ -256,7 +273,8 @@ export default function EditEvent() {
         category_id: selectedCategory, 
         subcategory_id: selectedSubcategory || null,
         latitude: lat,
-        longitude: lng
+        longitude: lng,
+        ticket_url: contentType === 'event' && ticketUrl ? (ticketUrl.trim().startsWith('http') ? ticketUrl.trim() : `https://${ticketUrl.trim()}`) : null
       }).eq('id', id);
 
       if (error) throw error;
@@ -491,6 +509,21 @@ export default function EditEvent() {
                   <TextInput style={{ color: textPrimary, fontSize: 32, flex: 1, fontWeight: '900' }} keyboardType="numeric" value={price} onChangeText={setPrice} />
                 </Animated.View>
               )}
+              <View style={{ width: '100%', marginTop: 20 }}>
+                <Text style={[styles.label, { color: accent, marginBottom: 8 }]}>LINK PARA COMPRA DE INGRESSOS (OPCIONAL)</Text>
+                <View style={[styles.selectorButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderWidth: 1, flexDirection: 'row', alignItems: 'center', height: 56, paddingHorizontal: 16 }]}>
+                  <Ticket size={20} color="#ff1493" />
+                  <TextInput 
+                    style={{ flex: 1, color: textPrimary, fontSize: 14, marginLeft: 8 }} 
+                    placeholder="https://exemplo.com/ingressos" 
+                    placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
+                    value={ticketUrl} 
+                    onChangeText={setTicketUrl}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                </View>
+              </View>
             </Animated.View>
           )}
 
@@ -557,20 +590,92 @@ export default function EditEvent() {
       </Modal>
 
       {/* Date/Time Pickers */}
-      <Modal visible={showDatePicker} transparent animationType="slide">
-        <View style={styles.pickerModalContainer}>
-          <View style={[styles.pickerSheet, { backgroundColor: backgroundSecondary }]}>
-            <DateTimePicker value={new Date(eventDate)} mode="date" display="inline" onChange={(e, d) => { setShowDatePicker(false); d && setEventDate(d.toISOString().split('T')[0]); }} />
+      {Platform.OS === 'ios' ? (
+        <Modal visible={showDatePicker} transparent animationType="slide">
+          <View style={styles.pickerModalContainer}>
+            <View style={[styles.pickerSheet, { backgroundColor: backgroundSecondary }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={{ color: textSecondary, fontSize: 16, fontWeight: '600' }}>Cancelar</Text>
+                </TouchableOpacity>
+                <Text style={{ color: textPrimary, fontSize: 18, fontWeight: '800' }}>Selecionar Data</Text>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={{ color: accent, fontSize: 16, fontWeight: '700' }}>Confirmar</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={new Date(eventDate + 'T00:00:00')}
+                mode="date"
+                display="spinner"
+                textColor={textPrimary}
+                onChange={(e, d) => {
+                  if (d) {
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    setEventDate(`${year}-${month}-${day}`);
+                  }
+                }}
+              />
+            </View>
           </View>
-        </View>
-      </Modal>
-      <Modal visible={showTimePicker} transparent animationType="slide">
-        <View style={styles.pickerModalContainer}>
-          <View style={[styles.pickerSheet, { backgroundColor: backgroundSecondary }]}>
-            <DateTimePicker value={new Date(`${eventDate}T${eventTime}`)} mode="time" display="spinner" is24Hour onChange={(e, d) => { setShowTimePicker(false); d && setEventTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }} />
+        </Modal>
+      ) : (
+        showDatePicker && (
+          <DateTimePicker
+            value={new Date(eventDate + 'T00:00:00')}
+            mode="date"
+            display="default"
+            onChange={(e, d) => {
+              setShowDatePicker(false);
+              if (d) setEventDate(d.toISOString().split('T')[0]);
+            }}
+          />
+        )
+      )}
+
+      {Platform.OS === 'ios' ? (
+        <Modal visible={showTimePicker} transparent animationType="slide">
+          <View style={styles.pickerModalContainer}>
+            <View style={[styles.pickerSheet, { backgroundColor: backgroundSecondary }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                  <Text style={{ color: textSecondary, fontSize: 16, fontWeight: '600' }}>Cancelar</Text>
+                </TouchableOpacity>
+                <Text style={{ color: textPrimary, fontSize: 18, fontWeight: '800' }}>Horário de Início</Text>
+                <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                  <Text style={{ color: accent, fontSize: 16, fontWeight: '700' }}>Confirmar</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={new Date(`${eventDate}T${eventTime}`)}
+                mode="time"
+                display="spinner"
+                is24Hour
+                textColor={textPrimary}
+                onChange={(e, d) => {
+                  if (d) {
+                    setEventTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+                  }
+                }}
+              />
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      ) : (
+        showTimePicker && (
+          <DateTimePicker
+            value={new Date(`${eventDate}T${eventTime}`)}
+            mode="time"
+            display="default"
+            is24Hour
+            onChange={(e, d) => {
+              setShowTimePicker(false);
+              if (d) setEventTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+            }}
+          />
+        )
+      )}
     </View>
   );
 }

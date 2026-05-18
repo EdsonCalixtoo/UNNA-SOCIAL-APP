@@ -41,7 +41,8 @@ import {
   Sparkles,
   Flag,
   Check,
-  Search
+  Search,
+  Ticket
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { uploadFile } from '@/lib/storage';
@@ -125,6 +126,18 @@ export default function CreateEvent() {
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
+  const [ticketUrl, setTicketUrl] = useState('');
+
+  // Recurrence State
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('none');
+  const [weeklyDays, setWeeklyDays] = useState<number[]>([]); // 0-6 (0 é Domingo)
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState(() => {
+    const defaultEnd = new Date();
+    defaultEnd.setMonth(defaultEnd.getMonth() + 1); // Padrão: 1 mês a frente
+    return defaultEnd.toISOString().split('T')[0];
+  });
+  const [showRecurrenceEndPicker, setShowRecurrenceEndPicker] = useState(false);
 
   const resetForm = () => {
     setCurrentStep(0);
@@ -147,8 +160,68 @@ export default function CreateEvent() {
     setPrice('');
     setMinAge('0');
     setMaxParticipants('');
-    setSubcatSearch('');
     setCatSearch('');
+    setTicketUrl('');
+    setIsRecurring(false);
+    setRecurrenceType('none');
+    setWeeklyDays([]);
+    const defaultEnd = new Date();
+    defaultEnd.setMonth(defaultEnd.getMonth() + 1);
+    setRecurrenceEndDate(defaultEnd.toISOString().split('T')[0]);
+  };
+
+  const generateRecurrentDates = (
+    startDateStr: string,
+    recType: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
+    endDateStr: string,
+    recDays: number[]
+  ): string[] => {
+    if (recType === 'none') {
+      return [startDateStr];
+    }
+
+    const dates: string[] = [];
+    const start = new Date(startDateStr + 'T00:00:00');
+    const end = endDateStr ? new Date(endDateStr + 'T23:59:59') : new Date(start.getTime() + 365 * 24 * 60 * 60 * 1000);
+
+    const maxEvents = 50; // Limite máximo para evitar loops infinitos ou sobrecarga
+    let current = new Date(start);
+
+    if (recType === 'daily') {
+      while (current <= end && dates.length < maxEvents) {
+        dates.push(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    } else if (recType === 'weekly') {
+      const targetDays = recDays.length > 0 ? recDays : [start.getDay()];
+      while (current <= end && dates.length < maxEvents) {
+        if (targetDays.includes(current.getDay())) {
+          dates.push(current.toISOString().split('T')[0]);
+        }
+        current.setDate(current.getDate() + 1);
+      }
+    } else if (recType === 'monthly') {
+      const startDay = start.getDate();
+      while (current <= end && dates.length < maxEvents) {
+        dates.push(current.toISOString().split('T')[0]);
+        current.setMonth(current.getMonth() + 1);
+        if (current.getDate() !== startDay) {
+          current.setDate(0); // Ajusta para o último dia do mês caso estoure
+        }
+      }
+    } else if (recType === 'yearly') {
+      while (current <= end && dates.length < maxEvents) {
+        dates.push(current.toISOString().split('T')[0]);
+        current.setFullYear(current.getFullYear() + 1);
+      }
+    }
+
+    // Garante que o dia inicial sempre seja incluído no conjunto final
+    if (dates.length === 0 || dates[0] !== startDateStr) {
+      dates.unshift(startDateStr);
+    }
+
+    return Array.from(new Set(dates)).slice(0, maxEvents);
   };
 
   const progress = useSharedValue(0);
@@ -160,7 +233,22 @@ export default function CreateEvent() {
   useEffect(() => { loadCategories(); }, []);
   const loadCategories = async () => { const { data } = await supabase.from('categories').select('*').order('order'); if (data) setCategories(data); };
   const loadSubcategories = async (categoryId: string) => { const { data } = await supabase.from('subcategories').select('*').eq('category_id', categoryId).order('name'); if (data) setSubcategories(data); };
+  
   useEffect(() => { if (selectedCategory) loadSubcategories(selectedCategory); }, [selectedCategory]);
+
+  // Reload categories when category modal is opened
+  useEffect(() => {
+    if (showCatModal) {
+      loadCategories();
+    }
+  }, [showCatModal]);
+
+  // Reload subcategories when subcategory modal is opened
+  useEffect(() => {
+    if (showSubcatModal && selectedCategory) {
+      loadSubcategories(selectedCategory);
+    }
+  }, [showSubcatModal, selectedCategory]);
 
   const handleCapture = (uri: string, type: 'image' | 'video') => { 
     setCapturedMedia({ uri, type }); 
@@ -196,6 +284,7 @@ export default function CreateEvent() {
     
     if (currentStep < STEPS.length - 1) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
       setCurrentStep(currentStep + 1);
     }
   };
@@ -212,11 +301,38 @@ export default function CreateEvent() {
       router.push('/(tabs)');
     }
   };
-
+  
   const handleCreate = async () => {
     if (!user) return;
     if (mediaFiles.length === 0) return Alert.alert('Erro', 'Adicione pelo menos uma mídia.');
     
+    let finalLat = lat;
+    let finalLng = lng;
+
+    if (contentType === 'event' && (!lat || !lng)) {
+      setLoading(true);
+      try {
+        const googleApiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
+        const response = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(locationName)}&key=${googleApiKey}`
+        );
+        const geoData = await response.json();
+        
+        if (geoData.results && geoData.results[0]) {
+          finalLat = geoData.results[0].geometry.location.lat;
+          finalLng = geoData.results[0].geometry.location.lng;
+          setLat(finalLat);
+          setLng(finalLng);
+        } else {
+          setLoading(false);
+          return Alert.alert('Localização Não Encontrada', 'Não conseguimos obter as coordenadas desse endereço.');
+        }
+      } catch (error) {
+        setLoading(false);
+        return Alert.alert('Erro de Localização', 'Problema ao validar o endereço.');
+      }
+    }
+
     setLoading(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
@@ -233,16 +349,20 @@ export default function CreateEvent() {
         mediaTypes.push(optimizedMedia.type);
       }
       
-      const { data: eventData, error } = await supabase.from('events').insert({
+      const datesToGenerate = contentType === 'event' && isRecurring
+        ? generateRecurrentDates(eventDate, recurrenceType, recurrenceEndDate, weeklyDays)
+        : [contentType === 'event' ? eventDate : null];
+
+      const eventsToInsert = datesToGenerate.map((dateStr, idx) => ({
         creator_id: user.id, 
-        title, 
-        description, 
+        title: idx === 0 ? title : `${title} (${idx + 1}ª Ocorrência)`, 
+        description: idx === 0 ? description : `${description}\n\n[Ocorrência ${idx + 1} de evento recorrente]`, 
         type: contentType,
         image_url: uploadedUrls[0],
         image_urls: uploadedUrls,
         media_type: mediaTypes[0],
         media_types: mediaTypes,
-        event_date: contentType === 'event' ? eventDate : null, 
+        event_date: dateStr, 
         event_time: contentType === 'event' ? eventTime : null, 
         end_time: contentType === 'event' ? eventEndTime : null,
         location_name: locationName ? (locationNumber ? `${locationName}, ${locationNumber}` : locationName) : null,
@@ -252,16 +372,25 @@ export default function CreateEvent() {
         max_participants: parseInt(maxParticipants) || 0,
         category_id: selectedCategory, 
         subcategory_id: selectedSubcategory || null,
-        latitude: lat,
-        longitude: lng,
-        status: 'ao_vivo'
-      }).select().single();
+        latitude: finalLat,
+        longitude: finalLng,
+        status: 'ao_vivo',
+        ticket_url: contentType === 'event' && ticketUrl ? (ticketUrl.trim().startsWith('http') ? ticketUrl.trim() : `https://${ticketUrl.trim()}`) : null
+      }));
+
+      const { data: insertedEvents, error } = await supabase
+        .from('events')
+        .insert(eventsToInsert)
+        .select();
 
       if (error) throw error;
+      if (!insertedEvents || insertedEvents.length === 0) throw new Error('Nenhum evento foi criado');
+
+      const eventData = insertedEvents[0];
 
       await supabase.from('posts').insert({
         user_id: user.id,
-        content: contentType === 'event' ? `Criei um novo evento: ${title}` : `Publiquei algo novo: ${title}`,
+        content: contentType === 'event' ? `Criei um novo evento: ${title}${isRecurring ? ' (Recorrente 🔁)' : ''}` : `Publiquei algo novo: ${title}`,
         event_id: eventData.id,
         image_url: uploadedUrls[0],
         image_urls: uploadedUrls
@@ -440,42 +569,135 @@ export default function CreateEvent() {
                 <Text style={[styles.label, { color: accent }]}>NÚMERO E COMPLEMENTO</Text>
                 <TextInput style={[styles.hugeInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary, fontSize: 16, height: 60 }]} placeholder="Ex: 123, Apto 42" placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} value={locationNumber} onChangeText={setLocationNumber} />
               </View>
-              <View style={{ marginTop: 24, gap: 12 }}>
-                <TouchableOpacity 
-                  style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', width: '100%' }]} 
-                  onPress={() => setShowDatePicker(true)}
-                >
-                  <Calendar size={22} color="#ff1493" />
-                  <View>
-                    <Text style={[styles.glassLabel, { color: textSecondary }]}>DATA DO EVENTO</Text>
-                    <Text style={[styles.glassValue, { color: textPrimary, fontSize: 18 }]}>{new Date(eventDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</Text>
+              {contentType === 'event' && (
+                <View style={{ marginTop: 24, gap: 12 }}>
+                  <TouchableOpacity 
+                    style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', width: '100%' }]} 
+                    onPress={() => setShowDatePicker(true)}
+                  >
+                    <Calendar size={22} color="#ff1493" />
+                    <View>
+                      <Text style={[styles.glassLabel, { color: textSecondary }]}>DATA DO EVENTO</Text>
+                      <Text style={[styles.glassValue, { color: textPrimary, fontSize: 18 }]}>{new Date(Platform.OS === 'ios' ? eventDate + 'T00:00:00' : eventDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <View style={styles.row}>
+                    <TouchableOpacity 
+                      style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', flex: 1 }]} 
+                      onPress={() => setShowTimePicker(true)}
+                    >
+                      <Clock size={20} color={accent} />
+                      <View>
+                        <Text style={[styles.glassLabel, { color: textSecondary }]}>INÍCIO</Text>
+                        <Text style={[styles.glassValue, { color: textPrimary }]}>{eventTime}</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', flex: 1 }]} 
+                      onPress={() => setShowEndTimePicker(true)}
+                    >
+                      <Clock size={20} color="#ff3b30" />
+                      <View>
+                        <Text style={[styles.glassLabel, { color: textSecondary }]}>FIM</Text>
+                        <Text style={[styles.glassValue, { color: textPrimary }]}>{eventEndTime}</Text>
+                      </View>
+                    </TouchableOpacity>
                   </View>
-                </TouchableOpacity>
 
-                <View style={styles.row}>
-                  <TouchableOpacity 
-                    style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', flex: 1 }]} 
-                    onPress={() => setShowTimePicker(true)}
-                  >
-                    <Clock size={20} color={accent} />
-                    <View>
-                      <Text style={[styles.glassLabel, { color: textSecondary }]}>INÍCIO</Text>
-                      <Text style={[styles.glassValue, { color: textPrimary }]}>{eventTime}</Text>
+                  {/* Seção de Recorrência */}
+                  <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', marginTop: 12 }]}>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={[styles.premiumTitle, { color: textPrimary }]}>Repetir Evento?</Text>
+                      <Text style={[styles.premiumSub, { color: textSecondary }]}>Ative para criar eventos recorrentes</Text>
                     </View>
-                  </TouchableOpacity>
+                    <Switch 
+                      value={isRecurring} 
+                      onValueChange={(val) => {
+                        setIsRecurring(val);
+                        setRecurrenceType(val ? 'weekly' : 'none');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }} 
+                      trackColor={{ false: isDark ? '#333' : '#ccc', true: accent }} 
+                      thumbColor={isRecurring ? '#fff' : '#f4f3f4'} 
+                    />
+                  </View>
 
-                  <TouchableOpacity 
-                    style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', flex: 1 }]} 
-                    onPress={() => setShowEndTimePicker(true)}
-                  >
-                    <Clock size={20} color="#ff3b30" />
-                    <View>
-                      <Text style={[styles.glassLabel, { color: textSecondary }]}>FIM</Text>
-                      <Text style={[styles.glassValue, { color: textPrimary }]}>{eventEndTime}</Text>
-                    </View>
-                  </TouchableOpacity>
+                  {isRecurring && (
+                    <Animated.View entering={FadeInDown} style={{ gap: 12, marginTop: 8 }}>
+                      {/* Tipo de Recorrência */}
+                      <Text style={[styles.label, { color: accent, marginTop: 8 }]}>FREQUÊNCIA DE REPETIÇÃO</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {(['daily', 'weekly', 'monthly', 'yearly'] as const).map((type) => (
+                          <TouchableOpacity
+                            key={type}
+                            style={[
+                              styles.chip,
+                              { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', borderWidth: 1 },
+                              recurrenceType === type && { backgroundColor: accent, borderColor: accent }
+                            ]}
+                            onPress={() => {
+                              setRecurrenceType(type);
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }}
+                          >
+                            <Text style={[styles.chipText, { color: recurrenceType === type ? '#fff' : textPrimary }]}>
+                              {type === 'daily' ? 'Diário' : type === 'weekly' ? 'Semanal' : type === 'monthly' ? 'Mensal' : 'Anual'}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      {/* Se for Semanal: Seleção dos Dias */}
+                      {recurrenceType === 'weekly' && (
+                        <View style={{ gap: 8 }}>
+                          <Text style={[styles.label, { color: accent }]}>DIAS DA SEMANA</Text>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 4 }}>
+                            {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((dayName, index) => {
+                              const isSelected = weeklyDays.includes(index);
+                              return (
+                                <TouchableOpacity
+                                  key={index}
+                                  style={[
+                                    styles.dayCircle,
+                                    { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
+                                    isSelected && { backgroundColor: '#ff1493' }
+                                  ]}
+                                  onPress={() => {
+                                    setWeeklyDays(prev => 
+                                      prev.includes(index) 
+                                        ? prev.filter(d => d !== index) 
+                                        : [...prev, index]
+                                    );
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                  }}
+                                >
+                                  <Text style={{ color: isSelected ? '#fff' : textPrimary, fontWeight: '700', fontSize: 14 }}>
+                                    {dayName}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Data de Término */}
+                      <TouchableOpacity 
+                        style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', width: '100%', marginTop: 8 }]} 
+                        onPress={() => setShowRecurrenceEndPicker(true)}
+                      >
+                        <Calendar size={22} color="#ff3b30" />
+                        <View>
+                          <Text style={[styles.glassLabel, { color: textSecondary }]}>TERMINA EM</Text>
+                          <Text style={[styles.glassValue, { color: textPrimary, fontSize: 16 }]}>{new Date(Platform.OS === 'ios' ? recurrenceEndDate + 'T00:00:00' : recurrenceEndDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    </Animated.View>
+                  )}
                 </View>
-              </View>
+              )}
             </Animated.View>
           )}
           {currentStep === 4 && (
@@ -485,6 +707,21 @@ export default function CreateEvent() {
               <View style={styles.limitsRow}>
                 <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><Users size={20} color={accent} /><TextInput style={[styles.limitInput, { color: textPrimary }]} placeholder="Limite" keyboardType="numeric" value={maxParticipants} onChangeText={setMaxParticipants} /></View>
                 <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><Info size={20} color="#ff1493" /><TextInput style={[styles.limitInput, { color: textPrimary }]} placeholder="Idade" keyboardType="numeric" value={minAge} onChangeText={setMinAge} /></View>
+              </View>
+              <View style={{ width: '100%', marginTop: 20 }}>
+                <Text style={[styles.label, { color: accent, marginBottom: 8 }]}>LINK PARA COMPRA DE INGRESSOS (OPCIONAL)</Text>
+                <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', width: '100%', flexDirection: 'row', alignItems: 'center' }]}>
+                  <Ticket size={20} color="#ff1493" />
+                  <TextInput 
+                    style={{ flex: 1, color: textPrimary, fontSize: 14, marginLeft: 8 }} 
+                    placeholder="https://exemplo.com/ingressos" 
+                    placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
+                    value={ticketUrl} 
+                    onChangeText={setTicketUrl}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                </View>
               </View>
             </Animated.View>
           )}
@@ -496,7 +733,17 @@ export default function CreateEvent() {
                 <View style={styles.reviewContent}>
                   <Text style={styles.reviewTag}>{categories.find(c => c.id === selectedCategory)?.name}</Text>
                   <Text style={styles.reviewMainTitle}>{title}</Text>
-                  {contentType === 'event' ? (<><View style={styles.reviewRow}><Calendar size={14} color="#fff" /><Text style={styles.reviewText}>{new Date(eventDate).toLocaleDateString('pt-BR')} das {eventTime} às {eventEndTime}</Text></View><View style={styles.reviewRow}><MapPin size={14} color="#fff" /><Text style={styles.reviewText} numberOfLines={1}>{locationName}</Text></View></>) : (<View style={styles.reviewRow}><Flag size={14} color="#fff" /><Text style={styles.reviewText}>Publicação sem data fixa</Text></View>)}
+                  {contentType === 'event' ? (
+                    <>
+                      <View style={styles.reviewRow}><Calendar size={14} color="#fff" /><Text style={styles.reviewText}>{new Date(Platform.OS === 'ios' ? eventDate + 'T00:00:00' : eventDate).toLocaleDateString('pt-BR')} das {eventTime} às {eventEndTime}</Text></View>
+                      <View style={styles.reviewRow}><MapPin size={14} color="#fff" /><Text style={styles.reviewText} numberOfLines={1}>{locationName}</Text></View>
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.reviewRow}><Flag size={14} color="#fff" /><Text style={styles.reviewText}>Publicação sem data fixa</Text></View>
+                      {locationName && <View style={styles.reviewRow}><MapPin size={14} color="#fff" /><Text style={styles.reviewText} numberOfLines={1}>{locationName}</Text></View>}
+                    </>
+                  )}
                 </View>
               </View>
               <TouchableOpacity style={styles.publishButton} onPress={handleCreate} disabled={loading}><LinearGradient colors={['#00d9ff', '#ff1493']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.publishGradient}>{loading ? <ActivityIndicator color="#fff" /> : <><Text style={[styles.publishText, { color: '#fff' }]}>PUBLICAR {contentType === 'event' ? 'EVENTO' : 'AGORA'}</Text><Sparkles size={20} color="#fff" /></>}</LinearGradient></TouchableOpacity>
@@ -528,13 +775,13 @@ export default function CreateEvent() {
               </View>
             </View>
 
-            <FlatList
-              data={filteredCategories}
-              keyExtractor={(item) => item.id}
+            <ScrollView 
               contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
               showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
+            >
+              {filteredCategories.map((item) => (
                 <TouchableOpacity 
+                  key={item.id}
                   activeOpacity={0.7}
                   style={[
                     styles.modalItem, 
@@ -561,8 +808,8 @@ export default function CreateEvent() {
                     <ChevronRight size={20} color={textSecondary} opacity={0.3} />
                   )}
                 </TouchableOpacity>
-              )}
-            />
+              ))}
+            </ScrollView>
           </SafeAreaView>
         </View>
       </Modal>
@@ -590,13 +837,13 @@ export default function CreateEvent() {
               </View>
             </View>
 
-            <FlatList
-              data={filteredSubcategories}
-              keyExtractor={(item) => item.id}
+            <ScrollView 
               contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
               showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
+            >
+              {filteredSubcategories.map((item) => (
                 <TouchableOpacity 
+                  key={item.id}
                   activeOpacity={0.7}
                   style={[
                     styles.modalItem, 
@@ -619,8 +866,8 @@ export default function CreateEvent() {
                     <ChevronRight size={20} color={textSecondary} opacity={0.3} />
                   )}
                 </TouchableOpacity>
-              )}
-            />
+              ))}
+            </ScrollView>
           </SafeAreaView>
         </View>
       </Modal>
@@ -634,9 +881,227 @@ export default function CreateEvent() {
         </View>
       )}
 
-      {showDatePicker && <DateTimePicker value={new Date(eventDate)} mode="date" display="default" onChange={(event, selectedDate) => { setShowDatePicker(false); if (selectedDate) setEventDate(selectedDate.toISOString().split('T')[0]); }} />}
-      {showTimePicker && <DateTimePicker value={new Date()} mode="time" is24Hour={true} display="default" onChange={(event, selectedDate) => { setShowTimePicker(false); if (selectedDate) setEventTime(`${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}`); }} />}
-      {showEndTimePicker && <DateTimePicker value={new Date()} mode="time" is24Hour={true} display="default" onChange={(event, selectedDate) => { setShowEndTimePicker(false); if (selectedDate) setEventEndTime(`${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}`); }} />}
+      {/* Date Picker */}
+      {Platform.OS === 'ios' ? (
+        <Modal
+          visible={showDatePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={styles.dateTimePickerModalOverlay}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowDatePicker(false)}>
+              <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFillObject} />
+            </Pressable>
+            <View style={[styles.dateTimePickerModalContent, { backgroundColor: backgroundSecondary }]}>
+              <View style={styles.dateTimePickerModalHeader}>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>Cancelar</Text>
+                </TouchableOpacity>
+                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>Selecionar Data</Text>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>Confirmar</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={new Date(eventDate + 'T00:00:00')}
+                mode="date"
+                display="spinner"
+                textColor={textPrimary}
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) {
+                    const year = selectedDate.getFullYear();
+                    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(selectedDate.getDate()).padStart(2, '0');
+                    setEventDate(`${year}-${month}-${day}`);
+                  }
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : (
+        showDatePicker && (
+          <DateTimePicker
+            value={new Date(eventDate + 'T00:00:00')}
+            mode="date"
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowDatePicker(false);
+              if (selectedDate) setEventDate(selectedDate.toISOString().split('T')[0]);
+            }}
+          />
+        )
+      )}
+
+      {/* Time Picker */}
+      {Platform.OS === 'ios' ? (
+        <Modal
+          visible={showTimePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowTimePicker(false)}
+        >
+          <View style={styles.dateTimePickerModalOverlay}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowTimePicker(false)}>
+              <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFillObject} />
+            </Pressable>
+            <View style={[styles.dateTimePickerModalContent, { backgroundColor: backgroundSecondary }]}>
+              <View style={styles.dateTimePickerModalHeader}>
+                <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>Cancelar</Text>
+                </TouchableOpacity>
+                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>Horário de Início</Text>
+                <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>Confirmar</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={(() => {
+                  const [hours, minutes] = eventTime.split(':');
+                  const d = new Date();
+                  if (hours && minutes) {
+                    d.setHours(parseInt(hours, 10));
+                    d.setMinutes(parseInt(minutes, 10));
+                  }
+                  return d;
+                })()}
+                mode="time"
+                is24Hour={true}
+                display="spinner"
+                textColor={textPrimary}
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) setEventTime(`${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}`);
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : (
+        showTimePicker && (
+          <DateTimePicker
+            value={new Date()}
+            mode="time"
+            is24Hour={true}
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowTimePicker(false);
+              if (selectedDate) setEventTime(`${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}`);
+            }}
+          />
+        )
+      )}
+
+      {/* End Time Picker */}
+      {Platform.OS === 'ios' ? (
+        <Modal
+          visible={showEndTimePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowEndTimePicker(false)}
+        >
+          <View style={styles.dateTimePickerModalOverlay}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowEndTimePicker(false)}>
+              <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFillObject} />
+            </Pressable>
+            <View style={[styles.dateTimePickerModalContent, { backgroundColor: backgroundSecondary }]}>
+              <View style={styles.dateTimePickerModalHeader}>
+                <TouchableOpacity onPress={() => setShowEndTimePicker(false)}>
+                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>Cancelar</Text>
+                </TouchableOpacity>
+                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>Horário de Término</Text>
+                <TouchableOpacity onPress={() => setShowEndTimePicker(false)}>
+                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>Confirmar</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={(() => {
+                  const [hours, minutes] = eventEndTime.split(':');
+                  const d = new Date();
+                  if (hours && minutes) {
+                    d.setHours(parseInt(hours, 10));
+                    d.setMinutes(parseInt(minutes, 10));
+                  }
+                  return d;
+                })()}
+                mode="time"
+                is24Hour={true}
+                display="spinner"
+                textColor={textPrimary}
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) setEventEndTime(`${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}`);
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : (
+        showEndTimePicker && (
+          <DateTimePicker
+            value={new Date()}
+            mode="time"
+            is24Hour={true}
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowEndTimePicker(false);
+              if (selectedDate) setEventEndTime(`${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}`);
+            }}
+          />
+        )
+      )}
+
+      {/* Recurrence End Picker */}
+      {Platform.OS === 'ios' ? (
+        <Modal
+          visible={showRecurrenceEndPicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowRecurrenceEndPicker(false)}
+        >
+          <View style={styles.dateTimePickerModalOverlay}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowRecurrenceEndPicker(false)}>
+              <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFillObject} />
+            </Pressable>
+            <View style={[styles.dateTimePickerModalContent, { backgroundColor: backgroundSecondary }]}>
+              <View style={styles.dateTimePickerModalHeader}>
+                <TouchableOpacity onPress={() => setShowRecurrenceEndPicker(false)}>
+                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>Cancelar</Text>
+                </TouchableOpacity>
+                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>Repetir Até</Text>
+                <TouchableOpacity onPress={() => setShowRecurrenceEndPicker(false)}>
+                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>Confirmar</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={new Date(recurrenceEndDate + 'T00:00:00')}
+                mode="date"
+                display="spinner"
+                textColor={textPrimary}
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) {
+                    const year = selectedDate.getFullYear();
+                    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(selectedDate.getDate()).padStart(2, '0');
+                    setRecurrenceEndDate(`${year}-${month}-${day}`);
+                  }
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : (
+        showRecurrenceEndPicker && (
+          <DateTimePicker
+            value={new Date(recurrenceEndDate + 'T00:00:00')}
+            mode="date"
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowRecurrenceEndPicker(false);
+              if (selectedDate) setRecurrenceEndDate(selectedDate.toISOString().split('T')[0]);
+            }}
+          />
+        )
+      )}
 
       <StoryCameraModal visible={showCamera} onClose={() => setShowCamera(false)} onCapture={handleCapture} usageType="event" />
       {capturedMedia && <StoryAdvancedEditor visible={showEditor} mediaUri={capturedMedia.uri} mediaType={capturedMedia.type} mode="event" onClose={() => setShowEditor(false)} onSave={handleSaveEditor} />}
@@ -732,5 +1197,60 @@ const styles = StyleSheet.create({
   modalItemContent: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   modalEmoji: { fontSize: ms(24), marginRight: 16 },
   modalItemText: { fontSize: ms(16), fontWeight: '800' },
-  selectedCircle: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' }
+  selectedCircle: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  chip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chipText: {
+    fontSize: ms(14),
+    fontWeight: '700',
+  },
+  dayCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dateTimePickerModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  dateTimePickerModalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  dateTimePickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 18,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(150, 150, 150, 0.2)',
+    marginBottom: 10,
+  },
+  dateTimePickerModalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  dateTimePickerModalTitleText: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  dateTimePickerModalConfirmText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });

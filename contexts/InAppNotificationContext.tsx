@@ -15,8 +15,9 @@ import Animated, {
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bell, MessageCircle, Calendar, Trash2, CheckCircle, AlertCircle, Info } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { BlurView } from 'expo-blur';
@@ -34,18 +35,39 @@ interface Notification {
   created_at: number;
 }
 
+const formatNotificationMessage = (msg: string) => {
+  if (!msg) return '';
+  const trimmed = msg.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.type === 'image') return '📷 Foto';
+      if (parsed.type === 'video') return '🎥 Vídeo';
+      if (parsed.type === 'audio') return '🎙️ Mensagem de voz';
+      if (parsed.type === 'event_card') return '🎫 Convite de Evento';
+      if (parsed.type === 'reply') return parsed.text || '';
+    } catch (e) {
+      // Ignora e prossegue
+    }
+  }
+  return msg;
+};
+
 interface InAppNotificationContextType {
   showNotification: (notification: Omit<Notification, 'id' | 'created_at'>) => void;
   clearAll: () => void;
+  setActiveConversation: (id: string | null) => void;
 }
 
 const InAppNotificationContext = createContext<InAppNotificationContextType | undefined>(undefined);
 
 export function InAppNotificationProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const router = useRouter();
+  const segments = useSegments();
 
   const hideNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
@@ -55,16 +77,72 @@ export function InAppNotificationProvider({ children }: { children: React.ReactN
     setNotifications([]);
   }, []);
 
+  const lastNotificationRef = useRef<{ title: string, message: string, time: number } | null>(null);
+
   const showNotification = useCallback((notif: Omit<Notification, 'id' | 'created_at'>) => {
-    const id = Date.now().toString();
-    const newNotif = { ...notif, id, created_at: Date.now() };
+    // Silenciar se o usuário já estiver na aba de mensagens ou na conversa correspondente
+    const segmentsList = segments as string[];
+    const isInMessages = segmentsList.includes('messages');
+    const isMessageNotif = notif.type === 'message' || notif.type === 'new_message';
+
+    if (isMessageNotif) {
+      if (notif.data?.conversation_id === activeConversationId) {
+        console.log('[InAppNotification] Silenciando banner: conversa ativa.');
+        return;
+      }
+      if (isInMessages) {
+        console.log('[InAppNotification] Silenciando banner: usuário já está na aba de mensagens.');
+        return;
+      }
+    }
+
+    // Deduplicação: bloquear apenas notificações IDÊNTICAS em menos de 1s
+    const now = Date.now();
+    const dedupeKey = `${notif.title}|${notif.message}|${notif.data?.conversation_id || ''}`;
+    if (
+      lastNotificationRef.current &&
+      lastNotificationRef.current.title === dedupeKey &&
+      now - lastNotificationRef.current.time < 1000
+    ) {
+      console.log('[InAppNotification] Deduplicando notificação idêntica:', notif.title);
+      return;
+    }
+
+    lastNotificationRef.current = { title: dedupeKey, message: notif.message, time: now };
     
+    const id = now.toString();
+    const newNotif = { ...notif, id, created_at: now };
+    
+    // Tocar som e haptic
     if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(
-        notif.type === 'error' ? Haptics.NotificationFeedbackType.Error :
-        notif.type === 'success' ? Haptics.NotificationFeedbackType.Success :
-        Haptics.NotificationFeedbackType.Warning
-      );
+      // Som Sutil (Premium Bubble Pop)
+      const playSoftSound = async () => {
+        try {
+          const soundUri = Platform.OS === 'ios' 
+            ? 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3' 
+            : 'https://assets.mixkit.co/active_storage/sfx/2006/2006-preview.mp3';
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: soundUri },
+            { shouldPlay: true, volume: 0.5 }
+          );
+          sound.setOnPlaybackStatusUpdate((status) => {
+            if (status.isLoaded && status.didJustFinish) sound.unloadAsync();
+          });
+        } catch (e) {
+          console.log('[InAppNotification] Erro ao tocar som:', e);
+        }
+      };
+
+      playSoftSound();
+
+      if (notif.type === 'error') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } else if (notif.type === 'success') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        // Feedback mais suave para mensagens e alertas comuns
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
     }
     
     setNotifications(prev => [newNotif, ...prev].slice(0, 3)); 
@@ -72,7 +150,7 @@ export function InAppNotificationProvider({ children }: { children: React.ReactN
     setTimeout(() => {
       hideNotification(id);
     }, 5000);
-  }, [hideNotification]);
+  }, [hideNotification, activeConversationId]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -88,11 +166,13 @@ export function InAppNotificationProvider({ children }: { children: React.ReactN
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
+          console.log('[Realtime-DEBUG] Nova notificação na tabela notifications:', JSON.stringify(payload.new, null, 2));
           const newNotif = payload.new as any;
-          if (newNotif) {
+          // Exibir banner in-app para todos os tipos, inclusive new_message (mensagens do chat)
+          if (newNotif && newNotif.type !== 'message' && newNotif.title !== 'Nova mensagem') {
             showNotification({
               title: newNotif.title || 'UNNA',
-              message: newNotif.message || '',
+              message: formatNotificationMessage(newNotif.message || ''),
               type: (newNotif.type as NotificationType) || 'info',
               data: newNotif.data || {}
             });
@@ -107,7 +187,7 @@ export function InAppNotificationProvider({ children }: { children: React.ReactN
   }, [user?.id, showNotification]);
 
   return (
-    <InAppNotificationContext.Provider value={{ showNotification, clearAll }}>
+    <InAppNotificationContext.Provider value={{ showNotification, clearAll, setActiveConversation: setActiveConversationId }}>
       {children}
       <View style={[styles.globalContainer, { top: insets.top || 10 }]} pointerEvents="box-none">
         {notifications.length > 1 && (
@@ -129,10 +209,10 @@ export function InAppNotificationProvider({ children }: { children: React.ReactN
               onPress={() => {
                 if (notif.data?.url) {
                   router.push(notif.data.url);
-                } else if (notif.type === 'message' && notif.data?.conversation_id) {
+                } else if ((notif.type === 'message' || notif.type === 'new_message') && notif.data?.conversation_id) {
                   router.push(`/messages/${notif.data.conversation_id}`);
                 } else {
-                  router.push('/(tabs)/notifications');
+                  router.push('/notifications');
                 }
                 hideNotification(notif.id);
               }}
@@ -199,7 +279,8 @@ function NotificationItem({ notification, index, total, onHide, onPress }: {
     }
 
     switch (notification.type) {
-      case 'message': return <View style={[styles.iconBg, { backgroundColor: '#34C759' }]}><MessageCircle size={size} color={color} /></View>;
+      case 'message':
+      case 'new_message': return <View style={[styles.iconBg, { backgroundColor: '#34C759' }]}><MessageCircle size={size} color={color} /></View>;
       case 'success': return <View style={[styles.iconBg, { backgroundColor: '#28a745' }]}><CheckCircle size={size} color={color} /></View>;
       case 'error': return <View style={[styles.iconBg, { backgroundColor: '#FF3B30' }]}><AlertCircle size={size} color={color} /></View>;
       case 'alert': return <View style={[styles.iconBg, { backgroundColor: '#FF9500' }]}><AlertCircle size={size} color={color} /></View>;
@@ -222,7 +303,7 @@ function NotificationItem({ notification, index, total, onHide, onPress }: {
           onPressIn={() => isPressed.value = withTiming(0.97, { duration: 100 })}
           onPressOut={() => isPressed.value = withTiming(1, { duration: 100 })}
         >
-          <BlurView intensity={Platform.OS === 'ios' ? 40 : 80} tint="dark" style={styles.blur}>
+          <BlurView intensity={Platform.OS === 'ios' ? 90 : 100} tint="dark" style={[styles.blur, { backgroundColor: 'rgba(20, 20, 20, 0.85)' }]}>
             <View style={styles.bannerHeader}>
               <View style={styles.headerLeft}>
                 {getIcon()}

@@ -1,14 +1,15 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, memo, useMemo } from 'react';
 import { 
   View, Text, StyleSheet, Image, TouchableOpacity, 
-  ActivityIndicator, Alert, Dimensions, Platform, StatusBar, Linking
+  ActivityIndicator, Alert, Dimensions, Platform, StatusBar, Linking,
+  Modal, Pressable
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { 
   Calendar, Clock, MapPin, ArrowLeft,
   MessageCircle, Edit3, Share2, Navigation2,
-  ChevronRight, Users, Trash2, Flag
+  ChevronRight, Users, Trash2, Flag, Ticket, Scan
 } from 'lucide-react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,11 +17,21 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { EventShareModal } from '@/components/EventShareModal';
 import { EventParticipantsModal } from '@/components/EventParticipantsModal';
+import { EventTicketModal } from '@/components/EventTicketModal';
+import { EventPresenceList } from '@/components/EventPresenceList';
+import { EventStoriesBar } from '@/components/EventStoriesBar';
+import { QRScannerModal } from '@/components/QRScannerModal';
+import { ActionFeedback } from '@/components/ActionFeedback';
+import { offlineService } from '@/services/offlineService';
 import Animated, { 
   useSharedValue, useAnimatedStyle, useAnimatedScrollHandler,
   interpolate, Extrapolation, withSpring, runOnJS
 } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { soundService } from '@/utils/soundService';
+import { hapticFeedback } from '@/utils/haptics';
+import * as ExpoCalendar from 'expo-calendar';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -64,13 +75,31 @@ export default function EventDetails() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
-  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent: defaultAccent, isDark } = useTheme();
 
   const [event, setEvent] = useState<any>(null);
+  
+  // Dynamic Theme calculation
+  const eventAccent = useMemo(() => {
+    if (!event?.categories?.name) return defaultAccent;
+    const cat = event.categories.name.toLowerCase();
+    if (cat.includes('festa') || cat.includes('show') || cat.includes('balada')) return '#ff1493'; // Deep Pink
+    if (cat.includes('esporte') || cat.includes('treino')) return '#34C759'; // Apple Green
+    if (cat.includes('tech') || cat.includes('geek')) return '#7b2fff'; // Purple
+    if (cat.includes('food') || cat.includes('gastronomia')) return '#FF9500'; // Orange
+    if (cat.includes('arte') || cat.includes('cultura')) return '#FF3B30'; // Red
+    return defaultAccent;
+  }, [event, defaultAccent]);
+
+  const accent = eventAccent; // Override local accent with dynamic one
   const [loading, setLoading] = useState(true);
   const [rsvpStatus, setRsvpStatus] = useState<'going' | null>(null);
+  const [showScannerModal, setShowScannerModal] = useState(false);
+  const [feedback, setFeedback] = useState({ visible: false, type: 'success' as any, title: '', message: '' });
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
+  const [ticketModalVisible, setTicketModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [scrollEnabledJS, setScrollEnabledJS] = useState(false);
 
@@ -88,22 +117,36 @@ export default function EventDetails() {
       const { data, error } = await supabase.from('events').select(`
         *, categories:category_id (name, icon),
         profiles:creator_id (id, username, full_name, avatar_url)
-      `).eq('id', id).maybeSingle(); // Usar maybeSingle para evitar erro se não existir
+      `).eq('id', id).maybeSingle();
       
       if (error) throw error;
       
-      if (!data) {
-        Alert.alert('Evento não encontrado', 'Este evento pode ter sido removido ou não existe mais.', [
-          { text: 'OK', onPress: () => router.back() }
-        ]);
-        return;
+      if (data) {
+        setEvent(data);
+        // Salva no cache para uso offline posterior
+        offlineService.cacheEvent(data);
+      } else {
+        // Se não achou online, tenta o offline antes de dar erro
+        const cached = await offlineService.getCachedEvent(id as string);
+        if (cached) {
+          setEvent(cached);
+        } else {
+          Alert.alert('Evento não encontrado', 'Este evento pode ter sido removido ou você está sem conexão e não tem ele salvo offline.');
+          router.back();
+        }
       }
-      
-      setEvent(data);
     } catch (e) { 
       console.error('Error loading event:', e);
-      Alert.alert('Erro', 'Não foi possível carregar os detalhes do evento.'); 
-      router.back();
+      
+      // TENTA CARREGAR DO CACHE EM CASO DE ERRO (Ex: Sem Internet)
+      const cached = await offlineService.getCachedEvent(id as string);
+      if (cached) {
+        setEvent(cached);
+        // Opcional: Avisar o usuário que está em modo offline
+      } else {
+        Alert.alert('Erro de Conexão', 'Não foi possível carregar os detalhes e você não tem este evento salvo offline.'); 
+        router.back();
+      }
     } finally { 
       setLoading(false); 
     }
@@ -115,18 +158,101 @@ export default function EventDetails() {
     if (data) setRsvpStatus('going');
   };
 
+  const addEventToCalendar = async () => {
+    try {
+      const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permissão negada', 'Precisamos de acesso ao calendário para adicionar o evento.');
+        return;
+      }
+
+      const calendars = await ExpoCalendar.getCalendarsAsync(ExpoCalendar.EntityTypes.EVENT);
+      const defaultCal = calendars.find(c =>
+        Platform.OS === 'ios'
+          ? c.allowsModifications && c.source.name === 'iCloud'
+          : c.allowsModifications && c.isPrimary
+      ) || calendars.find(c => c.allowsModifications);
+
+      if (!defaultCal) {
+        Alert.alert('Erro', 'Nenhum calendário editável encontrado no seu dispositivo.');
+        return;
+      }
+
+      // Build start/end Date from event fields
+      const [year, month, day] = (event.event_date as string).split('-').map(Number);
+      const [startHour, startMin] = (event.event_time as string).split(':').map(Number);
+      const startDate = new Date(year, month - 1, day, startHour, startMin);
+
+      let endDate: Date;
+      if (event.end_time) {
+        const [endHour, endMin] = (event.end_time as string).split(':').map(Number);
+        endDate = new Date(year, month - 1, day, endHour, endMin);
+      } else {
+        endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000); // +2h default
+      }
+
+      await ExpoCalendar.createEventAsync(defaultCal.id, {
+        title: event.title,
+        startDate,
+        endDate,
+        location: event.location_name || '',
+        notes: event.description || '',
+        alarms: [{ relativeOffset: -60 }, { relativeOffset: -15 }], // 1h e 15min antes
+      });
+
+      Alert.alert('✅ Adicionado!', 'O evento foi salvo na sua agenda com lembretes 1h e 15min antes.');
+    } catch (err) {
+      console.error('Calendar error:', err);
+      Alert.alert('Erro', 'Não foi possível adicionar o evento à agenda.');
+    }
+  };
+
   const handleRSVP = async () => {
     if (!user) { Alert.alert('Login necessário'); return; }
-    if (rsvpStatus === 'going') {
-      await supabase.from('event_participants').delete().eq('event_id', id).eq('user_id', user.id);
-      setRsvpStatus(null); 
-    } else {
-      await supabase.from('event_participants').insert({ event_id: id as string, user_id: user.id });
-      setRsvpStatus('going'); 
-      Alert.alert(
-        event.type === 'event' ? 'Presença Confirmada!' : 'Interesse Registrado!',
-        event.type === 'event' ? 'Você confirmou sua presença neste evento.' : 'O autor foi notificado do seu interesse.'
-      );
+    try {
+      if (rsvpStatus === 'going') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        await supabase.from('event_participants').delete().eq('event_id', id).eq('user_id', user.id);
+        setRsvpStatus(null); 
+        setFeedback({
+          visible: true,
+          type: 'success',
+          title: 'Presença Removida',
+          message: 'Sua presença foi cancelada com sucesso.'
+        });
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await supabase.from('event_participants').insert({ event_id: id as string, user_id: user.id });
+        setRsvpStatus('going'); 
+        soundService.play('success');
+        setFeedback({
+          visible: true,
+          type: 'success',
+          title: event.type === 'event' ? 'Presença Confirmada! 🎉' : 'Interesse Registrado!',
+          message: event.type === 'event' ? 'Você confirmou sua presença neste evento. Prepare o look e nos vemos lá!' : 'O autor foi notificado do seu interesse.'
+        });
+
+        // Offer to add to native calendar
+        if (event.type === 'event') {
+          setTimeout(() => {
+            Alert.alert(
+              '📅 Adicionar à Agenda?',
+              `Quer salvar "${event.title}" na agenda do seu celular com lembretes automáticos?`,
+              [
+                { text: 'Agora não', style: 'cancel' },
+                { text: 'Sim, adicionar!', onPress: addEventToCalendar }
+              ]
+            );
+          }, 800);
+        }
+      }
+    } catch (error) {
+      setFeedback({
+        visible: true,
+        type: 'error',
+        title: 'Ops!',
+        message: 'Não foi possível completar esta ação. Tente novamente.'
+      });
     }
   };
 
@@ -176,27 +302,7 @@ export default function EventDetails() {
 
 
   const handleDelete = () => {
-    Alert.alert(
-      'Excluir Evento',
-      'Tem certeza que deseja excluir este evento? Esta ação não pode ser desfeita.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Excluir', 
-          style: 'destructive', 
-          onPress: async () => {
-            try {
-              const { error } = await supabase.from('events').delete().eq('id', id);
-              if (error) throw error;
-              router.replace('/(tabs)');
-              Alert.alert('Sucesso', 'O evento foi removido.');
-            } catch (e) {
-              Alert.alert('Erro', 'Não foi possível excluir o evento.');
-            }
-          } 
-        }
-      ]
-    );
+    setDeleteModalVisible(true);
   };
 
   // O handler monitora a posição interna do ScrollView
@@ -311,6 +417,8 @@ export default function EventDetails() {
   if (loading) return <View style={styles.center}><ActivityIndicator color={accent} /></View>;
   if (!event) return null;
 
+  const isPublication = event.type === 'publication' || !event.event_date || !event.event_time;
+
   const mediaUrls = event.image_urls?.length ? event.image_urls : event.image_url ? [event.image_url] : [];
   const mediaTypes = event.image_urls?.length ? event.media_types : event.media_type ? [event.media_type] : [];
 
@@ -320,6 +428,124 @@ export default function EventDetails() {
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
         <EventShareModal visible={shareModalVisible} onClose={() => setShareModalVisible(false)} event={event} />
         <EventParticipantsModal visible={participantsModalVisible} onClose={() => setParticipantsModalVisible(false)} eventId={id as string} />
+        <EventTicketModal visible={ticketModalVisible} onClose={() => setTicketModalVisible(false)} event={event} user={user} />
+        <QRScannerModal 
+          visible={showScannerModal} 
+          onClose={() => setShowScannerModal(false)} 
+          eventId={id as string} 
+        />
+        <ActionFeedback 
+          {...feedback} 
+          onClose={() => setFeedback({ ...feedback, visible: false })} 
+        />
+
+        {/* CUSTOM PREMIUM DELETE CONFIRMATION DIALOG MODAL */}
+        <Modal
+          transparent
+          visible={deleteModalVisible}
+          animationType="fade"
+          onRequestClose={() => setDeleteModalVisible(false)}
+        >
+          <Pressable 
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.75)', justifyContent: 'center', alignItems: 'center', padding: 24 }]}
+            onPress={() => setDeleteModalVisible(false)}
+          >
+            <Pressable style={{
+              backgroundColor: '#1C1C1E',
+              borderRadius: 24,
+              padding: 24,
+              width: '100%',
+              maxWidth: 340,
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.1)',
+              alignItems: 'center',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.3,
+              shadowRadius: 20,
+              elevation: 8,
+            }}>
+              {/* Ícone de alerta de lixeira vermelha com círculo de fundo */}
+              <View style={{
+                width: 60,
+                height: 60,
+                borderRadius: 30,
+                backgroundColor: 'rgba(255, 59, 48, 0.12)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginBottom: 16,
+              }}>
+                <Trash2 size={28} color="#FF3B30" />
+              </View>
+
+              <Text style={{
+                color: '#fff',
+                fontSize: 18,
+                fontWeight: '800',
+                textAlign: 'center',
+                marginBottom: 10,
+              }}>
+                Excluir Evento
+              </Text>
+
+              <Text style={{
+                color: '#8E8E93',
+                fontSize: 14,
+                lineHeight: 20,
+                textAlign: 'center',
+                marginBottom: 24,
+              }}>
+                Tem certeza que deseja excluir este evento? Esta ação é irreversível e removerá todos os participantes.
+              </Text>
+
+              <View style={{ width: '100%', gap: 10 }}>
+                {/* Botão de Excluir */}
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#FF3B30',
+                    borderRadius: 14,
+                    paddingVertical: 14,
+                    width: '100%',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={async () => {
+                    setDeleteModalVisible(false);
+                    try {
+                      const { error } = await supabase.from('events').delete().eq('id', id);
+                      if (error) throw error;
+                      router.back();
+                    } catch (e) {
+                      setFeedback({
+                        visible: true,
+                        title: 'Erro',
+                        message: 'Não foi possível excluir o evento.',
+                        type: 'error'
+                      });
+                    }
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Excluir</Text>
+                </TouchableOpacity>
+
+                {/* Botão de Cancelar */}
+                <TouchableOpacity
+                  style={{
+                    borderRadius: 14,
+                    paddingVertical: 14,
+                    width: '100%',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  }}
+                  onPress={() => setDeleteModalVisible(false)}
+                >
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         <View style={{ flex: 1 }}>
           {/* BACKGROUND FULLSCREEN CAROUSEL */}
@@ -337,7 +563,13 @@ export default function EventDetails() {
                   {mediaTypes?.[i] === 'video' ? (
                     <Video source={{ uri: url }} style={styles.media} resizeMode={ResizeMode.COVER} shouldPlay isLooping isMuted />
                   ) : (
-                    <Image source={{ uri: url }} style={styles.media} resizeMode="cover" />
+                    <Animated.Image 
+                      source={{ uri: url }} 
+                      style={styles.media} 
+                      resizeMode="cover" 
+                      // @ts-ignore
+                      sharedTransitionTag={`event-image-${id}-${i}`}
+                    />
                   )}
                   <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent', 'rgba(0,0,0,0.9)']} style={StyleSheet.absoluteFill} />
                 </View>
@@ -399,10 +631,18 @@ export default function EventDetails() {
                 <View style={styles.mainContent}>
                   <MemoizedCard style={{ backgroundColor: backgroundSecondary }} onPress={() => router.push(`/profile/${event.profiles?.id}`)}>
                     <View style={styles.row}>
-                      <Image source={{ uri: event.profiles?.avatar_url }} style={styles.avatar} />
+                      {event.profiles?.avatar_url ? (
+                        <Image source={{ uri: event.profiles.avatar_url }} style={styles.avatar} />
+                      ) : (
+                        <View style={[styles.avatarPlaceholder, { backgroundColor: accent }]}>
+                          <Text style={styles.avatarText}>
+                            {event.profiles?.username?.charAt(0).toUpperCase() || event.profiles?.full_name?.charAt(0).toUpperCase() || 'U'}
+                          </Text>
+                        </View>
+                      )}
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.name, { color: textPrimary }]}>{event.profiles?.full_name}</Text>
-                        <Text style={[styles.sub, { color: textSecondary }]}>Organizador</Text>
+                        <Text style={[styles.name, { color: textPrimary }]}>{event.profiles?.full_name || event.profiles?.username}</Text>
+                        <Text style={[styles.sub, { color: textSecondary }]}>{isPublication ? 'Autor' : 'Organizador'}</Text>
                       </View>
                       <ChevronRight size={20} color={textSecondary} />
                     </View>
@@ -431,8 +671,61 @@ export default function EventDetails() {
                     </MemoizedCard>
                   )}
 
+                  {event.ticket_url && (
+                    <MemoizedCard 
+                      style={{ 
+                        backgroundColor: backgroundSecondary, 
+                        borderColor: '#ff1493' + '40',
+                        borderWidth: 1.5,
+                        flexDirection: 'row', 
+                        gap: 16, 
+                        alignItems: 'center' 
+                      }} 
+                      onPress={async () => {
+                        try {
+                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          let targetUrl = event.ticket_url.trim();
+                          if (!/^https?:\/\//i.test(targetUrl)) {
+                            targetUrl = 'https://' + targetUrl;
+                          }
+                          
+                          const encodedUrl = encodeURI(targetUrl);
+                          const supported = await Linking.canOpenURL(encodedUrl);
+                          
+                          if (supported) {
+                            await Linking.openURL(encodedUrl);
+                          } else {
+                            Alert.alert('Navegador não encontrado', 'Este dispositivo não possui um aplicativo de navegador de internet instalado para abrir este link.');
+                          }
+                        } catch (error) {
+                          Alert.alert('Erro', 'Não foi possível abrir o link de ingressos. Certifique-se de que o link inserido é válido.');
+                        }
+                      }}
+                    >
+                      <Ticket size={24} color="#ff1493" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: '#ff1493', opacity: 0.9, fontWeight: '900' }]}>COMPRAR INGRESSOS</Text>
+                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '700', marginTop: 4 }}>Adquirir ingressos para este evento</Text>
+                      </View>
+                      <ChevronRight size={18} color="#ff1493" />
+                    </MemoizedCard>
+                  )}
+
+                  {!isPublication && (
+                    <EventPresenceList eventId={id as string} />
+                  )}
+                  
+                  {!isPublication && (
+                    <EventStoriesBar 
+                      eventId={id as string} 
+                      isParticipant={rsvpStatus === 'going'} 
+                    />
+                  )}
+
                   <View style={styles.section}>
-                    <Text style={[styles.secTitle, { color: textPrimary }]}>Sobre o Evento</Text>
+                    <Text style={[styles.secTitle, { color: textPrimary }]}>
+                      {isPublication ? 'Descrição' : 'Sobre o Evento'}
+                    </Text>
                     <Text style={[styles.desc, { color: textSecondary }]}>{event.description}</Text>
                   </View>
                 </View>
@@ -445,9 +738,9 @@ export default function EventDetails() {
           <Animated.View style={[styles.bottomBar, bottomBarStyle, { backgroundColor: backgroundPrimary, borderTopColor: 'rgba(150,150,150,0.1)' }]}>
             {user?.id === event.creator_id ? (
               <>
-                <TouchableOpacity onPress={() => router.push(`/event/edit/${id}`)} style={[styles.mainBtn, { backgroundColor: isDark ? '#333' : '#e0e0e0' }]}>
-                  <Edit3 size={20} color={textPrimary} />
-                  <Text style={[styles.btnText, { color: textPrimary }]}>Gerenciar Evento</Text>
+                <TouchableOpacity onPress={() => setShowScannerModal(true)} style={[styles.mainBtn, { backgroundColor: accent }]}>
+                  <Scan size={20} color="#fff" />
+                  <Text style={[styles.btnText, { color: '#fff' }]}>Escanear Ingressos</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.chatBtn} onPress={() => router.push(`/event/${id}/chat`)}>
                   <MessageCircle size={24} color={accent} />
@@ -463,6 +756,16 @@ export default function EventDetails() {
                       : (event.type === 'event' ? 'Confirmar Presença' : 'Tenho Interesse')}
                   </Text>
                 </TouchableOpacity>
+                
+                {rsvpStatus === 'going' && event.type === 'event' && (
+                  <TouchableOpacity 
+                    style={[styles.chatBtn, { backgroundColor: '#8000ff' }]} 
+                    onPress={() => setTicketModalVisible(true)}
+                  >
+                    <Ticket size={24} color="#fff" />
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity style={styles.chatBtn} onPress={() => router.push(`/event/${id}/chat`)}><MessageCircle size={24} color={accent} /></TouchableOpacity>
               </>
             )}
@@ -491,6 +794,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   card: { padding: 20, borderRadius: 28, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
   avatar: { width: 50, height: 50, borderRadius: 25 },
+  avatarPlaceholder: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(255, 255, 255, 0.15)' },
+  avatarText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   name: { fontSize: 17, fontWeight: '800' },
   sub: { fontSize: 13, fontWeight: '600' },
   grid: { flexDirection: 'row', gap: 16, marginBottom: 16 },

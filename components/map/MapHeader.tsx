@@ -4,6 +4,7 @@ import { Search, SlidersHorizontal, Map as MapIcon, Layers, Zap } from 'lucide-r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '@/contexts/ThemeContext';
+import { hapticFeedback } from '@/utils/haptics';
 
 interface MapHeaderProps {
   onFilterPress: () => void;
@@ -15,6 +16,8 @@ interface MapHeaderProps {
   onSelectCategory: (id: string | null) => void;
   trendingOnly: boolean;
   onTrendingChange: (val: boolean) => void;
+  showHeatmap: boolean;
+  onHeatmapChange: (val: boolean) => void;
 }
 
 const MapHeader = ({ 
@@ -26,7 +29,9 @@ const MapHeader = ({
   selectedCategory,
   onSelectCategory,
   trendingOnly,
-  onTrendingChange
+  onTrendingChange,
+  showHeatmap,
+  onHeatmapChange
 }: MapHeaderProps) => {
   const insets = useSafeAreaInsets();
   const { textPrimary, textSecondary, accent, backgroundSecondary, isDark } = useTheme();
@@ -106,6 +111,16 @@ const MapHeader = ({
             ]}
           >
             <Text style={[styles.trendingText, trendingOnly && { color: '#ff1493' }]}>🔥 Bombando</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => { onHeatmapChange(!showHeatmap); hapticFeedback.light(); }}
+            style={[
+              styles.trendingChip,
+              showHeatmap && { backgroundColor: 'rgba(0, 217, 255, 0.15)', borderColor: accent, borderWidth: 1 }
+            ]}
+          >
+            <Text style={[styles.trendingText, showHeatmap && { color: accent }]}>✨ Calor</Text>
           </TouchableOpacity>
 
           <View style={styles.vDivider} />

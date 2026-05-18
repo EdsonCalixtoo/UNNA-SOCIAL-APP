@@ -304,7 +304,17 @@ export default function EventChat() {
 
   const sendMediaMessage = async () => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, quality: 0.6, allowsEditing: true });
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permissão necessária', 'Precisamos da permissão da galeria para enviar fotos e vídeos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({ 
+        mediaTypes: ImagePicker.MediaTypeOptions.All, 
+        quality: 0.6, 
+        allowsEditing: Platform.OS === 'android' 
+      });
       if (result.canceled) return;
       const asset = result.assets[0];
       const type = asset.type === 'video' ? 'video' : 'image';

@@ -21,6 +21,7 @@ import { Mail, Lock, Eye, EyeOff, X, ArrowRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import Animated, { 
   FadeInUp, 
   FadeInDown, 
@@ -212,8 +213,9 @@ export default function Login() {
     setResetLoading(true);
     setResetMessage('');
     try {
+      const redirectUrl = Linking.createURL('reset-password', { scheme: 'unna-social-app' });
       const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: 'exp://your-app-url/reset-password',
+        redirectTo: redirectUrl,
       });
       if (error) {
         Alert.alert('Erro', error.message || 'Erro ao enviar email de reset');

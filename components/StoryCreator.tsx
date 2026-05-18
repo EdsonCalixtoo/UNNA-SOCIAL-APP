@@ -11,6 +11,7 @@ import { uploadFile } from '@/lib/storage';
 import { processMedia } from '@/lib/mediaOptimizer';
 import StoryCameraModal from './StoryCameraModal';
 import StoryAdvancedEditor from './StoryAdvancedEditor';
+import { ActionFeedback } from './ActionFeedback';
 
 interface StoryCreatorProps {
   visible: boolean;
@@ -22,6 +23,7 @@ export default function StoryCreator({ visible, onClose, onSuccess }: StoryCreat
   const { user } = useAuth();
   const [showEditor, setShowEditor] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
+  const [feedback, setFeedback] = useState({ visible: false, type: 'success' as 'success' | 'error' | 'info', title: '', message: '' });
 
   // Quando o StoriesBar ativar o 'visible', abrimos a câmera
   const [cameraActive, setCameraActive] = useState(false);
@@ -87,16 +89,25 @@ export default function StoryCreator({ visible, onClose, onSuccess }: StoryCreat
 
       setSelectedMedia(null);
       if (onSuccess) onSuccess();
-      onClose();
-      // Mostra o alerta após fechar para não travar a UI
-      setTimeout(() => {
-        Alert.alert('Sucesso', 'Seu story foi publicado! ✨');
-      }, 100);
+      
+      setFeedback({
+        visible: true,
+        type: 'success',
+        title: 'Sucesso',
+        message: 'Seu story foi publicado! ✨'
+      });
+      
+      // Fecha o criador mas mantém o modal de feedback visível
+      // O onClose real (que limpa o StoryCreator) deve ser chamado quando o feedback fechar
+      // ou se quisermos fechar logo, garantimos que o feedback renderize.
     } catch (e: any) {
       console.error('❌ Erro no Story:', e);
-      Alert.alert('Erro', 'Não foi possível publicar seu story.');
-    } finally {
-      // Já fechamos no sucesso, aqui apenas garante se houver erro e não fechou
+      setFeedback({
+        visible: true,
+        type: 'error',
+        title: 'Ops!',
+        message: 'Não foi possível publicar seu story.'
+      });
     }
   };
 
@@ -117,6 +128,16 @@ export default function StoryCreator({ visible, onClose, onSuccess }: StoryCreat
           onSave={handleSave}
         />
       )}
+
+      <ActionFeedback 
+        {...feedback} 
+        onClose={() => {
+          setFeedback({ ...feedback, visible: false });
+          if (feedback.type === 'success') {
+            onClose();
+          }
+        }} 
+      />
     </>
   );
 }

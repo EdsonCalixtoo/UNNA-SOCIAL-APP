@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Search, User, MessageCircle } from 'lucide-react-native';
@@ -89,11 +90,16 @@ export default function SearchUsers() {
     <View style={styles.userCard}>
       <TouchableOpacity
         style={styles.userInfo}
-        onPress={() => router.push(`/profile/username/${item.username}`)}
+        onPress={() => router.push(`/profile/${item.id}`)}
         activeOpacity={0.7}
       >
         {item.avatar_url ? (
-          <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
+          <Animated.Image 
+            source={{ uri: item.avatar_url }} 
+            style={styles.avatar} 
+            // @ts-ignore
+            sharedTransitionTag={`avatar-${item.id}`}
+          />
         ) : (
           <LinearGradient
             colors={['#00d9ff', '#0097a7']}

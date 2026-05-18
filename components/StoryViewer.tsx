@@ -37,6 +37,8 @@ import { Story } from '@/types/database';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { notifyStoryLike, notifyMessageRecipient } from '@/lib/notifications';
+import { ActionFeedback } from './ActionFeedback';
+import PremiumConfirmationModal from './PremiumConfirmationModal';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -235,6 +237,24 @@ const StoryVideoRenderer = memo(({ item, isActive, isPaused, onNext, progress, i
   );
 });
 
+const formatStoryTime = (dateString?: string) => {
+  if (!dateString) return 'agora';
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'agora';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d`;
+    
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  } catch (e) {
+    return 'agora';
+  }
+};
+
 // --- MAIN VIEWER ---
 interface Props {
   visible: boolean;
@@ -255,6 +275,8 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
   const [liked, setLiked] = useState(false);
   const [isReplying, setIsReplying] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [feedback, setFeedback] = useState({ visible: false, type: 'success' as 'success' | 'error' | 'info', title: '', message: '' });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   const progress = useSharedValue(0);
 
@@ -314,22 +336,38 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
     try {
       const ownerId = stories[idx].user_id;
       
-      // Procurar conversa 1:1 existente
+      // Procurar conversa 1:1 existente de forma ultra robusta
       const { data: myConvs } = await supabase
         .from('conversation_participants')
         .select('conversation_id')
         .eq('user_id', user.id);
       
       const myConvIds = myConvs?.map(c => c.conversation_id) || [];
+      let chatId = null;
 
-      const { data: targetConv } = await supabase
-        .from('conversation_participants')
-        .select('conversation_id')
-        .eq('user_id', ownerId)
-        .in('conversation_id', myConvIds)
-        .maybeSingle();
+      if (myConvIds.length > 0) {
+        const { data: targetConvs } = await supabase
+          .from('conversation_participants')
+          .select('conversation_id')
+          .eq('user_id', ownerId)
+          .in('conversation_id', myConvIds);
+        
+        const commonConvIds = targetConvs?.map(c => c.conversation_id) || [];
 
-      let chatId = targetConv?.conversation_id;
+        if (commonConvIds.length > 0) {
+          // Buscar conversa 1:1 real que NÃO é grupo
+          const { data: realConvs } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('is_group', false)
+            .in('id', commonConvIds)
+            .order('updated_at', { ascending: false });
+
+          if (realConvs && realConvs.length > 0) {
+            chatId = realConvs[0].id;
+          }
+        }
+      }
 
       if (!chatId) {
         // Criar nova conversa
@@ -361,7 +399,12 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       console.error(e);
-      Alert.alert('Erro', 'Não foi possível enviar sua resposta.');
+      setFeedback({
+        visible: true,
+        type: 'error',
+        title: 'Ops!',
+        message: 'Não foi possível enviar sua resposta.'
+      });
     } finally {
       setSending(false);
     }
@@ -390,17 +433,15 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
 
   const handleDelete = () => {
     setIsPaused(true);
-    Alert.alert('Deletar story?', 'Esta ação não pode ser desfeita.', [
-      { text: 'Cancelar', style: 'cancel', onPress: () => setIsPaused(false) },
-      {
-        text: 'Deletar', style: 'destructive', onPress: async () => {
-          setDeleting(true);
-          await supabase.from('stories').delete().eq('id', stories[idx].id);
-          if (onRefresh) onRefresh();
-          onClose();
-        },
-      },
-    ]);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    await supabase.from('stories').delete().eq('id', stories[idx].id);
+    setShowDeleteConfirm(false);
+    if (onRefresh) onRefresh();
+    onClose();
   };
 
   if (!visible || stories.length === 0) return null;
@@ -499,7 +540,7 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
               }
               <View>
                 <Text style={st.username}>{profile?.username}</Text>
-                <Text style={st.timeLabel}>agora</Text>
+                <Text style={st.timeLabel}>{formatStoryTime(story.created_at)}</Text>
               </View>
             </TouchableOpacity>
             <View style={st.headerRight}>
@@ -559,6 +600,25 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
             </KeyboardAvoidingView>
           </View>
         )}
+
+        <ActionFeedback 
+          {...feedback} 
+          onClose={() => setFeedback({ ...feedback, visible: false })} 
+        />
+
+        <PremiumConfirmationModal
+          visible={showDeleteConfirm}
+          title="Deletar Story?"
+          description="Esta ação não pode ser desfeita e seu story sumirá para todos."
+          confirmText="Deletar"
+          cancelText="Cancelar"
+          onConfirm={confirmDelete}
+          onCancel={() => {
+            setShowDeleteConfirm(false);
+            setIsPaused(false);
+          }}
+          isDestructive
+        />
       </View>
     </Modal>
   );

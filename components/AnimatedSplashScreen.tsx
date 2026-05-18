@@ -1,27 +1,20 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet, Image, Dimensions, Text } from 'react-native';
+import { View, StyleSheet, Dimensions, Text } from 'react-native';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
   withRepeat, 
   withTiming, 
   Easing,
-  interpolate,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
 
 export default function AnimatedSplashScreen() {
-  const logoScale = useSharedValue(0.9);
-  const logoOpacity = useSharedValue(0);
   const loadingProgress = useSharedValue(0);
 
   useEffect(() => {
-    // Fade in logo
-    logoOpacity.value = withTiming(1, { duration: 800 });
-    logoScale.value = withTiming(1, { duration: 1000, easing: Easing.out(Easing.back(1)) });
-
     // Infinite loading progress
     loadingProgress.value = withRepeat(
       withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.quad) }),
@@ -30,11 +23,6 @@ export default function AnimatedSplashScreen() {
     );
   }, []);
 
-  const logoStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: logoScale.value }],
-    opacity: logoOpacity.value,
-  }));
-
   const loadingStyle = useAnimatedStyle(() => ({
     width: `${loadingProgress.value * 100}%`,
   }));
@@ -42,14 +30,6 @@ export default function AnimatedSplashScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <Animated.View style={[styles.logoContainer, logoStyle]}>
-          <Image 
-            source={require('../assets/images/icon.png')} 
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </Animated.View>
-
         <Text style={styles.brandName}>
           U<Text style={{color: '#ff1493'}}>N</Text><Text style={{color: '#00d9ff'}}>И</Text>A
         </Text>
@@ -83,22 +63,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  logoContainer: {
-    width: 120,
-    height: 120,
-    marginBottom: 20,
-  },
-  logo: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 30,
-  },
   brandName: {
     color: '#fff',
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: '900',
     letterSpacing: 8,
-    marginBottom: 60,
+    marginBottom: 40,
     marginLeft: 8, // Compensar o letter spacing no final
   },
   loaderWrapper: {

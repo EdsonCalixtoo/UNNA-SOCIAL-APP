@@ -3,6 +3,7 @@ export interface Profile {
   username: string;
   full_name: string;
   avatar_url?: string;
+  cover_url?: string;
   bio?: string;
   is_private?: boolean;
   primary_color?: string;
@@ -16,6 +17,11 @@ export interface Profile {
   total_points?: number;
   flaker_count?: number;
   presence_score?: number;
+  is_verified?: boolean;
+  role?: string;
+  birth_date?: string;
+  instagram_url?: string;
+  website_url?: string;
 }
 
 
@@ -145,5 +151,6 @@ export interface Notification {
   data: any;
   read: boolean;
   created_at: string;
+  unreadCount?: number;
 }
 

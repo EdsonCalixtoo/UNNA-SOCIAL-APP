@@ -5,15 +5,22 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useInAppNotification } from '@/contexts/InAppNotificationContext';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    // Para Android, desabilitamos o alerta do sistema no foreground para que mostre APENAS
+    // o nosso banner glassmorphism customizado in-app, evitando a duplicidade com o cabeçalho nativo do sistema!
+    // No iOS, mantemos o comportamento atual intacto que está perfeito.
+    const isAndroid = Platform.OS === 'android';
+    return {
+      shouldShowAlert: !isAndroid,
+      shouldPlaySound: !isAndroid,
+      shouldSetBadge: true,
+      shouldShowBanner: !isAndroid,
+      shouldShowList: !isAndroid,
+    };
+  },
 });
 
 export const usePushNotifications = () => {
@@ -40,7 +47,7 @@ export const usePushNotifications = () => {
         // Registrar para notificações - Apenas se não for Expo Go em SDK 53+
         // Ou simplesmente envolver em try/catch para evitar crash
         try {
-          const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId ?? '805a59da-5728-4d83-9531-e768d92fe6b9';
+          const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId ?? '8d7349e6-9f11-4973-aaf2-aec83d650f26';
           const token = await Notifications.getExpoPushTokenAsync({
             projectId,
           });
@@ -85,17 +92,14 @@ export const usePushNotifications = () => {
     // Listener para notificações recebidas em foreground
     notificationListener.current = Notifications.addNotificationReceivedListener(
       (notification: Notifications.Notification) => {
-        console.log('Notification received:', notification);
+        console.log('[Push-DEBUG] Notificação Push recebida (Foreground):', JSON.stringify(notification.request.content, null, 2));
         
-        const { title, body, data } = notification.request.content;
-        
-        // Mostrar o banner animado in-app
-        showNotification({
-          title: title || 'Notificação',
-          message: body || '',
-          type: (data?.type as any) || 'default',
-          data: data
-        });
+        if (Platform.OS === 'android') {
+          // Dispensa imediatamente a notificação da barra de status no Android para evitar a duplicidade visual
+          Notifications.dismissNotificationAsync(notification.request.identifier).catch((e) => {
+            console.warn('[Push] Erro ao dispensar notificação no Android:', e);
+          });
+        }
       }
     );
 
@@ -122,7 +126,7 @@ export const usePushNotifications = () => {
           router.push('/(tabs)');
         } else {
           // Fallback para a aba de notificações
-          router.push('/(tabs)/notifications');
+          router.push('/notifications');
         }
       }
     );

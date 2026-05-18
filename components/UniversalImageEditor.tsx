@@ -32,9 +32,10 @@ interface UniversalImageEditorProps {
   imageUri: string;
   onClose: () => void;
   onSave: (finalUri: string) => void;
+  mode?: 'profile' | 'event' | 'post';
 }
 
-export default function UniversalImageEditor({ visible, imageUri, onClose, onSave }: UniversalImageEditorProps) {
+export default function UniversalImageEditor({ visible, imageUri, onClose, onSave, mode = 'event' }: UniversalImageEditorProps) {
   const insets = useSafeAreaInsets();
   const [isProcessing, setIsProcessing] = useState(false);
   const [originalSize, setOriginalSize] = useState({ width: 0, height: 0 });
@@ -179,7 +180,14 @@ export default function UniversalImageEditor({ visible, imageUri, onClose, onSav
         <View style={styles.viewportContainer}>
           <GestureDetector gesture={composed}>
             <Animated.View style={[styles.imageContainer, animatedStyle as any]}>
-              <Image source={{ uri: imageUri }} style={styles.fullImage} resizeMode="contain" />
+              <Image 
+                source={{ uri: imageUri }} 
+                style={{
+                  width: originalSize.width > originalSize.height ? VIEWPORT_SIZE * (originalSize.width / originalSize.height) : VIEWPORT_SIZE,
+                  height: originalSize.width > originalSize.height ? VIEWPORT_SIZE : VIEWPORT_SIZE / (originalSize.width / originalSize.height),
+                }} 
+                resizeMode="cover" 
+              />
             </Animated.View>
           </GestureDetector>
 
@@ -188,7 +196,10 @@ export default function UniversalImageEditor({ visible, imageUri, onClose, onSav
             <View style={styles.dimmed} />
             <View style={styles.centerRow}>
               <View style={styles.dimmed} />
-              <View style={styles.circleHole} />
+              <View style={[
+                styles.circleHole, 
+                mode === 'profile' ? { borderRadius: VIEWPORT_SIZE / 2 } : { borderRadius: 15 }
+              ]} />
               <View style={styles.dimmed} />
             </View>
             <View style={styles.dimmed} />
@@ -216,7 +227,7 @@ const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
   dimmed: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)' },
   centerRow: { flexDirection: 'row', height: VIEWPORT_SIZE },
-  circleHole: { width: VIEWPORT_SIZE, height: VIEWPORT_SIZE, borderRadius: VIEWPORT_SIZE / 2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
+  circleHole: { width: VIEWPORT_SIZE, height: VIEWPORT_SIZE, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
   footer: { alignItems: 'center' },
   saveBtn: { backgroundColor: '#fff', paddingHorizontal: 40, paddingVertical: 12, borderRadius: 25 },
   saveBtnText: { color: '#000', fontSize: 16, fontWeight: 'bold' },

@@ -12,7 +12,9 @@ import {
   SafeAreaView,
   useWindowDimensions,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { User, AtSign, Mail, Lock, Eye, EyeOff, CircleAlert as AlertCircle, ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react-native';
@@ -56,6 +58,7 @@ export default function Register() {
   const usernameTimer = useRef<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showVerificationAlert, setShowVerificationAlert] = useState(false);
 
   // Focus states
   const [nameFocused, setNameFocused] = useState(false);
@@ -158,7 +161,7 @@ export default function Register() {
     setError('');
 
     try {
-      const { error: signUpError } = await signUp(email, password, username, fullName);
+      const { error: signUpError, sessionCreated } = await signUp(email, password, username, fullName);
       if (signUpError) {
         const msg = signUpError.message || 'Erro ao criar conta';
         if (msg.includes('already registered')) {
@@ -169,7 +172,12 @@ export default function Register() {
         shakeError();
         setLoading(false);
       } else {
-        router.replace('/(auth)/onboarding');
+        if (sessionCreated) {
+          router.replace('/(auth)/onboarding');
+        } else {
+          setLoading(false);
+          setShowVerificationAlert(true);
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Erro de conexão. Verifique sua internet.');
@@ -352,6 +360,40 @@ export default function Register() {
           </AnimatedView>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* VERIFICATION EMAIL SENT ALERT MODAL */}
+      <Modal visible={showVerificationAlert} transparent animationType="fade">
+        <BlurView intensity={90} tint="dark" style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIconBg}>
+              <Mail size={32} color="#00d9ff" />
+            </View>
+            <Text style={styles.modalTitle}>Verifique seu E-mail!</Text>
+            <Text style={styles.modalDescription}>
+              Enviamos um link de confirmação para o endereço:{"\n"}
+              <Text style={{ color: '#00d9ff', fontWeight: '700' }}>{email}</Text>{"\n\n"}
+              Acesse sua caixa de entrada (ou lixeira/spam) e clique no link para ativar sua conta do UNNA Social.
+            </Text>
+            
+            <TouchableOpacity 
+              style={styles.modalBtn}
+              onPress={() => {
+                setShowVerificationAlert(false);
+                router.replace('/(auth)/login');
+              }}
+            >
+              <LinearGradient 
+                colors={['#00d9ff', '#7b2fff', '#ff1493']} 
+                start={{ x: 0, y: 0 }} 
+                end={{ x: 1, y: 0 }} 
+                style={styles.modalBtnGradient}
+              >
+                <Text style={styles.modalBtnText}>Ir para o Login</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </BlurView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -392,4 +434,12 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   footerText: { color: '#666' },
   footerLink: { color: '#00d9ff', fontWeight: '800' },
+  modalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalCard: { backgroundColor: 'rgba(20, 20, 35, 0.95)', borderWidth: 1.5, borderColor: 'rgba(0, 217, 255, 0.2)', borderRadius: 28, padding: 24, width: '100%', alignItems: 'center', gap: 16, shadowColor: '#00d8ff', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20 },
+  modalIconBg: { width: 68, height: 68, borderRadius: 24, backgroundColor: 'rgba(0, 217, 255, 0.1)', justifyContent: 'center', alignItems: 'center' },
+  modalTitle: { fontSize: 22, fontWeight: '900', color: '#fff', textAlign: 'center', letterSpacing: -0.5 },
+  modalDescription: { fontSize: 14, color: '#aaa', textAlign: 'center', lineHeight: 22, fontWeight: '500' },
+  modalBtn: { width: '100%', borderRadius: 16, overflow: 'hidden', marginTop: 8 },
+  modalBtnGradient: { paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  modalBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });

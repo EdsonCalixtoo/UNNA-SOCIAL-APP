@@ -89,13 +89,21 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
   }, []);
 
   const pickFromGallery = useCallback(async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      quality: 1,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      onCapture(asset.uri, asset.type === 'video' ? 'video' : 'image');
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        quality: 1,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        onCapture(asset.uri, asset.type === 'video' ? 'video' : 'image');
+      }
+    } catch (e) {
+      console.log('Gallery error:', e);
     }
   }, [onCapture]);
 
@@ -134,7 +142,7 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
               style={st.camera}
               facing={facing}
               flash={flash}
-              mode="video"
+              mode={isRecording ? "video" : "picture"}
               onCameraReady={() => setCameraReady(true)}
             />
 

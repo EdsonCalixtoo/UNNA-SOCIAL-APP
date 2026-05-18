@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, StyleSheet, Platform, Alert, Dimensions, Linking } from 'react-native';
-import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, Circle } from 'react-native-maps';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUI } from '@/contexts/UIContext';
 
@@ -42,45 +42,40 @@ export default function EventsMapScreen() {
   const [isFilterVisible, setIsFilterVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [trendingOnly, setTrendingOnly] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
-  // Load Initial Data
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const [cats, evs, loc] = await Promise.all([
-          eventService.getCategories(),
-          eventService.getLiveEvents(),
-          mapService.getUserLocation()
-        ]);
-        
-        setCategories(cats);
-        setEvents(evs);
-        if (loc) {
-          setUserLocation(loc);
-          mapRef.current?.animateToRegion({
-            ...loc,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }, 1000);
-        } else if (evs.length > 0) {
-          // Se não tem localização, foca nos eventos
-          const coords = evs.slice(0, 5).map(e => ({
-            latitude: parseFloat(String(e.latitude)),
-            longitude: parseFloat(String(e.longitude))
-          }));
-          mapRef.current?.fitToCoordinates(coords, {
-            edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
-            animated: true
-          });
+  // Load Data on Focus
+  useFocusEffect(
+    useCallback(() => {
+      const loadData = async () => {
+        try {
+          const [cats, evs, loc] = await Promise.all([
+            eventService.getCategories(),
+            eventService.getLiveEvents(),
+            mapService.getUserLocation()
+          ]);
+          
+          setCategories(cats);
+          setEvents(evs);
+          
+          if (loc && !userLocation) {
+            setUserLocation(loc);
+            mapRef.current?.animateToRegion({
+              ...loc,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            }, 1000);
+          }
+        } catch (error) {
+          console.error('Map focus load error:', error);
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error('Init map error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    init();
-  }, []);
+      };
+
+      loadData();
+    }, [userLocation])
+  );
 
   // Handle incoming navigation parameters (from EventCard click)
   useEffect(() => {
@@ -246,6 +241,41 @@ export default function EventsMapScreen() {
           }
         }}
       >
+        {showHeatmap && events.length > 0 && events.map((e, index) => {
+          const lat = parseFloat(String(e.latitude));
+          const lng = parseFloat(String(e.longitude));
+          if (isNaN(lat) || isNaN(lng)) return null;
+
+          const weight = (e.likes_count || 0) + (e.participants_count || 0) + 1;
+          const scale = Math.min(1.8, 1 + weight * 0.1);
+
+          return (
+            <React.Fragment key={`heat-${e.id}-${index}`}>
+              {/* Glow externo ciano */}
+              <Circle
+                center={{ latitude: lat, longitude: lng }}
+                radius={240 * scale}
+                fillColor={isDark ? "rgba(0, 217, 255, 0.05)" : "rgba(0, 217, 255, 0.06)"}
+                strokeColor="transparent"
+              />
+              {/* Glow médio roxo */}
+              <Circle
+                center={{ latitude: lat, longitude: lng }}
+                radius={120 * scale}
+                fillColor={isDark ? "rgba(123, 47, 255, 0.12)" : "rgba(123, 47, 255, 0.13)"}
+                strokeColor="transparent"
+              />
+              {/* Núcleo denso rosa */}
+              <Circle
+                center={{ latitude: lat, longitude: lng }}
+                radius={50 * scale}
+                fillColor={isDark ? "rgba(255, 20, 147, 0.22)" : "rgba(255, 20, 147, 0.24)"}
+                strokeColor="transparent"
+              />
+            </React.Fragment>
+          );
+        })}
+
         {filteredEvents.map(event => (
           <EventMarker
             key={event.id}
@@ -268,6 +298,8 @@ export default function EventsMapScreen() {
         onSelectCategory={setSelectedCategory}
         trendingOnly={trendingOnly}
         onTrendingChange={setTrendingOnly}
+        showHeatmap={showHeatmap}
+        onHeatmapChange={setShowHeatmap}
       />
 
       <UserLocationButton onPress={handleCenterUser} bottomOffset={selectedEvent ? height * 0.48 : 110} />

@@ -11,7 +11,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signUp: (email: string, password: string, username: string, fullName: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, username: string, fullName: string) => Promise<{ error: any; sessionCreated?: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signInWithGoogle: () => Promise<{ error: any }>;
   signInWithApple: () => Promise<{ error: any }>;
@@ -51,7 +51,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (timeoutId) clearTimeout(timeoutId);
 
         if (!isMounted) return;
-        if (error) throw error;
+        
+        if (error) {
+          if (error.message?.includes('Refresh Token') || error.message?.includes('Invalid Refresh Token') || error.message?.includes('refresh_token')) {
+            console.log('Sessão antiga ou inválida detectada, limpando armazenamento local...');
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+            return;
+          }
+          throw error;
+        }
 
         setSession(session);
         setUser(session?.user ?? null);
@@ -61,9 +73,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           setLoading(false);
         }
-      } catch (error) {
-        console.error('Error getting session:', error);
-        if (isMounted) setLoading(false);
+      } catch (error: any) {
+        if (error?.message?.includes('Refresh Token') || error?.message?.includes('Invalid Refresh Token') || error?.message?.includes('refresh_token')) {
+          console.warn('Session refresh token expired/invalid, starting clean logged-out state.');
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+          if (isMounted) {
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+          }
+        } else {
+          console.error('Error getting session:', error);
+          if (isMounted) setLoading(false);
+        }
       }
     };
 
@@ -73,11 +96,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!isMounted) return;
 
       (async () => {
-        setSession(session);
-        setUser(session?.user ?? null);
         if (session?.user) {
+          setLoading(true);
+          setSession(session);
+          setUser(session.user);
           await loadProfile(session.user.id);
         } else {
+          setSession(null);
+          setUser(null);
           setProfile(null);
           setLoading(false);
         }
@@ -123,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: { data: { username, full_name: fullName } }
       });
       if (authError) return { error: authError };
-      return { error: null };
+      return { error: null, sessionCreated: !!authData.session };
     } catch (error: any) {
       return { error: { message: error?.message || 'Erro ao criar conta' } };
     }
@@ -226,7 +252,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e: any) {
+      console.warn('Error during global signOut, signing out locally:', e);
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    }
   };
 
   return (

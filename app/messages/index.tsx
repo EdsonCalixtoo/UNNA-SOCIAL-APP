@@ -38,72 +38,176 @@ export default function ConversationsList() {
 
   useEffect(() => {
     loadConversations();
-  }, []);
+
+    // Subscribe to new messages realtime to update counts and move conversations to the top
+    const messagesChannel = supabase
+      .channel('messages-list-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          console.log('[Realtime] Messages change detected:', payload);
+          // Recarregar a lista silenciosamente (sem o spinner de loading global)
+          reloadConversationsSilently();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(messagesChannel);
+    };
+  }, [user?.id]);
+
+  const reloadConversationsSilently = async () => {
+    if (!user) return;
+    try {
+      await fetchAndSetConversations();
+    } catch (error) {
+      console.error('Error silently refreshing conversations:', error);
+    }
+  };
 
   const loadConversations = async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const { data: convs, error } = await supabase
-        .from('conversations')
-        .select(`
-          *,
-          participants:conversation_participants(
-            user_id,
-            profiles:user_id(id, username, full_name, avatar_url)
-          ),
-          last_messages:messages(content, created_at, sender_id)
-        `)
-        .order('updated_at', { ascending: false });
+      await fetchAndSetConversations();
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
-      if (error) throw error;
+  const fetchAndSetConversations = async () => {
+    if (!user) return;
+    try {
+    
+    // Fetch conversations
+    const { data: convs, error } = await supabase
+      .from('conversations')
+      .select(`
+        *,
+        participants:conversation_participants(
+          user_id,
+          profiles:user_id(id, username, full_name, avatar_url)
+        ),
+        last_messages:messages(content, created_at, sender_id)
+      `)
+      .order('updated_at', { ascending: false });
 
-      // Filter only conversations where the user is a participant
-      const userConvs = (convs || []).filter(c => 
-        c.participants.some((p: any) => p.user_id === user.id)
-      );
+    if (error) throw error;
 
-      const conversationDetails = userConvs.map((conv: any) => {
-        const otherParticipant = conv.participants.find((p: any) => p.user_id !== user.id);
-        const otherProfile = otherParticipant?.profiles;
-        const lastMsg = conv.last_messages?.sort((a: any, b: any) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )[0];
+    // Fetch unread count maps
+    const { data: unreadData, error: unreadError } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .neq('sender_id', user.id)
+      .eq('read', false);
 
-        // Fetch unread count separately or filter from messages if possible
-        // For now, let's keep it simple as the messages might be limited
-        const unreadCount = 0; // Will handle unread count better in a separate step if needed
+    const unreadCountMap = new Map<string, number>();
+    if (unreadData) {
+      unreadData.forEach((msg: any) => {
+        const cid = msg.conversation_id;
+        unreadCountMap.set(cid, (unreadCountMap.get(cid) || 0) + 1);
+      });
+    }
 
-        return {
-          id: conv.id,
-          updated_at: conv.updated_at,
-          name: conv.is_group ? conv.name : (otherProfile?.full_name || 'Conversa'),
-          is_group: conv.is_group,
-          avatar_url: conv.is_group ? conv.avatar_url : otherProfile?.avatar_url,
-          other_user: otherProfile || {},
-          last_message: lastMsg,
-          unread_count: unreadCount,
-        };
+    // Filter only conversations where the user is a participant
+    const userConvs = (convs || []).filter(c => 
+      c.participants.some((p: any) => p.user_id === user.id)
+    );
+
+    const conversationDetails = userConvs.map((conv: any) => {
+      const otherParticipant = conv.participants.find((p: any) => p.user_id !== user.id);
+      const otherProfile = otherParticipant?.profiles;
+      const lastMsg = conv.last_messages?.sort((a: any, b: any) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0];
+
+      const unreadCount = unreadCountMap.get(conv.id) || 0;
+
+      return {
+        id: conv.id,
+        updated_at: conv.updated_at,
+        name: conv.is_group ? conv.name : (otherProfile?.full_name || 'Conversa'),
+        is_group: conv.is_group,
+        avatar_url: conv.is_group ? conv.avatar_url : otherProfile?.avatar_url,
+        other_user: otherProfile || {},
+        last_message: lastMsg,
+        unread_count: unreadCount,
+      };
+    });
+
+      // Agrupar conversas 1:1 pelo ID do outro participante para evitar duplicadas!
+      const groupedDetailsMap = new Map<string, any>();
+      const groupConversationsList: any[] = [];
+
+      conversationDetails.forEach((conv) => {
+        if (conv.is_group) {
+          groupConversationsList.push(conv);
+        } else {
+          const otherUserId = conv.other_user?.id;
+          if (otherUserId) {
+            if (!groupedDetailsMap.has(otherUserId)) {
+              groupedDetailsMap.set(otherUserId, conv);
+            } else {
+              // Se já temos uma conversa para esse usuário, pegamos a que tiver a mensagem ou updated_at mais recente!
+              const existing = groupedDetailsMap.get(otherUserId);
+              
+              const existingTime = existing.last_message 
+                ? new Date(existing.last_message.created_at).getTime() 
+                : new Date(existing.updated_at).getTime();
+
+              const newTime = conv.last_message 
+                ? new Date(conv.last_message.created_at).getTime() 
+                : new Date(conv.updated_at).getTime();
+
+              if (newTime > existingTime) {
+                // Manter a mais recente
+                groupedDetailsMap.set(otherUserId, conv);
+              }
+            }
+          } else {
+            // Sem outro usuário válido (por consistência), manter na lista
+            groupConversationsList.push(conv);
+          }
+        }
+      });
+
+      // Juntar tudo e ordenar
+      const unifiedConversations = [
+        ...groupConversationsList,
+        ...Array.from(groupedDetailsMap.values())
+      ];
+
+      // Ordenar a lista unificada final por data da última mensagem ou update
+      unifiedConversations.sort((a, b) => {
+        const timeA = a.last_message ? new Date(a.last_message.created_at).getTime() : new Date(a.updated_at).getTime();
+        const timeB = b.last_message ? new Date(b.last_message.created_at).getTime() : new Date(b.updated_at).getTime();
+        return timeB - timeA;
       });
 
       // Fetch presence for all other users
-      const otherUserIds = conversationDetails.map(c => c.other_user.id).filter(Boolean);
+      const otherUserIds = unifiedConversations.map(c => c.other_user?.id).filter(Boolean);
       const { data: presenceData } = await supabase
         .from('user_presence')
         .select('user_id, is_online')
         .in('user_id', otherUserIds);
 
-      const conversationsWithPresence = conversationDetails.map(conv => ({
+      const conversationsWithPresence = unifiedConversations.map(conv => ({
         ...conv,
-        is_online: presenceData?.find(p => p.user_id === conv.other_user.id)?.is_online || false
+        is_online: presenceData?.find(p => p.user_id === conv.other_user?.id)?.is_online || false
       }));
 
       setConversations(conversationsWithPresence);
     } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      console.error('Error fetching conversations:', error);
     }
   };
 
@@ -184,18 +288,18 @@ export default function ConversationsList() {
 
             <View style={styles.conversationInfo}>
               <View style={styles.conversationHeader}>
-                <Text style={[styles.conversationName, { color: textPrimary }]} numberOfLines={1}>
+                <Text style={[styles.conversationName, { color: textPrimary, fontWeight: item.unread_count > 0 ? '800' : '700' }]} numberOfLines={1}>
                   {item.name}
                 </Text>
                 {item.last_message && (
-                  <Text style={[styles.lastMessageTime, { color: textSecondary }]}>
+                  <Text style={[styles.lastMessageTime, { color: item.unread_count > 0 ? accent : textSecondary, fontWeight: item.unread_count > 0 ? '700' : '400' }]}>
                     {new Date(item.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
                 )}
               </View>
 
               <View style={styles.lastMessageContainer}>
-                <Text style={[styles.lastMessage, { color: textSecondary }]} numberOfLines={1}>
+                <Text style={[styles.lastMessage, { color: item.unread_count > 0 ? textPrimary : textSecondary, fontWeight: item.unread_count > 0 ? '700' : '400' }]} numberOfLines={1}>
                   {item.last_message ? (
                     (() => {
                       const prefix = item.last_message.sender_id === user?.id ? 'Você: ' : '';
@@ -204,6 +308,7 @@ export default function ConversationsList() {
                         if (parsed.type === 'audio') return `${prefix}🎙️ Áudio`;
                         if (parsed.type === 'image') return `${prefix}📷 Imagem`;
                         if (parsed.type === 'event_card') return `${prefix}📅 Convite de Evento`;
+                        if (parsed.type === 'reply') return `${prefix}${parsed.text || ''}`;
                       } catch (e) {}
                       return `${prefix}${item.last_message.content}`;
                     })()
@@ -211,6 +316,11 @@ export default function ConversationsList() {
                     'Inicie uma conversa'
                   )}
                 </Text>
+                {item.unread_count > 0 && (
+                  <View style={[styles.unreadBadge, { backgroundColor: accent }]}>
+                    <Text style={styles.unreadBadgeText}>{item.unread_count}</Text>
+                  </View>
+                )}
               </View>
             </View>
           </TouchableOpacity>
@@ -368,5 +478,19 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    marginLeft: 10,
+  },
+  unreadBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
   },
 });

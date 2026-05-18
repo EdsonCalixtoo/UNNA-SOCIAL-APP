@@ -111,7 +111,7 @@ export default function Categories() {
   const headerTranslateY = useSharedValue(0);
   const lastScrollY = useSharedValue(0);
   const isHeaderHidden = useSharedValue(false);
-  const HEADER_HEIGHT = insets.top + vs(58);
+  const HEADER_HEIGHT = insets.top + vs(50);
 
   const onScroll = useAnimatedScrollHandler({
     onScroll: (event) => {

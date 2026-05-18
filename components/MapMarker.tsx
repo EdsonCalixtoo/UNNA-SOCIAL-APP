@@ -138,4 +138,4 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 6,
   },
-});
+}) as any;

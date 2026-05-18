@@ -57,6 +57,26 @@ export function EventParticipantsModal({
   useEffect(() => {
     if (visible) {
       loadParticipants();
+
+      const channel = supabase
+        .channel(`participants:${eventId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'event_participants',
+            filter: `event_id=eq.${eventId}`,
+          },
+          () => {
+            loadParticipants();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [visible, eventId]);
 
@@ -99,12 +119,19 @@ export function EventParticipantsModal({
   const handleInvite = async () => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await Share.share({
-        message: `Bora para este role no UNNA? Confirme sua presença aqui: https://unna.social/event/${eventId}`,
-        title: 'Convite UNNA Social',
-      });
+      onClose(); // Fecha o modal de participantes primeiro
+      setTimeout(async () => {
+        try {
+          await Share.share({
+            message: `Bora para este role no UNNA? Confirme sua presença aqui: https://unna.app/event/${eventId}`,
+            title: 'Convite UNNA Social',
+          });
+        } catch (error: any) {
+          Alert.alert('Erro ao compartilhar', error.message);
+        }
+      }, 700);
     } catch (error: any) {
-      Alert.alert('Erro ao compartilhar', error.message);
+      console.error(error);
     }
   };
 
@@ -115,6 +142,8 @@ export function EventParticipantsModal({
       visible={visible}
       animationType="none" // Usando Reanimated para animação personalizada suave
       transparent={true}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent={true}
       onRequestClose={onClose}
     >
       <View style={styles.modalContainer}>
@@ -131,7 +160,7 @@ export function EventParticipantsModal({
 
         {visible && (
           <Animated.View 
-            entering={FadeInDown.springify().damping(25).stiffness(150)}
+            entering={FadeIn.duration(250)}
             style={[
               styles.modalContent, 
               { 
@@ -140,9 +169,6 @@ export function EventParticipantsModal({
               }
             ]}
           >
-            {/* Elemento de preenchimento para garantir que não haja frestas embaixo */}
-            <View style={[styles.bottomFill, { backgroundColor: bgColor }]} />
-
             {/* Handle bar */}
             <View style={[styles.handle, { backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }]} />
 
@@ -275,6 +301,7 @@ const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
     justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   backdrop: {
     flex: 1,
@@ -286,13 +313,11 @@ const styles = StyleSheet.create({
     minHeight: vs(350),
     width: '100%',
     elevation: 25,
-  },
-  bottomFill: {
+    overflow: 'hidden',
     position: 'absolute',
-    bottom: -100, // Extende para baixo para garantir que cubra qualquer gap
+    bottom: 0,
     left: 0,
     right: 0,
-    height: 100,
   },
   handle: {
     width: 44,

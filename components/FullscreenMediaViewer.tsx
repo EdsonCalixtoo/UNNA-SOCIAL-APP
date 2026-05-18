@@ -7,7 +7,8 @@ import {
   TouchableOpacity, 
   StatusBar, 
   Platform,
-  FlatList
+  FlatList,
+  Modal
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { X, Volume2, VolumeX } from 'lucide-react-native';
@@ -107,76 +108,76 @@ export default function FullscreenMediaViewer({
     opacity: opacity.value,
   }));
 
-  if (!visible) return null;
-
   return (
-    <GestureHandlerRootView style={[StyleSheet.absoluteFill, styles.rootContainer]}>
-      <Animated.View style={[StyleSheet.absoluteFill, styles.background, backgroundOpacityStyle]} />
-      
-      <StatusBar hidden={visible} />
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <GestureHandlerRootView style={[StyleSheet.absoluteFill, styles.rootContainer]}>
+        <Animated.View style={[StyleSheet.absoluteFill, styles.background, backgroundOpacityStyle]} />
+        
+        <StatusBar hidden={visible} />
 
-      <GestureDetector gesture={gesture}>
-        <Animated.View style={[styles.container, animatedStyle]}>
-          <TouchableOpacity 
-            style={styles.closeBtn} 
-            onPress={() => handleClose()}
-          >
-            <X size={28} color="#fff" />
-          </TouchableOpacity>
+        <GestureDetector gesture={gesture}>
+          <Animated.View style={[styles.container, animatedStyle]}>
+            <TouchableOpacity 
+              style={styles.closeBtn} 
+              onPress={() => handleClose()}
+            >
+              <X size={28} color="#fff" />
+            </TouchableOpacity>
 
-          <FlatList
-            data={mediaUrls}
-            horizontal
-            pagingEnabled
-            initialScrollIndex={initialIndex}
-            getItemLayout={(_, index) => ({
-              length: SCREEN_WIDTH,
-              offset: SCREEN_WIDTH * index,
-              index,
-            })}
-            onMomentumScrollEnd={(e) => {
-              const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-              setActiveIndex(index);
-            }}
-            showsHorizontalScrollIndicator={false}
-            renderItem={({ item, index }) => {
-              const type = mediaTypes ? mediaTypes[index] : (item.toLowerCase().endsWith('.mp4') ? 'video' : 'image');
-              return (
-                <View style={styles.mediaWrapper}>
-                  {type === 'video' ? (
-                    <Video
-                      source={{ uri: item }}
-                      style={styles.media}
-                      resizeMode={ResizeMode.CONTAIN}
-                      shouldPlay={visible && activeIndex === index}
-                      isLooping
-                      isMuted={isMuted}
-                      useNativeControls={activeIndex === index}
-                    />
-                  ) : (
-                    <Image 
-                      source={{ uri: item }} 
-                      style={styles.media} 
-                      resizeMode="contain" 
-                    />
-                  )}
-                  
-                  {type === 'video' && (
-                    <TouchableOpacity 
-                      style={styles.muteBtn} 
-                      onPress={() => setIsMuted(!isMuted)}
-                    >
-                      {isMuted ? <VolumeX size={20} color="#fff" /> : <Volume2 size={20} color="#fff" />}
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            }}
-            keyExtractor={(item, index) => `fs-${index}-${item}`}
-          />
-        </Animated.View>
-      </GestureDetector>
-    </GestureHandlerRootView>
+            <FlatList
+              data={mediaUrls}
+              horizontal
+              pagingEnabled
+              initialScrollIndex={initialIndex}
+              getItemLayout={(_, index) => ({
+                length: SCREEN_WIDTH,
+                offset: SCREEN_WIDTH * index,
+                index,
+              })}
+              onMomentumScrollEnd={(e) => {
+                const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+                setActiveIndex(index);
+              }}
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item, index }) => {
+                const type = mediaTypes ? mediaTypes[index] : (item.toLowerCase().endsWith('.mp4') ? 'video' : 'image');
+                return (
+                  <View style={styles.mediaWrapper}>
+                    {type === 'video' ? (
+                      <Video
+                        source={{ uri: item }}
+                        style={styles.media}
+                        resizeMode={ResizeMode.CONTAIN}
+                        shouldPlay={visible && activeIndex === index}
+                        isLooping
+                        isMuted={isMuted}
+                        useNativeControls={activeIndex === index}
+                      />
+                    ) : (
+                      <Image 
+                        source={{ uri: item }} 
+                        style={styles.media} 
+                        resizeMode="contain" 
+                      />
+                    )}
+                    
+                    {type === 'video' && (
+                      <TouchableOpacity 
+                        style={styles.muteBtn} 
+                        onPress={() => setIsMuted(!isMuted)}
+                      >
+                        {isMuted ? <VolumeX size={20} color="#fff" /> : <Volume2 size={20} color="#fff" />}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              }}
+              keyExtractor={(item, index) => `fs-${index}-${item}`}
+            />
+          </Animated.View>
+        </GestureDetector>
+      </GestureHandlerRootView>
+    </Modal>
   );
 }
 

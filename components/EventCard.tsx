@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Platform } from 'react-native';
-import { Calendar, Clock, MapPin, Users, DollarSign, Volume2, VolumeX, ChevronRight, Flag, Heart } from 'lucide-react-native';
+import { Calendar, Clock, MapPin, Users, DollarSign, Volume2, VolumeX, ChevronRight, Flag, Heart, Sparkles } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Video, ResizeMode } from 'expo-av';
@@ -8,7 +8,9 @@ import { Event } from '@/types/database';
 import { s, vs, ms } from '@/utils/responsive';
 import { useTheme } from '@/contexts/ThemeContext';
 import MediaCarousel from './MediaCarousel';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, LinearTransition, FadeInDown } from 'react-native-reanimated';
+import { hapticFeedback } from '@/utils/haptics';
+import { soundService } from '@/utils/soundService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -89,7 +91,9 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
   const isPublication = event.type === 'publication' || !event.event_date || !event.event_time;
 
   return (
-    <View 
+    <Animated.View 
+      layout={LinearTransition}
+      entering={FadeInDown.delay(100)}
       style={[styles.card, getStatusStyle(), { backgroundColor: backgroundSecondary, borderColor: isDark ? (getStatusStyle().borderColor || '#333') : 'rgba(0,0,0,0.05)' }]}
     >
       <View style={styles.imageContainer}>
@@ -101,6 +105,8 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
             borderRadius={0}
             isVisible={isVisible}
             onFullScreenChange={handleFullScreenChange}
+            eventId={event.id}
+            onPress={handlePress}
           />
         ) : event.image_url ? (
           <MediaCarousel 
@@ -110,12 +116,17 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
             borderRadius={0}
             isVisible={isVisible}
             onFullScreenChange={handleFullScreenChange}
+            eventId={event.id}
+            onPress={handlePress}
           />
         ) : (
-          <LinearGradient colors={['#00d9ff', '#ff1493']} style={styles.imagePlaceholder}><Text style={styles.imagePlaceholderText}>UNИA</Text></LinearGradient>
+          <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={styles.imagePlaceholder}>
+            <LinearGradient colors={['#00d9ff', '#ff1493']} style={StyleSheet.absoluteFillObject} />
+            <Text style={styles.imagePlaceholderText}>UNИA</Text>
+          </TouchableOpacity>
         )}
 
-        <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent', 'rgba(0,0,0,0.9)']} style={styles.overlay} />
+        <LinearGradient colors={['rgba(0,0,0,0.25)', 'transparent', 'rgba(0,0,0,0.55)']} style={styles.overlay} pointerEvents="none" />
 
         <View style={[styles.countdownBadge, isPublication ? { backgroundColor: '#ff1493' } : (eventStatus === 'happening' ? { backgroundColor: '#34C759' } : { backgroundColor: 'rgba(0, 217, 255, 0.95)' })]}>
           {isPublication ? <Flag size={12} color="#fff" strokeWidth={3} /> : <Clock size={12} color="#fff" strokeWidth={3} />}
@@ -149,11 +160,24 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
           )}
 
           <View style={styles.creatorRow}>
-            <Image source={{ uri: event.profiles?.avatar_url || 'https://via.placeholder.com/150' }} style={[styles.avatar, { borderColor: accent }]} />
+            {event.profiles?.avatar_url ? (
+              <Image source={{ uri: event.profiles.avatar_url }} style={[styles.avatar, { borderColor: accent }]} />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: accent, borderColor: accent }]}>
+                <Text style={styles.avatarText}>
+                  {event.profiles?.username?.charAt(0).toUpperCase() || event.profiles?.full_name?.charAt(0).toUpperCase() || 'U'}
+                </Text>
+              </View>
+            )}
             <View style={{ flex: 1 }}>
-              <Text style={[styles.creatorName, { color: textPrimary }]} numberOfLines={1}>
-                {event.profiles?.full_name || event.profiles?.username}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={[styles.creatorName, { color: textPrimary }]} numberOfLines={1}>
+                  {event.profiles?.full_name || event.profiles?.username}
+                </Text>
+                {event.profiles?.is_verified && (
+                  <Sparkles size={12} color={accent} fill={accent} />
+                )}
+              </View>
               <Text style={[styles.creatorHandle, { color: textSecondary }]}>
                 @{event.profiles?.username}
               </Text>
@@ -166,7 +190,11 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
                <View style={styles.eventStats}>
                  <TouchableOpacity 
                    style={styles.statBtn} 
-                   onPress={() => onLike && onLike(event.id, event.is_liked)}
+                   onPress={() => {
+                     hapticFeedback.light();
+                     soundService.play('pop');
+                     onLike && onLike(event.id, event.is_liked);
+                   }}
                  >
                    <Heart 
                      size={18} 
@@ -184,24 +212,60 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
                  </TouchableOpacity>
                </View>
                
-               <View style={{ flex: 1 }} />
-               
-               <TouchableOpacity 
-                 style={styles.infoItem} 
-                 onPress={() => {
-                   router.push({
-                     pathname: '/(tabs)/map',
-                     params: { 
-                       latitude: event.latitude, 
-                       longitude: event.longitude,
-                       eventId: event.id 
+               {event.location_name ? (
+                 <TouchableOpacity 
+                   style={[styles.infoItem, { flex: 1, justifyContent: 'flex-end', marginLeft: s(10) }]} 
+                   onPress={() => {
+                     if (event.latitude && event.longitude) {
+                       router.navigate({
+                         pathname: '/(tabs)/map',
+                         params: { 
+                           latitude: event.latitude, 
+                           longitude: event.longitude,
+                           eventId: event.id 
+                         }
+                       });
                      }
-                   });
-                 }}
-               >
-                 <MapPin size={18} color="#ff1493" />
-                 <ChevronRight size={18} color={textSecondary} />
-               </TouchableOpacity>
+                   }}
+                 >
+                   <MapPin size={16} color="#ff1493" />
+                   <Text 
+                     style={{ 
+                       color: textSecondary, 
+                       fontSize: ms(12), 
+                       fontWeight: '700', 
+                       maxWidth: s(130) 
+                     }} 
+                     numberOfLines={1}
+                   >
+                     {event.location_name.split(',')[0]}
+                   </Text>
+                   {event.latitude && event.longitude && (
+                     <ChevronRight size={14} color={textSecondary} style={{ marginLeft: -2 }} />
+                   )}
+                 </TouchableOpacity>
+               ) : (
+                 event.latitude && event.longitude ? (
+                   <TouchableOpacity 
+                     style={styles.infoItem} 
+                     onPress={() => {
+                       router.navigate({
+                         pathname: '/(tabs)/map',
+                         params: { 
+                           latitude: event.latitude, 
+                           longitude: event.longitude,
+                           eventId: event.id 
+                         }
+                       });
+                     }}
+                   >
+                     <MapPin size={16} color="#ff1493" />
+                     <ChevronRight size={14} color={textSecondary} />
+                   </TouchableOpacity>
+                 ) : (
+                   <View style={{ flex: 1 }} />
+                 )
+               )}
             </View>
           ) : (
             <View style={[styles.socialActions, { borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
@@ -227,7 +291,7 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
           )}
         </TouchableOpacity>
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -362,6 +426,19 @@ const styles = StyleSheet.create({
     borderRadius: ms(13), 
     borderWidth: 1.5, 
     borderColor: '#00d9ff' 
+  },
+  avatarPlaceholder: {
+    width: s(26),
+    height: s(26),
+    borderRadius: ms(13),
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: ms(11),
+    fontWeight: 'bold',
   },
   creatorName: { 
     fontSize: ms(13), 

@@ -9,6 +9,7 @@ import { processMedia } from '@/lib/mediaOptimizer';
 import StoryCameraModal from '@/components/StoryCameraModal';
 import StoryAdvancedEditor from '@/components/StoryAdvancedEditor';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ActionFeedback } from '@/components/ActionFeedback';
 
 export default function CreateStoryScreen() {
   const router = useRouter();
@@ -19,6 +20,12 @@ export default function CreateStoryScreen() {
   const [showEditor, setShowEditor] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ visible: boolean; type: 'success' | 'error' | 'info'; title: string; message: string }>({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: ''
+  });
 
   const handleCapture = (uri: string, type: 'image' | 'video') => {
     setSelectedMedia({ uri, type });
@@ -67,11 +74,20 @@ export default function CreateStoryScreen() {
 
       if (dbError) throw dbError;
 
-      Alert.alert('Sucesso', 'Story publicado! ✨');
-      router.replace('/(tabs)');
+      setFeedback({
+        visible: true,
+        type: 'success',
+        title: 'Sucesso',
+        message: 'Story publicado! ✨'
+      });
     } catch (e) {
       console.error(e);
-      Alert.alert('Erro', 'Não foi possível publicar seu story.');
+      setFeedback({
+        visible: true,
+        type: 'error',
+        title: 'Erro',
+        message: 'Não foi possível publicar seu story.'
+      });
       setCameraActive(true);
     } finally {
       setLoading(false);
@@ -101,6 +117,16 @@ export default function CreateStoryScreen() {
           onSave={handleSave}
         />
       )}
+
+      <ActionFeedback 
+        {...feedback} 
+        onClose={() => {
+          setFeedback({ ...feedback, visible: false });
+          if (feedback.type === 'success') {
+             router.replace('/(tabs)');
+          }
+        }} 
+      />
     </View>
   );
 }

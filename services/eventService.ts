@@ -10,13 +10,13 @@ export const eventService = {
       .from('events')
       .select(`
         *,
-        profiles:creator_id (id, username, full_name, avatar_url),
+        profiles:creator_id (id, username, full_name, avatar_url, is_verified),
         categories:category_id (id, name, icon),
         subcategories:subcategory_id (id, name),
         likes:event_likes(count),
         participants:event_participants(count)
       `)
-      .eq('status', 'ao_vivo')
+      .or('status.neq.encerrado,status.is.null') // Mostra tudo, menos o que está encerrado (incluindo nulos)
       .not('latitude', 'is', null)
       .not('longitude', 'is', null)
       .order('event_date', { ascending: true })
@@ -33,10 +33,19 @@ export const eventService = {
       likes_count: event.likes?.[0]?.count || 0,
       participants_count: event.participants?.[0]?.count || 0,
     })).filter((event) => {
+      // O mapa é EXCLUSIVO para eventos. Publicações não aparecem aqui.
+      if (event.type === 'publication') return false;
+
+      // Precisa ter data e hora e não ter acabado há mais de 6h
       if (!event.event_date || !event.event_time) return false;
-      const eventDateTime = new Date(`${event.event_date}T${event.event_time}`);
+      
+      const [year, month, day] = event.event_date.split('-').map(Number);
+      const [hours, minutes] = event.event_time.split(':').map(Number);
+      
+      const eventDateTime = new Date(year, month - 1, day, hours, minutes);
       if (isNaN(eventDateTime.getTime())) return false;
-      const eventEndTime = new Date(eventDateTime.getTime() + 6 * 60 * 60 * 1000); // 6h duration
+      
+      const eventEndTime = new Date(eventDateTime.getTime() + 6 * 60 * 60 * 1000); // 6h de duração
       return eventEndTime > now;
     });
   },
@@ -61,7 +70,11 @@ export const eventService = {
     const now = new Date();
     if (!event.event_date || !event.event_time) return 'upcoming';
     
-    const eventDateTime = new Date(`${event.event_date}T${event.event_time}`);
+    // Criar data interpretando as strings como horário LOCAL
+    const [year, month, day] = event.event_date.split('-').map(Number);
+    const [hours, minutes] = event.event_time.split(':').map(Number);
+    const eventDateTime = new Date(year, month - 1, day, hours, minutes);
+    
     const eventEndTime = new Date(eventDateTime.getTime() + 4 * 60 * 60 * 1000);
     const diff = eventDateTime.getTime() - now.getTime();
 

@@ -45,7 +45,8 @@ export default function UserProfileByUsername() {
         return;
       }
 
-      setProfile(profileData);
+      router.replace(`/profile/${profileData.id}`);
+      return;
 
       const [followersData, followingData, eventsData, followingStatus] = await Promise.all([
         supabase
@@ -173,16 +174,31 @@ export default function UserProfileByUsername() {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <LinearGradient
-          colors={['#00d9ff', '#0097a7', '#1a1a1a']}
-          style={styles.headerGradient}
-        >
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
-              <ArrowLeft size={22} color="#fff" />
-            </TouchableOpacity>
+        {profile.cover_url ? (
+          <View style={{ height: 140, position: 'relative' }}>
+            <Image 
+              source={{ uri: profile.cover_url }} 
+              style={StyleSheet.absoluteFill} 
+              resizeMode="cover"
+            />
+            <View style={[styles.headerActions, { position: 'absolute', top: 50, left: 20, right: 20 }]}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
-        </LinearGradient>
+        ) : (
+          <LinearGradient
+            colors={['#00d9ff', '#0097a7', '#1a1a1a']}
+            style={styles.headerGradient}
+          >
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        )}
 
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>

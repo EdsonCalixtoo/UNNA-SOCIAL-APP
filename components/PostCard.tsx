@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Heart, MessageCircle as MessageIcon, Calendar, Volume2, VolumeX } from 'lucide-react-native';
+import { Heart, MessageCircle as MessageIcon, Calendar, Volume2, VolumeX, Sparkles } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Video, ResizeMode } from 'expo-av';
 import { useState, useEffect } from 'react';
@@ -18,6 +18,12 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
   const router = useRouter();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   
+  // SEGURANÇA: Se for um post automático de sistema e o conteúdo original sumiu, não renderiza nada.
+  const isAutoPost = post.content?.includes('Criei um novo evento') || post.content?.includes('Publiquei algo novo');
+  if (isAutoPost && (!post.events || !post.events.id || !post.events.title)) {
+    return null;
+  }
+
   const contentTranslateY = useSharedValue(0);
   const contentOpacity = useSharedValue(1);
 
@@ -52,7 +58,12 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
           </View>
         )}
         <View style={styles.headerInfo}>
-          <Text style={[styles.username, { color: textPrimary }]}>{post.profiles?.full_name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={[styles.username, { color: textPrimary }]}>{post.profiles?.full_name}</Text>
+            {post.profiles?.is_verified && (
+              <Sparkles size={14} color={accent} fill={accent} />
+            )}
+          </View>
           <Text style={[styles.handle, { color: textSecondary }]}>@{post.profiles?.username}</Text>
         </View>
       </View>
