@@ -1,7 +1,7 @@
 {
   "name": "bolt-expo-starter",
   "main": "expo-router/entry",
-  "version": "2.2.5",
+  "version": "2.2.7",
   "private": true,
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start",
@@ -22,7 +22,7 @@
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@shopify/flash-list": "^2.3.1",
-    "@supabase/supabase-js": "^2.80.0",
+    "@supabase/supabase-js": "2.105.1",
     "@types/lodash.debounce": "^4.0.9",
     "base64-arraybuffer": "^1.0.2",
     "buffer": "^6.0.3",

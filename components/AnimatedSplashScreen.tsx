@@ -7,8 +7,8 @@ import Animated, {
   withTiming, 
   Easing,
 } from 'react-native-reanimated';
+import { ms, vs } from '@/utils/responsive';
 import { LinearGradient } from 'expo-linear-gradient';
-
 const { width } = Dimensions.get('window');
 
 export default function AnimatedSplashScreen() {
@@ -30,7 +30,7 @@ export default function AnimatedSplashScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.brandName}>
+        <Text style={styles.brandName} numberOfLines={1} adjustsFontSizeToFit>
           U<Text style={{color: '#ff1493'}}>N</Text><Text style={{color: '#00d9ff'}}>И</Text>A
         </Text>
 
@@ -62,14 +62,15 @@ const styles = StyleSheet.create({
   content: {
     alignItems: 'center',
     width: '100%',
+    paddingHorizontal: 20,
   },
   brandName: {
     color: '#fff',
-    fontSize: 36,
+    fontSize: ms(45),
     fontWeight: '900',
-    letterSpacing: 8,
-    marginBottom: 40,
-    marginLeft: 8, // Compensar o letter spacing no final
+    letterSpacing: ms(8),
+    marginBottom: vs(40),
+    marginLeft: ms(8), // Compensar o letter spacing no final
   },
   loaderWrapper: {
     width: '60%',

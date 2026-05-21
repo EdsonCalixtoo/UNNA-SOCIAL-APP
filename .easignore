@@ -39,9 +39,9 @@ android/
 .DS_Store
 
 # Environment
-.env
-.env.local
-.env.*.local
+# .env
+# .env.local
+# .env.*.local
 
 # Logs
 *.log

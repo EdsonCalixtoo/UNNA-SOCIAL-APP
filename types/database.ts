@@ -61,6 +61,10 @@ export interface Event {
   min_age?: number;
   type?: 'event' | 'publication';
   status?: string;
+  is_recurring?: boolean;
+  recurrence_type?: string;
+  recurrence_end_date?: string;
+  recurrence_days?: number[];
   created_at: string;
   updated_at: string;
   likes_count?: number;

@@ -170,59 +170,7 @@ export default function CreateEvent() {
     setRecurrenceEndDate(defaultEnd.toISOString().split('T')[0]);
   };
 
-  const generateRecurrentDates = (
-    startDateStr: string,
-    recType: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
-    endDateStr: string,
-    recDays: number[]
-  ): string[] => {
-    if (recType === 'none') {
-      return [startDateStr];
-    }
-
-    const dates: string[] = [];
-    const start = new Date(startDateStr + 'T00:00:00');
-    const end = endDateStr ? new Date(endDateStr + 'T23:59:59') : new Date(start.getTime() + 365 * 24 * 60 * 60 * 1000);
-
-    const maxEvents = 50; // Limite máximo para evitar loops infinitos ou sobrecarga
-    let current = new Date(start);
-
-    if (recType === 'daily') {
-      while (current <= end && dates.length < maxEvents) {
-        dates.push(current.toISOString().split('T')[0]);
-        current.setDate(current.getDate() + 1);
-      }
-    } else if (recType === 'weekly') {
-      const targetDays = recDays.length > 0 ? recDays : [start.getDay()];
-      while (current <= end && dates.length < maxEvents) {
-        if (targetDays.includes(current.getDay())) {
-          dates.push(current.toISOString().split('T')[0]);
-        }
-        current.setDate(current.getDate() + 1);
-      }
-    } else if (recType === 'monthly') {
-      const startDay = start.getDate();
-      while (current <= end && dates.length < maxEvents) {
-        dates.push(current.toISOString().split('T')[0]);
-        current.setMonth(current.getMonth() + 1);
-        if (current.getDate() !== startDay) {
-          current.setDate(0); // Ajusta para o último dia do mês caso estoure
-        }
-      }
-    } else if (recType === 'yearly') {
-      while (current <= end && dates.length < maxEvents) {
-        dates.push(current.toISOString().split('T')[0]);
-        current.setFullYear(current.getFullYear() + 1);
-      }
-    }
-
-    // Garante que o dia inicial sempre seja incluído no conjunto final
-    if (dates.length === 0 || dates[0] !== startDateStr) {
-      dates.unshift(startDateStr);
-    }
-
-    return Array.from(new Set(dates)).slice(0, maxEvents);
-  };
+  // Função generateRecurrentDates removida pois a lógica agora é feita no backend via Trigger do Supabase
 
   const progress = useSharedValue(0);
 
@@ -349,20 +297,18 @@ export default function CreateEvent() {
         mediaTypes.push(optimizedMedia.type);
       }
       
-      const datesToGenerate = contentType === 'event' && isRecurring
-        ? generateRecurrentDates(eventDate, recurrenceType, recurrenceEndDate, weeklyDays)
-        : [contentType === 'event' ? eventDate : null];
+      const baseDateStr = contentType === 'event' ? eventDate : null;
 
-      const eventsToInsert = datesToGenerate.map((dateStr, idx) => ({
+      const eventToInsert = {
         creator_id: user.id, 
-        title: idx === 0 ? title : `${title} (${idx + 1}ª Ocorrência)`, 
-        description: idx === 0 ? description : `${description}\n\n[Ocorrência ${idx + 1} de evento recorrente]`, 
+        title: title, 
+        description: description, 
         type: contentType,
         image_url: uploadedUrls[0],
         image_urls: uploadedUrls,
         media_type: mediaTypes[0],
         media_types: mediaTypes,
-        event_date: dateStr, 
+        event_date: baseDateStr, 
         event_time: contentType === 'event' ? eventTime : null, 
         end_time: contentType === 'event' ? eventEndTime : null,
         location_name: locationName ? (locationNumber ? `${locationName}, ${locationNumber}` : locationName) : null,
@@ -375,12 +321,16 @@ export default function CreateEvent() {
         latitude: finalLat,
         longitude: finalLng,
         status: 'ao_vivo',
-        ticket_url: contentType === 'event' && ticketUrl ? (ticketUrl.trim().startsWith('http') ? ticketUrl.trim() : `https://${ticketUrl.trim()}`) : null
-      }));
+        ticket_url: contentType === 'event' && ticketUrl ? (ticketUrl.trim().startsWith('http') ? ticketUrl.trim() : `https://${ticketUrl.trim()}`) : null,
+        is_recurring: contentType === 'event' ? isRecurring : false,
+        recurrence_type: contentType === 'event' && isRecurring ? recurrenceType : null,
+        recurrence_end_date: contentType === 'event' && isRecurring ? recurrenceEndDate : null,
+        recurrence_days: contentType === 'event' && isRecurring && recurrenceType === 'weekly' ? weeklyDays : null
+      };
 
       const { data: insertedEvents, error } = await supabase
         .from('events')
-        .insert(eventsToInsert)
+        .insert([eventToInsert])
         .select();
 
       if (error) throw error;

@@ -37,15 +37,34 @@ export const usePushNotifications = () => {
 
     const setupPushNotifications = async () => {
       try {
-        // Limpar badge existente quando a app inicia
+        // 1. Obter e solicitar permissões de notificação PRIMEIRO
+        let { status } = await Notifications.getPermissionsAsync();
+        
+        if (status !== 'granted') {
+          const { status: askStatus } = await Notifications.requestPermissionsAsync();
+          status = askStatus;
+        }
+
+        // Se o usuário não conceder permissão, interrompemos imediatamente para evitar chamadas nativas não autorizadas
+        if (status !== 'granted') {
+          console.log('[Push] Permissão de notificações não concedida.');
+          return;
+        }
+
+        // 2. Limpar badge existente apenas após ter certeza de que a permissão foi concedida
         try {
           await Notifications.setBadgeCountAsync(0);
         } catch (e) {
-          // Ignorar erro se não for suportado no ambiente (ex: simulador/web)
+          console.warn('[Push] Erro ao limpar badge count:', e);
         }
-        
-        // Registrar para notificações - Apenas se não for Expo Go em SDK 53+
-        // Ou simplesmente envolver em try/catch para evitar crash
+
+        // 3. Registrar para notificações apenas se for um dispositivo físico real (não simulador)
+        // Isso evita falhas nativas catastróficas ao tentar se registrar no APNs em ambientes sem suporte
+        if (Platform.OS === 'ios' && !Constants.isDevice) {
+          console.log('[Push] Ignorando registro de token push no simulador iOS.');
+          return;
+        }
+
         try {
           const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId ?? '8d7349e6-9f11-4973-aaf2-aec83d650f26';
           const token = await Notifications.getExpoPushTokenAsync({
@@ -53,7 +72,7 @@ export const usePushNotifications = () => {
           });
 
           if (isMounted && token?.data) {
-            console.log('Expo Push Token:', token.data);
+            console.log('Expo Push Token obtido com sucesso:', token.data);
 
             // Salvar o token no banco de dados
             const { error } = await supabase
@@ -63,27 +82,21 @@ export const usePushNotifications = () => {
 
             if (error) {
               if (error.code === 'PGRST204' || error.message?.includes('push_token')) {
-                console.warn('Push token column not yet available in database.');
+                console.warn('Coluna push_token ainda não disponível no banco de dados.');
               } else {
-                console.error('Error saving push token:', error);
+                console.error('Erro ao salvar push token no Supabase:', error);
               }
             }
           }
         } catch (tokenError: any) {
           if (tokenError.message?.includes('Expo Go')) {
-            console.warn('Push notifications are not supported in Expo Go (SDK 53+). Use a development build to test remote notifications.');
+            console.warn('Notificações push não são suportadas no Expo Go. Use um development build.');
           } else {
-            console.error('Error getting push token:', tokenError);
+            console.error('Erro ao obter token push do Expo:', tokenError);
           }
         }
-
-        // Solicitar permissão
-        const { status } = await Notifications.getPermissionsAsync();
-        if (status !== 'granted') {
-          await Notifications.requestPermissionsAsync();
-        }
       } catch (error) {
-        console.error('Error setting up push notifications:', error);
+        console.error('Erro geral na configuração de notificações push:', error);
       }
     };
 
