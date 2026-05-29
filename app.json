@@ -61,7 +61,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.unna.socialapp",
-      "buildNumber": "23",
+      "buildNumber": "24",
       "associatedDomains": [
         "applinks:unna.app"
       ],
@@ -97,7 +97,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "com.bolt.starter",
-      "versionCode": 23,
+      "versionCode": 24,
       "intentFilters": [
         {
           "action": "VIEW",
