@@ -126,71 +126,62 @@ export default function StoriesBar() {
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false} 
-        style={styles.scroll}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
         scrollEventThrottle={16}
       >
-        {/* Seu story com botão de criar no canto */}
-        <View style={styles.storyItem}>
-          <Pressable
-            style={styles.storyThumbContainer}
-            onPress={() => {
-              if (userStories.length > 0) {
-                setSelectedStoryIndex(0);
-                setShowViewer(true);
-              } else {
+        {/* Your Story */}
+        <Pressable
+          style={[styles.yourStoryCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#fff' }]}
+          onPress={() => {
+            if (userStories.length > 0) {
+              setSelectedStoryIndex(0);
+              setShowViewer(true);
+            } else {
+              setShowCreator(true);
+            }
+          }}
+        >
+          <View style={styles.yourStoryAvatarContainer}>
+            <Image
+              source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/150' }}
+              style={styles.yourStoryAvatar}
+            />
+            <Pressable 
+              style={[styles.yourStoryAddBtn, { backgroundColor: accent, borderColor: isDark ? '#1a1a1a' : '#fff' }]}
+              onPress={(e) => {
+                e.stopPropagation();
                 setShowCreator(true);
-              }
-            }}
-          >
-            {userStories.length > 0 && userStories[0].media_url ? (
-              <Image
-                source={{ uri: userStories[0].media_url }}
-                style={[styles.storyThumb, { borderColor: accent }]}
-              />
-            ) : profile?.avatar_url ? (
-              <Image
-                source={{ uri: profile.avatar_url }}
-                style={[styles.storyThumb, styles.avatarThumb, { borderColor: accent, backgroundColor: backgroundSecondary }]}
-              />
-            ) : (
-              <View style={[styles.storyThumb, styles.storyPlaceholder, { borderColor: accent, backgroundColor: backgroundSecondary }]}>
-                <Text style={[styles.placeholderText, { color: textSecondary }]}>Sem story</Text>
-              </View>
-            )}
-            {/* Botão flutuante de criar story */}
-            <Pressable
-              style={[styles.addButtonOverlay, { backgroundColor: accent, borderColor: backgroundPrimary }]}
-              onPress={() => setShowCreator(true)}
+              }}
+              hitSlop={20}
             >
               <Plus size={16} color="#fff" strokeWidth={3} />
             </Pressable>
-          </Pressable>
-          <Text style={[styles.storyLabel, { color: textPrimary }]}>Seu Story</Text>
-        </View>
+          </View>
+          <Text style={[styles.yourStoryLabel, { color: textPrimary }]}>Your Story</Text>
+        </Pressable>
 
-        {/* Histórias de outros usuários */}
+        {/* Other Stories */}
         {allStories.map((story, index) => {
           const profile = Array.isArray(story.profiles) ? story.profiles[0] : story.profiles;
           return (
             <Pressable
               key={story.id}
-              style={styles.storyItem}
+              style={styles.otherStoryCard}
               onPress={() => {
                 setSelectedStoryIndex(userStories.length + index);
                 setShowViewer(true);
               }}
             >
-              {story.media_url ? (
+              <Image
+                source={{ uri: story.thumbnail_url || story.media_url }}
+                style={styles.otherStoryThumb}
+              />
+              <View style={[styles.otherStoryAvatarContainer, { borderColor: '#fff', backgroundColor: backgroundSecondary }]}>
                 <Image
-                  source={{ uri: story.media_url }}
-                  style={[styles.storyThumb, { borderColor: accent }]}
+                  source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/150' }}
+                  style={styles.otherStoryAvatar}
                 />
-              ) : (
-                <View style={[styles.storyThumb, styles.storyPlaceholder, { backgroundColor: backgroundSecondary, borderColor: accent }]} />
-              )}
-              <Text style={[styles.storyLabel, { color: textPrimary }]} numberOfLines={1}>
-                {profile?.username || 'Usuário'}
-              </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -225,55 +216,70 @@ const styles = StyleSheet.create({
     borderBottomColor: '#333',
     backgroundColor: '#1a1a1a',
   },
-  scroll: {
-    paddingHorizontal: 8,
-  },
-  storyItem: {
+  yourStoryCard: {
+    width: 100,
+    height: 150,
+    borderRadius: 24,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-    marginLeft: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  storyThumbContainer: {
+  yourStoryAvatarContainer: {
     position: 'relative',
-    marginBottom: 6,
+    marginBottom: 8,
   },
-  storyThumb: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 2,
-    borderColor: '#00d9ff',
+  yourStoryAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
   },
-  avatarThumb: {
-    backgroundColor: '#333',
-  },
-  storyPlaceholder: {
-    backgroundColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    color: '#888',
-    fontSize: 10,
-    textAlign: 'center',
-  },
-  addButtonOverlay: {
+  yourStoryAddBtn: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#00d9ff',
+    bottom: -6,
+    alignSelf: 'center',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 2,
-    borderColor: '#1a1a1a',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  storyLabel: {
-    fontSize: 12,
-    color: '#fff',
-    maxWidth: 70,
-    textAlign: 'center',
+  yourStoryLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  otherStoryCard: {
+    width: 100,
+    height: 150,
+    borderRadius: 24,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#333',
+  },
+  otherStoryThumb: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  otherStoryAvatarContainer: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  otherStoryAvatar: {
+    width: '100%',
+    height: '100%',
   },
 });

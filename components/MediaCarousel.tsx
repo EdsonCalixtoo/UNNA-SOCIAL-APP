@@ -24,6 +24,7 @@ interface MediaCarouselProps {
   mediaUrls: string[];
   mediaTypes?: ('image' | 'video')[];
   height?: number;
+  width?: number;
   borderRadius?: number;
   isVisible?: boolean;
   onFullScreenChange?: (visible: boolean) => void;
@@ -34,7 +35,8 @@ interface MediaCarouselProps {
 export default function MediaCarousel({ 
   mediaUrls, 
   mediaTypes, 
-  height = vs(240), 
+  height = vs(240),
+  width = SCREEN_WIDTH, 
   borderRadius = 0, // Padrao para premium e full width
   isVisible = true,
   onFullScreenChange,
@@ -60,8 +62,8 @@ export default function MediaCarousel({
   }), []);
 
   const getItemLayout = useCallback((_: any, index: number) => ({
-    length: SCREEN_WIDTH,
-    offset: SCREEN_WIDTH * index,
+    length: width,
+    offset: width * index,
     index,
   }), []);
 
@@ -80,7 +82,7 @@ export default function MediaCarousel({
     };
 
     return (
-      <View style={[styles.mediaWrapper, { width: SCREEN_WIDTH, height, borderRadius }]}>
+      <View style={[styles.mediaWrapper, { width: width, height, borderRadius }]}>
         {isVideo ? (
           <View style={styles.videoContainer}>
             <TouchableOpacity 
@@ -114,12 +116,10 @@ export default function MediaCarousel({
             onPress={handleMediaPress}
             style={styles.media}
           >
-            <Animated.Image 
+            <Image 
               source={{ uri: item }} 
               style={styles.media as any} 
               resizeMode="cover" 
-              // @ts-ignore - sharedTransitionTag existe no Reanimated 3+ mas pode falhar na tipagem dependendo da versao
-              sharedTransitionTag={eventId ? `event-image-${eventId}-${index}` : undefined}
             />
           </TouchableOpacity>
         )}
@@ -128,7 +128,7 @@ export default function MediaCarousel({
   };
 
   return (
-    <View style={[styles.container, { height }]}>
+    <View style={[styles.container, { height, width }]}>
       <FlatList
         ref={flatListRef}
         data={mediaUrls}
@@ -142,25 +142,26 @@ export default function MediaCarousel({
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         getItemLayout={getItemLayout}
-        initialNumToRender={3}
-        maxToRenderPerBatch={3}
-        windowSize={5}
-        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={1}
+        maxToRenderPerBatch={1}
+        windowSize={3}
+        removeClippedSubviews={false}
         keyExtractor={(item, index) => `${item}-${index}`}
       />
       
       {mediaUrls.length > 1 && (
-        <View style={styles.pagination}>
-          {mediaUrls.map((_, index) => (
-            <View 
-              key={index} 
-              style={[
-                styles.dot, 
-                { backgroundColor: activeIndex === index ? accent : 'rgba(255,255,255,0.5)' },
-                activeIndex === index && styles.activeDot
-              ]} 
-            />
-          ))}
+        <View style={styles.paginationContainer}>
+          <View style={styles.paginationPill}>
+            {mediaUrls.map((_, index) => (
+              <View 
+                key={index} 
+                style={[
+                  styles.dot, 
+                  activeIndex === index ? styles.activeDotToki : { backgroundColor: '#FF1493' }
+                ]} 
+              />
+            ))}
+          </View>
         </View>
       )}
 
@@ -180,9 +181,7 @@ export default function MediaCarousel({
 
 const styles = StyleSheet.create({
   container: {
-    width: SCREEN_WIDTH,
     position: 'relative',
-    left: -s(16), // Para compensar o marginHorizontal do card e ficar full screen
   },
   mediaWrapper: {
     overflow: 'hidden',
@@ -214,23 +213,38 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  pagination: {
+  paginationContainer: {
     position: 'absolute',
     bottom: vs(12),
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10,
+  },
+  paginationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+    paddingHorizontal: s(10),
+    paddingVertical: vs(6),
+    borderRadius: 20,
     gap: s(6),
+  },
+
+  activeDotToki: {
+    width: s(10),
+    height: s(10),
+    borderRadius: s(5),
+    borderWidth: 2,
+    borderColor: '#FF1493',
+    backgroundColor: 'transparent',
+    opacity: 1,
   },
   dot: {
     width: s(6),
     height: s(6),
     borderRadius: ms(3),
   },
-  activeDot: {
-    width: s(12),
-    height: s(6),
-    borderRadius: ms(3),
-  },
+
 });

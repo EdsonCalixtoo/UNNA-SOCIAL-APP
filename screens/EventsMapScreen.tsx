@@ -43,6 +43,7 @@ export default function EventsMapScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [trendingOnly, setTrendingOnly] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [liveOnly, setLiveOnly] = useState(false);
 
   // Load Data on Focus
   useFocusEffect(
@@ -145,9 +146,12 @@ export default function EventsMapScreen() {
         e.location_name?.toLowerCase().includes(q)
       );
     }
+    if (liveOnly) {
+      result = result.filter(e => eventService.getEventStatus(e) === 'happening');
+    }
     
     return result;
-  }, [events, selectedCategory, searchQuery, trendingOnly]);
+  }, [events, selectedCategory, searchQuery, trendingOnly, liveOnly]);
 
   // Handlers
   const handleMarkerPress = useCallback((event: any) => {
@@ -300,6 +304,8 @@ export default function EventsMapScreen() {
         onTrendingChange={setTrendingOnly}
         showHeatmap={showHeatmap}
         onHeatmapChange={setShowHeatmap}
+        liveOnly={liveOnly}
+        onLiveOnlyChange={setLiveOnly}
       />
 
       <UserLocationButton onPress={handleCenterUser} bottomOffset={selectedEvent ? height * 0.48 : 110} />

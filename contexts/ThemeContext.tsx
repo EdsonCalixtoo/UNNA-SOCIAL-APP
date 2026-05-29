@@ -42,8 +42,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     
     if (isDark) {
       return {
-        backgroundPrimary: '#0a0a0a',
-        backgroundSecondary: '#1a1a1a',
+        backgroundPrimary: '#000000',
+        backgroundSecondary: '#121212',
         accent,
         accentAlt: '#00e5ff',
         textPrimary: '#ffffff',

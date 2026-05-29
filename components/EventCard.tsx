@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Platform } from 'react-native';
-import { Calendar, Clock, MapPin, Users, DollarSign, Volume2, VolumeX, ChevronRight, Flag, Heart, Sparkles } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { MoreVertical, Heart, MessageCircle, MapPin, Sparkles, Users } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { Video, ResizeMode } from 'expo-av';
-import { Event } from '@/types/database';
-import { s, vs, ms } from '@/utils/responsive';
 import { useTheme } from '@/contexts/ThemeContext';
+import { s, vs, ms } from '@/utils/responsive';
 import MediaCarousel from './MediaCarousel';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, LinearTransition, FadeInDown } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import { hapticFeedback } from '@/utils/haptics';
 import { soundService } from '@/utils/soundService';
+import { mapService } from '@/services/mapService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -20,498 +18,397 @@ interface EventCardProps {
   isVisible?: boolean;
   onLike?: (eventId: string, isLiked: boolean) => void;
   onParticipantsPress?: (eventId: string) => void;
+  onCommentPress?: (eventId: string) => void;
 }
 
-type EventStatus = 'happening' | 'starting-soon' | 'upcoming' | 'ended';
+function formatRelativeTime(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (diff < 60) return 'agora';
+  if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d atrás`;
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
 
-export default function EventCard({ event, onPress, isVisible = true, onLike, onParticipantsPress }: EventCardProps) {
+export default function EventCard({ event, onPress, isVisible = true, onLike, onParticipantsPress, onCommentPress }: EventCardProps) {
   const router = useRouter();
-  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
-  const [countdown, setCountdown] = useState('');
-  const [eventStatus, setEventStatus] = useState<EventStatus>('upcoming');
-  const contentTranslateY = useSharedValue(0);
-  const contentOpacity = useSharedValue(1);
+  const { backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
+  
+  const likeScale = useSharedValue(1);
+  const [distanceKm, setDistanceKm] = useState<string | null>(null);
 
   useEffect(() => {
-    if (event.type === 'publication' || !event.event_date || !event.event_time) {
-      setCountdown('Publicação');
-      setEventStatus('upcoming');
-      return;
-    }
-    const updateCountdown = () => {
-      const now = new Date();
-      const eventDateTime = new Date(`${event.event_date}T${event.event_time}`);
-      const eventEndTime = new Date(eventDateTime.getTime() + 4 * 60 * 60 * 1000);
-      const diff = eventDateTime.getTime() - now.getTime();
-      const diffFromEnd = eventEndTime.getTime() - now.getTime();
-      if (diffFromEnd < 0) { setEventStatus('ended'); setCountdown('Finalizado'); return; }
-      if (diff < 0 && diffFromEnd > 0) { setEventStatus('happening'); setCountdown('AO VIVO'); return; }
-      if (diff < 60 * 60 * 1000) { setEventStatus('starting-soon'); setCountdown(`Começa em ${Math.floor(diff / (1000 * 60))}min`); return; }
-      setEventStatus('upcoming');
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      setCountdown(days > 0 ? `${days}d ${hours}h` : `${hours}h`);
+    // Calculate distance
+    const getDistance = async () => {
+      if (event.latitude && event.longitude) {
+        const userLoc = await mapService.getUserLocation();
+        if (userLoc) {
+          const dist = mapService.getDistanceInKm(userLoc.latitude, userLoc.longitude, Number(event.latitude), Number(event.longitude));
+          if (dist < 1) {
+             setDistanceKm((dist * 1000).toFixed(0) + ' m');
+          } else {
+             setDistanceKm(dist.toFixed(1) + ' km');
+          }
+        }
+      }
     };
-    updateCountdown();
-    const interval = setInterval(updateCountdown, 60000);
-    return () => clearInterval(interval);
-  }, [event.event_date, event.event_time, event.type]);
+    getDistance();
+  }, [event.latitude, event.longitude]);
 
-
-  const handlePress = () => { 
-    if (onPress) onPress(); 
-    else router.push(`/event/${event.id}`); 
+  const handlePress = () => {
+    if (onPress) onPress();
+    else router.push(`/event/${event.id}`);
   };
 
-  const getStatusStyle = () => {
-    switch (eventStatus) {
-      case 'happening': return { borderColor: '#34C759', borderWidth: 2.5 };
-      case 'starting-soon': return { borderColor: '#FF9500', borderWidth: 2.5 };
-      case 'ended': return { borderColor: '#FF3B30', borderWidth: 2.5, opacity: 0.7 };
-      default: return { borderColor: '#333', borderWidth: 1 };
-    }
-  };
-
-  const contentAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: contentTranslateY.value }],
-    opacity: contentOpacity.value,
+  const likeAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: likeScale.value }],
   }));
 
-  const handleFullScreenChange = (visible: boolean) => {
-    if (visible) {
-      contentTranslateY.value = withTiming(vs(100), { duration: 300 });
-      contentOpacity.value = withTiming(0, { duration: 250 });
-    } else {
-      contentTranslateY.value = withSpring(0);
-      contentOpacity.value = withTiming(1, { duration: 300 });
+  const handleLikePress = () => {
+    hapticFeedback.light();
+    soundService.play('pop');
+    onLike && onLike(event.id, event.is_liked);
+    likeScale.value = withSpring(1.5, { damping: 2, stiffness: 200 }, () => {
+      likeScale.value = withSpring(1, { damping: 10, stiffness: 100 });
+    });
+  };
+
+  const isPublication = event.type === 'publication' || !event.event_date || !event.event_time;
+  
+
+  // Base details
+  const avatarUrl = event.profiles?.avatar_url;
+  const username = event.profiles?.username || 'user';
+  const fullName = event.profiles?.full_name || username;
+  const timeAgo = formatRelativeTime(event.created_at || new Date().toISOString());
+  
+  const imageToUse = event.image_urls && event.image_urls.length > 0 
+                     ? event.image_urls 
+                     : (event.image_url ? [event.image_url] : []);
+  
+  const mediaTypesToUse = event.media_types || (event.media_type ? [event.media_type] : undefined);
+
+  // Parse Date for Badge
+  let eventMonth = '';
+  let eventDay = '';
+  if (event.event_date) {
+    const d = new Date(event.event_date + 'T12:00:00'); // Force midday to avoid timezone shift
+    eventDay = d.getDate().toString().padStart(2, '0');
+    const months = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+    eventMonth = months[d.getMonth()];
+  }
+
+  // Check if LIVE (started up to 4 hours ago) or SOON (starts within 2 hours) or FINISHED
+  let eventStatus = 'none'; // 'live', 'soon', 'finished', 'none'
+  if (event.event_date && event.event_time) {
+    const [y, m, d] = event.event_date.split('-');
+    const [h, min] = event.event_time.split(':');
+    const eventDateTime = new Date(Number(y), Number(m) - 1, Number(d), Number(h), Number(min));
+    const now = new Date();
+    const diffMs = eventDateTime.getTime() - now.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    
+    if (diffHours <= 0 && diffHours >= -4) {
+      eventStatus = 'live';
+    } else if (diffHours > 0 && diffHours <= 2) {
+      eventStatus = 'soon';
+    } else if (diffHours < -4) {
+      eventStatus = 'finished';
     }
+  }
+
+  const getBorderColor = () => {
+    if (eventStatus === 'live') return '#00E676'; // Green
+    if (eventStatus === 'soon') return '#FFD700'; // Yellow
+    if (eventStatus === 'finished') return isDark ? '#555555' : '#CCCCCC'; // Gray
+    return isDark ? '#333' : '#E5E5E5';
   };
 
 
-  const isPublication = event.type === 'publication' || !event.event_date || !event.event_time;
-
   return (
-    <Animated.View 
-      layout={LinearTransition}
-      entering={FadeInDown.delay(100)}
-      style={[styles.card, getStatusStyle(), { backgroundColor: backgroundSecondary, borderColor: isDark ? (getStatusStyle().borderColor || '#333') : 'rgba(0,0,0,0.05)' }]}
-    >
-      <View style={styles.imageContainer}>
-        {event.image_urls && event.image_urls.length > 0 ? (
-          <MediaCarousel 
-            mediaUrls={event.image_urls} 
-            mediaTypes={event.media_types} 
-            height={vs(240)}
-            borderRadius={0}
-            isVisible={isVisible}
-            onFullScreenChange={handleFullScreenChange}
-            eventId={event.id}
-            onPress={handlePress}
-          />
-        ) : event.image_url ? (
-          <MediaCarousel 
-            mediaUrls={[event.image_url]} 
-            mediaTypes={event.media_type ? [event.media_type] : undefined} 
-            height={vs(240)}
-            borderRadius={0}
-            isVisible={isVisible}
-            onFullScreenChange={handleFullScreenChange}
-            eventId={event.id}
-            onPress={handlePress}
-          />
-        ) : (
-          <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={styles.imagePlaceholder}>
-            <LinearGradient colors={['#00d9ff', '#ff1493']} style={StyleSheet.absoluteFillObject} />
-            <Text style={styles.imagePlaceholderText}>UNИA</Text>
-          </TouchableOpacity>
-        )}
+    <Animated.View style={[
+      styles.cardContainer, 
+      { 
+        backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', 
+        borderWidth: eventStatus !== 'none' ? 2 : 1, 
+        borderColor: getBorderColor() 
+      }
+    ]}>
+      
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.avatarWrap} activeOpacity={0.8} onPress={() => {
+          const profileId = event.profiles?.id || event.creator_id || event.user_id;
+          if (profileId) router.push(`/profile/${profileId}`);
+        }}>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: '#444', justifyContent: 'center', alignItems: 'center' }]}>
+               <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{fullName.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          {/* Pink Status Dot */}
+          <View style={styles.statusDot} />
+        </TouchableOpacity>
 
-        <LinearGradient colors={['rgba(0,0,0,0.25)', 'transparent', 'rgba(0,0,0,0.55)']} style={styles.overlay} pointerEvents="none" />
-
-        <View style={[styles.countdownBadge, isPublication ? { backgroundColor: '#ff1493' } : (eventStatus === 'happening' ? { backgroundColor: '#34C759' } : { backgroundColor: 'rgba(0, 217, 255, 0.95)' })]}>
-          {isPublication ? <Flag size={12} color="#fff" strokeWidth={3} /> : <Clock size={12} color="#fff" strokeWidth={3} />}
-          <Text style={styles.countdownText}>{countdown}</Text>
-        </View>
-
-        {event.categories?.icon && (
-          <View style={styles.catBadge}><Text style={styles.catIcon}>{event.categories.icon}</Text><Text style={styles.catText}>{event.categories.name}</Text></View>
-        )}
-
-        {!isPublication && event.event_date && (
-          <View style={styles.dateBadge}>
-            <Text style={styles.dateDay}>{new Date(event.event_date).getDate()}</Text>
-            <Text style={styles.dateMonth}>
-              {['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'][new Date(event.event_date).getMonth()]}
-            </Text>
+        <TouchableOpacity style={styles.headerTextWrap} activeOpacity={0.8} onPress={() => {
+          const profileId = event.profiles?.id || event.creator_id || event.user_id;
+          if (profileId) router.push(`/profile/${profileId}`);
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={[styles.fullName, { color: textPrimary }]} numberOfLines={1}>{fullName.toUpperCase()}</Text>
+            {event.profiles?.is_verified && <Sparkles size={12} color="#FF1493" fill="#FF1493" />}
           </View>
-        )}
+          <Text style={styles.subtitle} numberOfLines={1}>@{username} • {timeAgo}</Text>
+        </TouchableOpacity>
 
-        {!isPublication && (
-          <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={styles.titleBox}>
-            <Text style={styles.title} numberOfLines={2}>{event.title}</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity style={styles.moreBtn}>
+          <MoreVertical size={20} color={textPrimary} />
+        </TouchableOpacity>
       </View>
 
-      <Animated.View style={[styles.content, contentAnimatedStyle]}>
+      {/* ── Body ── */}
+      <View style={styles.body}>
         <TouchableOpacity activeOpacity={0.9} onPress={handlePress}>
-          {isPublication && (
-            <Text style={[styles.publicationTitle, { color: textPrimary }]}>{event.title}</Text>
+          {/* Title & Content */}
+          {event.title && (
+             <Text style={[styles.contentTitle, { color: textPrimary }]} numberOfLines={1}>{event.title}</Text>
           )}
+          {(event.content || event.description) ? (
+            <Text style={[styles.contentText, { color: textSecondary }]} numberOfLines={2}>
+              {event.content || event.description}
+            </Text>
+          ) : null}
+        </TouchableOpacity>
 
-          <View style={styles.creatorRow}>
-            {event.profiles?.avatar_url ? (
-              <Image source={{ uri: event.profiles.avatar_url }} style={[styles.avatar, { borderColor: accent }]} />
-            ) : (
-              <View style={[styles.avatarPlaceholder, { backgroundColor: accent, borderColor: accent }]}>
-                <Text style={styles.avatarText}>
-                  {event.profiles?.username?.charAt(0).toUpperCase() || event.profiles?.full_name?.charAt(0).toUpperCase() || 'U'}
+
+        {/* Media */}
+        {imageToUse.length > 0 && (
+          <View style={styles.mediaContainer}>
+            <MediaCarousel
+              mediaUrls={imageToUse}
+              mediaTypes={mediaTypesToUse}
+              height={vs(350)}
+              width={SCREEN_WIDTH - 64}
+              borderRadius={24}
+              isVisible={isVisible}
+              eventId={event.id}
+              onPress={handlePress}
+            />
+            
+            {/* Date Badge */}
+            {!isPublication && eventMonth && (
+              <View style={[styles.dateBadge, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.8)' }]}>
+                <Text style={[styles.dateBadgeDay, { color: isDark ? '#00D9FF' : '#00b8d4' }]}>{eventDay}</Text>
+                <Text style={[styles.dateBadgeMonth, { color: isDark ? '#FFF' : '#333' }]}>{eventMonth}</Text>
+              </View>
+            )}
+
+            {/* Live/Soon/Finished Badge */}
+            {eventStatus !== 'none' && (
+              <View style={[styles.liveBadge, { 
+                backgroundColor: eventStatus === 'live' ? 'rgba(0,230,118,0.8)' : eventStatus === 'soon' ? 'rgba(255,215,0,0.8)' : 'rgba(100,100,100,0.8)', 
+                borderColor: eventStatus === 'live' ? '#00E676' : eventStatus === 'soon' ? '#FFD700' : '#888' 
+              }]}>
+                {eventStatus !== 'finished' && <View style={[styles.liveDot, { backgroundColor: eventStatus === 'soon' ? '#333' : '#FFF' }]} />}
+                <Text style={[styles.liveText, { color: eventStatus === 'soon' ? '#333' : '#FFF' }]}>
+                  {eventStatus === 'live' ? 'AO VIVO' : eventStatus === 'soon' ? 'EM BREVE' : 'FINALIZADO'}
                 </Text>
               </View>
             )}
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={[styles.creatorName, { color: textPrimary }]} numberOfLines={1}>
-                  {event.profiles?.full_name || event.profiles?.username}
-                </Text>
-                {event.profiles?.is_verified && (
-                  <Sparkles size={12} color={accent} fill={accent} />
-                )}
-              </View>
-              <Text style={[styles.creatorHandle, { color: textSecondary }]}>
-                @{event.profiles?.username}
-              </Text>
-            </View>
-            {event.is_paid && <View style={styles.priceTag}><Text style={styles.priceText}>R$ {event.price.toFixed(0)}</Text></View>}
           </View>
+        )}
 
-          {!isPublication ? (
-            <View style={[styles.infoGrid, { borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-               <View style={styles.eventStats}>
-                 <TouchableOpacity 
-                   style={styles.statBtn} 
-                   onPress={() => {
-                     hapticFeedback.light();
-                     soundService.play('pop');
-                     onLike && onLike(event.id, event.is_liked);
-                   }}
-                 >
-                   <Heart 
-                     size={18} 
-                     color={event.is_liked ? '#FF3B30' : textSecondary} 
-                     fill={event.is_liked ? '#FF3B30' : 'none'} 
-                   />
-                   <Text style={[styles.statText, { color: textSecondary }]}>{event.likes_count || 0}</Text>
-                 </TouchableOpacity>
-                 <TouchableOpacity 
-                   style={styles.statBtn}
-                   onPress={() => onParticipantsPress && onParticipantsPress(event.id)}
-                 >
-                   <Users size={18} color={textSecondary} />
-                   <Text style={[styles.statText, { color: textSecondary }]}>{event.participants_count || 0}</Text>
-                 </TouchableOpacity>
-               </View>
-               
-               {event.location_name ? (
-                 <TouchableOpacity 
-                   style={[styles.infoItem, { flex: 1, justifyContent: 'flex-end', marginLeft: s(10) }]} 
-                   onPress={() => {
-                     if (event.latitude && event.longitude) {
-                       router.navigate({
-                         pathname: '/(tabs)/map',
-                         params: { 
-                           latitude: event.latitude, 
-                           longitude: event.longitude,
-                           eventId: event.id 
-                         }
-                       });
-                     }
-                   }}
-                 >
-                   <MapPin size={16} color="#ff1493" />
-                   <Text 
-                     style={{ 
-                       color: textSecondary, 
-                       fontSize: ms(12), 
-                       fontWeight: '700', 
-                       maxWidth: s(130) 
-                     }} 
-                     numberOfLines={1}
-                   >
-                     {event.location_name.split(',')[0]}
-                   </Text>
-                   {event.latitude && event.longitude && (
-                     <ChevronRight size={14} color={textSecondary} style={{ marginLeft: -2 }} />
-                   )}
-                 </TouchableOpacity>
-               ) : (
-                 event.latitude && event.longitude ? (
-                   <TouchableOpacity 
-                     style={styles.infoItem} 
-                     onPress={() => {
-                       router.navigate({
-                         pathname: '/(tabs)/map',
-                         params: { 
-                           latitude: event.latitude, 
-                           longitude: event.longitude,
-                           eventId: event.id 
-                         }
-                       });
-                     }}
-                   >
-                     <MapPin size={16} color="#ff1493" />
-                     <ChevronRight size={14} color={textSecondary} />
-                   </TouchableOpacity>
-                 ) : (
-                   <View style={{ flex: 1 }} />
-                 )
-               )}
-            </View>
-          ) : (
-            <View style={[styles.socialActions, { borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-              <View style={styles.socialBtn}>
-                <TouchableOpacity 
-                  style={styles.statBtn} 
-                  onPress={() => onLike && onLike(event.id, event.is_liked)}
-                >
-                  <Heart 
-                    size={20} 
-                    color={event.is_liked ? '#FF3B30' : textSecondary} 
-                    fill={event.is_liked ? '#FF3B30' : 'none'} 
-                  />
-                  <Text style={[styles.statText, { color: textSecondary }]}>{event.likes_count || 0}</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={{ flex: 1 }} />
-              <View style={styles.socialBtn}>
-                <Flag size={18} color={textSecondary} />
-                <Text style={[styles.socialBtnText, { color: textSecondary }]}>Publicação</Text>
-              </View>
-            </View>
-          )}
+      </View>
+
+      {/* ── Footer Pills ── */}
+      <View style={styles.footer}>
+        
+        {/* Like Pill */}
+        <TouchableOpacity style={[styles.pill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]} onPress={handleLikePress} activeOpacity={0.7}>
+          <Animated.View style={likeAnimStyle}>
+            <Heart size={18} color={event.is_liked ? "#FF1493" : "#FF69B4"} fill={event.is_liked ? "#FF1493" : "none"} />
+          </Animated.View>
+          <Text style={[styles.pillText, { color: textPrimary }]}>{event.likes_count || 0}</Text>
         </TouchableOpacity>
-      </Animated.View>
+
+        {/* Comments Pill */}
+        <TouchableOpacity style={[styles.pill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]} onPress={() => onCommentPress && onCommentPress(event.id)} activeOpacity={0.7}>
+          <MessageCircle size={18} color="#A020F0" fill="none" />
+          <Text style={[styles.pillText, { color: textPrimary }]}>{event.comments_count || 0}</Text>
+        </TouchableOpacity>
+
+        {/* Participants Pill */}
+        <TouchableOpacity style={[styles.pill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]} onPress={() => onParticipantsPress && onParticipantsPress(event.id)} activeOpacity={0.7}>
+          <Users size={18} color="#00E6B8" fill="none" />
+          <Text style={[styles.pillText, { color: textPrimary }]}>{event.participants_count || 0}</Text>
+        </TouchableOpacity>
+
+        {/* Distance / Location Pill */}
+        <TouchableOpacity style={[styles.pill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]} activeOpacity={0.7}>
+          <MapPin size={18} color="#FFD700" fill="none" />
+          <Text style={[styles.pillText, { color: textPrimary }]}>
+             {distanceKm ? distanceKm : (event.location_name ? event.location_name.split(',')[0] : 'Local')}
+          </Text>
+        </TouchableOpacity>
+
+      </View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { 
-    borderRadius: ms(25), 
-    marginHorizontal: s(16), 
-    marginVertical: vs(12), 
-    overflow: Platform.OS === 'ios' ? 'visible' : 'hidden', // Permite sombra no iOS
-    elevation: 8,
+  cardContainer: {
+    marginHorizontal: s(16),
+    marginVertical: vs(12),
+    borderRadius: 36,
+    padding: s(16),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 20,
+    elevation: 8,
   },
-  imageContainer: { 
-    width: '100%', 
-    height: vs(240), 
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: vs(12),
+  },
+  avatarWrap: {
     position: 'relative',
-    borderTopLeftRadius: ms(25),
-    borderTopRightRadius: ms(25),
+    marginRight: s(12),
+  },
+  avatar: {
+    width: ms(48),
+    height: ms(48),
+    borderRadius: ms(24),
+    borderWidth: 2,
+    borderColor: '#333',
+  },
+  statusDot: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: ms(12),
+    height: ms(12),
+    borderRadius: ms(6),
+    backgroundColor: '#FF1493',
+    borderWidth: 2,
+    borderColor: '#1C1C1E',
+  },
+  headerTextWrap: {
+    flex: 1,
+  },
+  fullName: {
+    fontFamily: 'Inter-Bold',
+    fontSize: ms(15),
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  subtitle: {
+    fontFamily: 'Inter-Medium',
+    fontSize: ms(12),
+    color: '#888888',
+    marginTop: 2,
+  },
+  moreBtn: {
+    padding: 8,
+  },
+  body: {
+    marginBottom: vs(16),
+  },
+  contentTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: ms(16),
+    color: '#FFFFFF',
+    marginBottom: vs(4),
+  },
+  contentText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: ms(14),
+    color: '#CCCCCC',
+    marginBottom: vs(12),
+    lineHeight: ms(20),
+  },
+  mediaContainer: {
+    borderRadius: 24,
     overflow: 'hidden',
+    backgroundColor: '#111',
+    position: 'relative',
   },
-  image: { 
-    width: '100%', 
-    height: '100%',
-    borderTopLeftRadius: ms(25),
-    borderTopRightRadius: ms(25),
-  },
-  imagePlaceholder: { 
-    width: '100%', 
-    height: '100%', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  imagePlaceholderText: { 
-    fontSize: ms(40), 
-    fontWeight: '900', 
-    color: '#fff' 
-  },
-  overlay: { 
-    ...StyleSheet.absoluteFillObject 
-  },
-  countdownBadge: { 
-    position: 'absolute', 
-    top: vs(12), 
-    right: s(12), 
-    paddingHorizontal: s(12), 
-    paddingVertical: vs(6), 
-    borderRadius: ms(20), 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: s(6), 
-    zIndex: 10 
-  },
-  countdownText: { 
-    color: '#fff', 
-    fontSize: ms(11), 
-    fontWeight: '900' 
-  },
-  catBadge: { 
-    position: 'absolute', 
-    top: vs(12), 
-    left: s(12), 
-    backgroundColor: 'rgba(0,0,0,0.6)', 
-    paddingHorizontal: s(10), 
-    paddingVertical: vs(6), 
-    borderRadius: ms(15), 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: s(5), 
-    borderWidth: 1, 
-    borderColor: 'rgba(255,255,255,0.1)' 
-  },
-  catIcon: { 
-    fontSize: ms(14) 
-  },
-  catText: { 
-    color: '#fff', 
-    fontSize: ms(11), 
-    fontWeight: '700' 
-  },
-  dateBadge: { 
-    position: 'absolute', 
-    bottom: vs(12), 
-    right: s(12), 
-    backgroundColor: 'rgba(0,0,0,0.8)', 
-    padding: ms(10), 
-    borderRadius: ms(12), 
-    alignItems: 'center', 
-    minWidth: s(55), 
-    borderWidth: 1.5, 
-    borderColor: '#00d9ff' 
-  },
-  dateDay: { 
-    fontSize: ms(22), 
-    fontWeight: '900', 
-    color: '#00d9ff', 
-    lineHeight: vs(24) 
-  },
-  dateMonth: { 
-    fontSize: ms(9), 
-    fontWeight: 'bold', 
-    color: '#fff' 
-  },
-  titleBox: { 
-    position: 'absolute', 
-    bottom: vs(15), 
-    left: s(55), 
-    right: s(75) 
-  },
-  title: { 
-    fontSize: ms(24), 
-    fontWeight: '900', 
-    color: '#fff', 
-    textShadowColor: 'rgba(0,0,0,0.5)', 
-    textShadowRadius: 8,
-    textShadowOffset: { width: 0, height: 2 },
-  },
-  content: { 
-    padding: ms(18) 
-  },
-  creatorRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    marginBottom: vs(15), 
-    gap: s(10) 
-  },
-  avatar: { 
-    width: s(26), 
-    height: s(26), 
-    borderRadius: ms(13), 
-    borderWidth: 1.5, 
-    borderColor: '#00d9ff' 
-  },
-  avatarPlaceholder: {
-    width: s(26),
-    height: s(26),
-    borderRadius: ms(13),
+  dateBadge: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: s(50),
+    height: s(50),
+    borderRadius: ms(12),
     borderWidth: 1.5,
+    borderColor: '#00D9FF',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#00D9FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 5,
   },
-  avatarText: {
-    color: '#fff',
+  dateBadgeDay: {
+    fontSize: ms(20),
+    fontWeight: '900',
+    lineHeight: ms(22),
+  },
+  dateBadgeMonth: {
     fontSize: ms(11),
-    fontWeight: 'bold',
-  },
-  creatorName: { 
-    fontSize: ms(13), 
-    fontWeight: '700', 
-    flex: 1 
-  },
-  priceTag: { 
-    backgroundColor: 'rgba(52, 199, 89, 0.1)', 
-    paddingHorizontal: s(10), 
-    paddingVertical: vs(4), 
-    borderRadius: ms(10) 
-  },
-  priceText: { 
-    color: '#34C759', 
-    fontWeight: '900', 
-    fontSize: ms(14) 
-  },
-  infoGrid: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: s(15), 
-    paddingTop: vs(12), 
-    borderTopWidth: 1, 
-  },
-  infoItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: s(6) 
-  },
-  infoValue: { 
-    fontSize: ms(14), 
-    fontWeight: '600' 
-  },
-  publicationTitle: {
-    fontSize: ms(18),
     fontWeight: '800',
-    marginBottom: vs(12),
-    lineHeight: vs(24),
   },
-  creatorHandle: {
-    fontSize: ms(12),
-    marginTop: vs(2),
-  },
-  socialActions: {
+  liveBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: vs(15),
-    borderTopWidth: 1,
-    marginTop: vs(5),
+    backgroundColor: 'rgba(255,20,147,0.8)',
+    paddingHorizontal: s(8),
+    paddingVertical: vs(4),
+    borderRadius: ms(8),
+    borderWidth: 1,
+    borderColor: '#FF1493',
   },
-  socialBtn: {
+  liveDot: {
+    width: s(6),
+    height: s(6),
+    borderRadius: s(3),
+    backgroundColor: '#FFF',
+    marginRight: s(4),
+  },
+  liveText: {
+    color: '#FFF',
+    fontSize: ms(10),
+    fontWeight: '800',
+  },
+  footer: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     gap: s(8),
   },
-  socialBtnText: {
+  pill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 20,
+    paddingVertical: vs(10),
+    gap: s(6),
+  },
+  pillText: {
+    fontFamily: 'Inter-SemiBold',
     fontSize: ms(13),
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  eventStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(15),
-  },
-  statBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(5),
-  },
-  statText: {
-    fontSize: ms(14),
-    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

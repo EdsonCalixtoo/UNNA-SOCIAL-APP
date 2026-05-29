@@ -149,7 +149,8 @@ export default function Onboarding() {
     } finally {
       await refreshProfile();
       setSaving(false);
-      router.replace('/(tabs)');
+      // router.replace('/(tabs)'); // AuthGuard will handle this
+
     }
   };
 

@@ -15,13 +15,13 @@ export default function AuthIndex() {
       if (session && profile) {
         if (!profile.onboarding_completed) {
           router.replace('/(auth)/onboarding');
+        } else if (profile.account_type === 'business') {
+          router.replace('/(business-tabs)' as any);
         } else {
           router.replace('/(tabs)');
         }
       } else if (session) {
-        setTimeout(() => {
-          router.replace('/(tabs)');
-        }, 500);
+        // Wait for profile to load
       } else {
         router.replace('/(auth)/login');
       }

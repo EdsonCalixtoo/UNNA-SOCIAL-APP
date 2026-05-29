@@ -162,7 +162,7 @@ export default function Login() {
         shakeError();
         setLoading(false);
       } else {
-        router.replace('/(tabs)');
+        // Let AuthGuard handle the redirect based on profile type
       }
     } catch (err: any) {
       setError('Erro de conexão. Verifique sua internet.');
@@ -401,25 +401,27 @@ export default function Login() {
                 )}
               </TouchableOpacity>
 
-              {/* Apple Button */}
-              <TouchableOpacity
-                style={[styles.socialBtn, appleLoading && { opacity: 0.7 }]}
-                onPress={handleAppleLogin}
-                disabled={loading || googleLoading || appleLoading}
-                activeOpacity={0.8}
-              >
-                {appleLoading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <Image 
-                      source={{ uri: 'https://cdn-icons-png.flaticon.com/512/0/747.png' }} 
-                      style={[styles.socialIcon, { tintColor: '#fff' }]} 
-                    />
-                    <Text style={[styles.socialBtnText, { fontSize: fs(14) }]}>Apple</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {/* Apple Button (Only iOS) */}
+              {Platform.OS === 'ios' && (
+                <TouchableOpacity
+                  style={[styles.socialBtn, appleLoading && { opacity: 0.7 }]}
+                  onPress={handleAppleLogin}
+                  disabled={loading || googleLoading || appleLoading}
+                  activeOpacity={0.8}
+                >
+                  {appleLoading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Image 
+                        source={{ uri: 'https://cdn-icons-png.flaticon.com/512/0/747.png' }} 
+                        style={[styles.socialIcon, { tintColor: '#fff' }]} 
+                      />
+                      <Text style={[styles.socialBtnText, { fontSize: fs(14) }]}>Apple</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Register link */}

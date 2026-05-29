@@ -150,11 +150,15 @@ export default function EditProfile() {
 
       if (!result.canceled && result.assets[0]) {
         setSelectedImageUri(result.assets[0].uri);
-        setShowImageEditor(true);
+        setShowImageSourceModal(false);
+        setTimeout(() => {
+          setShowImageEditor(true);
+        }, 400);
+      } else {
+        setShowImageSourceModal(false);
       }
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível abrir a câmera');
-    } finally {
       setShowImageSourceModal(false);
     }
   };
@@ -176,11 +180,15 @@ export default function EditProfile() {
 
       if (!result.canceled && result.assets[0]) {
         setSelectedImageUri(result.assets[0].uri);
-        setShowImageEditor(true);
+        setShowImageSourceModal(false);
+        setTimeout(() => {
+          setShowImageEditor(true);
+        }, 400);
+      } else {
+        setShowImageSourceModal(false);
       }
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível selecionar a imagem');
-    } finally {
       setShowImageSourceModal(false);
     }
   };
@@ -1362,19 +1370,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
-    padding: 20,
   },
   modalContent: {
     borderRadius: 30,
     padding: 24,
     elevation: 20,
+    marginHorizontal: 20,
   },
   modalContentLarge: {
-    borderRadius: 30,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
     elevation: 20,
     width: '100%',
-    height: '80%',
+    height: '85%',
     position: 'absolute',
     bottom: 0,
   },

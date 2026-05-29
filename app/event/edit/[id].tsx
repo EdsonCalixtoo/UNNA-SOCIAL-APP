@@ -93,7 +93,10 @@ export default function EditEvent() {
   const [capturedMedia, setCapturedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedSubcategory, setSelectedSubcategory] = useState('');
-  const [eventDate, setEventDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const getLocalDateString = (d: Date = new Date()) => {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [eventDate, setEventDate] = useState(() => getLocalDateString());
   const [eventTime, setEventTime] = useState('19:00');
   const [locationName, setLocationName] = useState('');
   const [locationNumber, setLocationNumber] = useState('');
@@ -127,7 +130,7 @@ export default function EditEvent() {
       setDescription(data.description);
       setSelectedCategory(data.category_id);
       setSelectedSubcategory(data.subcategory_id || '');
-      setEventDate(data.event_date || new Date().toISOString().split('T')[0]);
+      setEventDate(data.event_date || getLocalDateString());
       setEventTime(data.event_time ? data.event_time.slice(0, 5) : '19:00');
       if (data.location_name && data.location_name.includes(',')) {
         const parts = data.location_name.split(',');
@@ -628,7 +631,7 @@ export default function EditEvent() {
             display="default"
             onChange={(e, d) => {
               setShowDatePicker(false);
-              if (d) setEventDate(d.toISOString().split('T')[0]);
+              if (d) setEventDate(getLocalDateString(d));
             }}
           />
         )

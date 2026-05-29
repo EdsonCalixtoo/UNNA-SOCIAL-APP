@@ -6,6 +6,7 @@
   },
   "build": {
     "production": {
+      "channel": "production",
       "ios": {
         "distribution": "store"
       },
@@ -15,6 +16,7 @@
       }
     },
     "preview": {
+      "channel": "preview",
       "ios": {
         "distribution": "internal"
       },
@@ -24,6 +26,7 @@
       }
     },
     "development": {
+      "channel": "development",
       "developmentClient": true,
       "distribution": "internal"
     }

@@ -17,7 +17,7 @@ import {
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, AtSign, Mail, Lock, Eye, EyeOff, CircleAlert as AlertCircle, ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react-native';
+import { User, AtSign, Mail, Lock, Eye, EyeOff, CircleAlert as AlertCircle, ArrowLeft, ArrowRight, CheckCircle, Briefcase } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import Animated, { 
@@ -54,6 +54,7 @@ export default function Register() {
   const [username, setUsername] = useState('');
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
+  const [accountType, setAccountType] = useState<'user' | 'business'>('user');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const usernameTimer = useRef<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -161,7 +162,7 @@ export default function Register() {
     setError('');
 
     try {
-      const { error: signUpError, sessionCreated } = await signUp(email, password, username, fullName);
+      const { error: signUpError, sessionCreated } = await signUp(email, password, username, fullName, accountType);
       if (signUpError) {
         const msg = signUpError.message || 'Erro ao criar conta';
         if (msg.includes('already registered')) {
@@ -172,9 +173,7 @@ export default function Register() {
         shakeError();
         setLoading(false);
       } else {
-        if (sessionCreated) {
-          router.replace('/(auth)/onboarding');
-        } else {
+        if (!sessionCreated) {
           setLoading(false);
           setShowVerificationAlert(true);
         }
@@ -255,6 +254,8 @@ export default function Register() {
             ) : null}
 
             <AnimatedView entering={FadeInUp.delay(300).springify()} style={styles.card}>
+
+
               <View style={[styles.inputGroup, { marginBottom: sp(14) }]}>
                 <Text style={[styles.label, { fontSize: fs(11) }]}>NOME COMPLETO</Text>
                 <View style={[styles.inputRow, nameFocused && styles.inputRowFocused]}>
@@ -427,6 +428,10 @@ const styles = StyleSheet.create({
   input: { flex: 1, color: '#fff', marginLeft: 10, paddingVertical: 10, fontWeight: '500' },
   eyeBtn: { padding: 6 },
   btn: { borderRadius: 16, overflow: 'hidden' },
+  typeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.02)' },
+  typeBtnActive: { borderColor: '#ff1493', backgroundColor: 'rgba(255,20,147,0.15)' },
+  typeBtnText: { color: '#666', fontWeight: '700', fontSize: 13 },
+  typeBtnTextActive: { color: '#fff' },
   btnDisabled: { opacity: 0.6 },
   btnGradient: { alignItems: 'center', justifyContent: 'center' },
   btnContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },

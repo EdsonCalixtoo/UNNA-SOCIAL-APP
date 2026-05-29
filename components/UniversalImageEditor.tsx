@@ -183,8 +183,8 @@ export default function UniversalImageEditor({ visible, imageUri, onClose, onSav
               <Image 
                 source={{ uri: imageUri }} 
                 style={{
-                  width: originalSize.width > originalSize.height ? VIEWPORT_SIZE * (originalSize.width / originalSize.height) : VIEWPORT_SIZE,
-                  height: originalSize.width > originalSize.height ? VIEWPORT_SIZE : VIEWPORT_SIZE / (originalSize.width / originalSize.height),
+                  width: originalSize.height > 0 ? (originalSize.width > originalSize.height ? VIEWPORT_SIZE * (originalSize.width / originalSize.height) : VIEWPORT_SIZE) : VIEWPORT_SIZE,
+                  height: originalSize.width > 0 ? (originalSize.width > originalSize.height ? VIEWPORT_SIZE : VIEWPORT_SIZE / (originalSize.width / originalSize.height)) : VIEWPORT_SIZE,
                 }} 
                 resizeMode="cover" 
               />

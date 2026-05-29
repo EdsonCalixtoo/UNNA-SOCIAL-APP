@@ -47,6 +47,7 @@ interface Message {
     full_name: string;
     username: string;
   };
+  reactions?: any[];
 }
 
 interface OtherUser {
@@ -821,7 +822,8 @@ export default function ChatScreen() {
         .from('messages')
         .select(`
           *,
-          sender:profiles(full_name, username)
+          sender:profiles(full_name, username),
+          reactions:message_reactions(*)
         `)
         .in('conversation_id', conversationIdsToFetch)
         .order('created_at', { ascending: true });
@@ -1460,6 +1462,54 @@ export default function ChatScreen() {
     }
   };
 
+  const handleReaction = async (messageId: string, emoji: string) => {
+    try {
+      hapticFeedback.light();
+      setMessageActionModalVisible(false);
+
+      const existingReaction = selectedMessageForAction?.reactions?.find(r => r.user_id === user?.id && r.emoji === emoji);
+
+      if (existingReaction) {
+        // Remover reação
+        await supabase.from('message_reactions').delete().eq('id', existingReaction.id);
+        setMessages(prev => prev.map(m => {
+          if (m.id === messageId) {
+            return { ...m, reactions: m.reactions?.filter(r => r.id !== existingReaction.id) || [] };
+          }
+          return m;
+        }));
+      } else {
+        // Adicionar reação
+        const tempId = `temp-${Date.now()}`;
+        const newReaction = { id: tempId, message_id: messageId, user_id: user?.id, emoji, created_at: new Date().toISOString() };
+        
+        setMessages(prev => prev.map(m => {
+          if (m.id === messageId) {
+            return { ...m, reactions: [...(m.reactions || []), newReaction] };
+          }
+          return m;
+        }));
+
+        const { data, error } = await supabase.from('message_reactions').insert({
+          message_id: messageId,
+          user_id: user?.id,
+          emoji
+        }).select().single();
+
+        if (!error && data) {
+          setMessages(prev => prev.map(m => {
+            if (m.id === messageId) {
+              return { ...m, reactions: m.reactions?.map(r => r.id === tempId ? data : r) || [] };
+            }
+            return m;
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('Error handling reaction:', err);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const today = new Date();
@@ -1790,12 +1840,29 @@ export default function ChatScreen() {
                           {message.read ? (
                             <CheckCheck size={14} color="#004cd9" strokeWidth={2.5} />
                           ) : (
-                            <CheckCheck size={14} color="rgba(0, 0, 0, 0.45)" />
+                            <Check size={14} color="rgba(0, 0, 0, 0.45)" strokeWidth={2.5} />
                           )}
                         </View>
                       )}
                     </View>
                   </Pressable>
+                  
+                  {/* Reactions */}
+                  {message.reactions && message.reactions.length > 0 && (
+                    <View style={[styles.reactionsContainer, isMyMessage ? { right: 4, alignItems: 'flex-end' } : { left: 4, alignItems: 'flex-start' }]}>
+                      {Object.entries(
+                        message.reactions.reduce((acc, curr) => {
+                          acc[curr.emoji] = (acc[curr.emoji] || 0) + 1;
+                          return acc;
+                        }, {} as Record<string, number>)
+                      ).map(([emoji, count]) => (
+                        <View key={emoji} style={[styles.reactionPill, { backgroundColor: isDark ? '#2c2c2e' : '#fff', borderColor: isDark ? '#3a3a3c' : '#E5E5EA' }]}>
+                          <Text style={styles.reactionEmoji}>{emoji}</Text>
+                          {Number(count) > 1 && <Text style={[styles.reactionCount, { color: textSecondary }]}>{Number(count)}</Text>}
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               </View>
             );
@@ -2418,6 +2485,31 @@ export default function ChatScreen() {
               <View style={[styles.dragIndicator, { backgroundColor: isDark ? '#333' : '#e0e0e0' }]} />
               
               <Text style={[styles.actionSheetTitle, { color: textPrimary }]}>Opções de Mensagem</Text>
+              
+              {/* Quick Emojis */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 16 }}>
+                {['👍', '❤️', '😂', '😮', '😢', '🔥'].map((emoji) => {
+                  const hasReacted = selectedMessageForAction?.reactions?.some((r: any) => r.user_id === user?.id && r.emoji === emoji);
+                  return (
+                    <TouchableOpacity
+                      key={emoji}
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        backgroundColor: hasReacted ? accent + '40' : (isDark ? 'rgba(255,255,255,0.05)' : '#f0f0f2'),
+                        borderWidth: hasReacted ? 1 : 0,
+                        borderColor: hasReacted ? accent : 'transparent',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      onPress={() => handleReaction(selectedMessageForAction.id, emoji)}
+                    >
+                      <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               
               <View style={styles.actionSheetButtons}>
                 {/* 1. Responder */}
@@ -3442,5 +3534,34 @@ const styles = StyleSheet.create({
   },
   replyPreviewText: {
     fontSize: 12,
+  },
+  reactionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    position: 'absolute',
+    bottom: -12,
+    zIndex: 10,
+  },
+  reactionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 2,
+  },
+  reactionEmoji: {
+    fontSize: 12,
+  },
+  reactionCount: {
+    fontSize: 10,
+    marginLeft: 4,
+    fontWeight: '700',
   },
 });

@@ -4,6 +4,7 @@ import {
   ActivityIndicator, Alert, Dimensions, Platform, StatusBar, Linking,
   Modal, Pressable
 } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { 
@@ -15,6 +16,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
+import { notifyEventPresence } from '@/lib/notifications';
 import { EventShareModal } from '@/components/EventShareModal';
 import { EventParticipantsModal } from '@/components/EventParticipantsModal';
 import { EventTicketModal } from '@/components/EventTicketModal';
@@ -25,7 +27,7 @@ import { ActionFeedback } from '@/components/ActionFeedback';
 import { offlineService } from '@/services/offlineService';
 import Animated, { 
   useSharedValue, useAnimatedStyle, useAnimatedScrollHandler,
-  interpolate, Extrapolation, withSpring, runOnJS
+  interpolate, Extrapolation, withSpring
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -101,7 +103,6 @@ export default function EventDetails() {
   const [ticketModalVisible, setTicketModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  const [scrollEnabledJS, setScrollEnabledJS] = useState(false);
 
   const translateY = useSharedValue(SNAP_MIDDLE); // Começa no meio, com o botão visível
   const scrollY = useSharedValue(0);
@@ -223,6 +224,10 @@ export default function EventDetails() {
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await supabase.from('event_participants').insert({ event_id: id as string, user_id: user.id });
+        
+        // Notificar dono do evento e os seguidores (FOMO)
+        notifyEventPresence(id as string, event.title, user.id, event.creator_id);
+
         setRsvpStatus('going'); 
         soundService.play('success');
         setFeedback({
@@ -312,56 +317,34 @@ export default function EventDetails() {
     },
   });
 
+  // Pan apenas no handle — sem conflito com scroll
   const panGesture = Gesture.Pan()
     .onChange((e) => {
-      // Se estamos no topo e fazendo scroll no conteúdo (swipe para cima), não move o painel
-      if (translateY.value <= SNAP_TOP && scrollY.value > 0 && e.changeY < 0) {
-        return;
-      }
-      
       translateY.value = Math.min(SNAP_BOTTOM, Math.max(SNAP_TOP, translateY.value + e.changeY));
-
-      // Se o painel começar a descer do topo, desativa o scroll interno imediatamente
-      if (e.changeY > 0 && scrollEnabledJS && translateY.value > SNAP_TOP + 5) {
-        runOnJS(setScrollEnabledJS)(false);
-      }
     })
     .onEnd((e) => {
-      const isSwipingUp = e.velocityY < -500;
-      const isSwipingDown = e.velocityY > 500;
-      
+      const isSwipingUp = e.velocityY < -300;
+      const isSwipingDown = e.velocityY > 300;
+
       let closest;
       if (isSwipingUp) {
-        // Se jogou pra cima, vai pro próximo snap acima
         closest = translateY.value > SNAP_MIDDLE ? SNAP_MIDDLE : SNAP_TOP;
       } else if (isSwipingDown) {
-        // Se jogou pra baixo, vai pro próximo snap abaixo
         closest = translateY.value < SNAP_MIDDLE ? SNAP_MIDDLE : SNAP_BOTTOM;
       } else {
-        // Se soltou devagar, vai pro mais próximo
-        const target = translateY.value + e.velocityY * 0.15;
+        const target = translateY.value + e.velocityY * 0.1;
         const snaps = [SNAP_TOP, SNAP_MIDDLE, SNAP_BOTTOM];
-        closest = snaps.reduce((prev, curr) => 
+        closest = snaps.reduce((prev, curr) =>
           Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev
         );
       }
 
-      translateY.value = withSpring(closest, { 
-        damping: 24, 
-        stiffness: 200, 
-        mass: 0.8 
+      translateY.value = withSpring(closest, {
+        damping: 22,
+        stiffness: 180,
+        mass: 0.8
       });
-
-      if (closest === SNAP_TOP) {
-        runOnJS(setScrollEnabledJS)(true);
-      } else {
-        runOnJS(setScrollEnabledJS)(false);
-      }
     });
-
-  // Torna os gestos de drag e scroll simultâneos para que não haja bloqueio nem lag
-  const nativeScroll = Gesture.Native();
-  const composedGesture = Gesture.Simultaneous(panGesture, nativeScroll);
 
   const backgroundStyle = useAnimatedStyle(() => {
     // Parallax real sem invadir a tela
@@ -428,12 +411,6 @@ export default function EventDetails() {
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
         <EventShareModal visible={shareModalVisible} onClose={() => setShareModalVisible(false)} event={event} />
         <EventParticipantsModal visible={participantsModalVisible} onClose={() => setParticipantsModalVisible(false)} eventId={id as string} />
-        <EventTicketModal visible={ticketModalVisible} onClose={() => setTicketModalVisible(false)} event={event} user={user} />
-        <QRScannerModal 
-          visible={showScannerModal} 
-          onClose={() => setShowScannerModal(false)} 
-          eventId={id as string} 
-        />
         <ActionFeedback 
           {...feedback} 
           onClose={() => setFeedback({ ...feedback, visible: false })} 
@@ -612,22 +589,25 @@ export default function EventDetails() {
             </View>
           </View>
 
-          {/* DRAGGABLE SHEET */}
-          <GestureDetector gesture={composedGesture}>
-            <Animated.View style={panelStyle}>
-              
+          {/* PAINEL DESLIZANTE — sem GestureDetector no painel todo */}
+          <Animated.View style={panelStyle}>
+
+            {/* HANDLE: Único área que responde ao gesto de arrastar o painel */}
+            <GestureDetector gesture={panGesture}>
               <View style={styles.dragHandleArea}>
                 <View style={styles.dragIndicator} />
               </View>
-              
-              <Animated.ScrollView 
-                scrollEnabled={scrollEnabledJS}
-                onScroll={scrollHandler}
-                scrollEventThrottle={16}
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-                contentContainerStyle={{ paddingBottom: 140 }} // Permite scroll até o fundo sem cortar
-              >
+            </GestureDetector>
+
+            {/* SCROLL: completamente independente, sempre ativo */}
+            <Animated.ScrollView
+              scrollEnabled={true}
+              onScroll={scrollHandler}
+              scrollEventThrottle={16}
+              showsVerticalScrollIndicator={false}
+              bounces={true}
+              contentContainerStyle={{ paddingBottom: 220 }}
+            >
                 <View style={styles.mainContent}>
                   <MemoizedCard style={{ backgroundColor: backgroundSecondary }} onPress={() => router.push(`/profile/${event.profiles?.id}`)}>
                     <View style={styles.row}>
@@ -661,13 +641,43 @@ export default function EventDetails() {
                   )}
 
                   {event.location_name && (
-                    <MemoizedCard style={{ backgroundColor: backgroundSecondary, flexDirection: 'row', gap: 16 }} onPress={openMap}>
-                      <MapPin size={24} color="#34C759" />
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.label, { color: textPrimary, opacity: 0.5 }]}>LOCALIZAÇÃO</Text>
-                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '500', lineHeight: 20, marginTop: 4 }}>{event.location_name}</Text>
+                    <MemoizedCard style={{ backgroundColor: backgroundSecondary, padding: 0, overflow: 'hidden' }} onPress={openMap}>
+                      <View style={{ padding: 16, flexDirection: 'row', gap: 16, alignItems: 'center' }}>
+                        <MapPin size={24} color="#34C759" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.label, { color: textPrimary, opacity: 0.5 }]}>LOCALIZAÇÃO</Text>
+                          <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '500', lineHeight: 20, marginTop: 4 }}>{event.location_name}</Text>
+                        </View>
+                        <Navigation2 size={18} color={accent} />
                       </View>
-                      <Navigation2 size={18} color={accent} />
+                      {event.latitude && event.longitude && (
+                        <View style={{ width: '100%', height: 120, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }} pointerEvents="none">
+                          <MapView
+                            style={{ flex: 1 }}
+                            initialRegion={{
+                              latitude: event.latitude,
+                              longitude: event.longitude,
+                              latitudeDelta: 0.005,
+                              longitudeDelta: 0.005,
+                            }}
+                            scrollEnabled={false}
+                            zoomEnabled={false}
+                            pitchEnabled={false}
+                            rotateEnabled={false}
+                            userInterfaceStyle={isDark ? "dark" : "light"}
+                          >
+                            <Marker 
+                              coordinate={{ latitude: event.latitude, longitude: event.longitude }}
+                              pinColor={accent}
+                            />
+                          </MapView>
+                          <LinearGradient 
+                            colors={isDark ? ['transparent', 'rgba(0,0,0,0.8)'] : ['transparent', 'rgba(255,255,255,0.8)']} 
+                            style={StyleSheet.absoluteFillObject}
+                            pointerEvents="none"
+                          />
+                        </View>
+                      )}
                     </MemoizedCard>
                   )}
 
@@ -711,6 +721,43 @@ export default function EventDetails() {
                     </MemoizedCard>
                   )}
 
+                  {event.profiles?.whatsapp_number && (
+                    <MemoizedCard 
+                      style={{ 
+                        backgroundColor: '#25D366' + '20', 
+                        borderColor: '#25D366' + '40',
+                        borderWidth: 1.5,
+                        flexDirection: 'row', 
+                        gap: 16, 
+                        alignItems: 'center' 
+                      }} 
+                      onPress={async () => {
+                        try {
+                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          const msg = encodeURIComponent(`Olá! Vi o evento "${event.title}" no UNNA e gostaria de mais informações / reservar.`);
+                          const phone = event.profiles.whatsapp_number.replace(/\D/g, '');
+                          const url = `whatsapp://send?phone=55${phone}&text=${msg}`;
+                          
+                          const supported = await Linking.canOpenURL(url);
+                          if (supported) {
+                            await Linking.openURL(url);
+                          } else {
+                            Alert.alert('Erro', 'Você não tem o WhatsApp instalado.');
+                          }
+                        } catch (error) {
+                          Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+                        }
+                      }}
+                    >
+                      <MessageCircle size={24} color="#25D366" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: '#25D366', opacity: 0.9, fontWeight: '900' }]}>RESERVAR / DÚVIDAS</Text>
+                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '700', marginTop: 4 }}>Chamar produtor no WhatsApp</Text>
+                      </View>
+                      <ChevronRight size={18} color="#25D366" />
+                    </MemoizedCard>
+                  )}
+
                   {!isPublication && (
                     <EventPresenceList eventId={id as string} />
                   )}
@@ -726,24 +773,22 @@ export default function EventDetails() {
                     <Text style={[styles.secTitle, { color: textPrimary }]}>
                       {isPublication ? 'Descrição' : 'Sobre o Evento'}
                     </Text>
-                    <Text style={[styles.desc, { color: textSecondary }]}>{event.description}</Text>
+                    <Text style={[styles.desc, { color: textSecondary }]} selectable>
+                      {event.description}
+                    </Text>
                   </View>
                 </View>
               </Animated.ScrollView>
-            </Animated.View>
-          </GestureDetector>
+          </Animated.View>
 
           {/* FOOTER TOTALMENTE INTEGRADO E ANIMADO */}
           {/* Fica fora do panelStyle para ancorar na base da tela, mas usa bottomBarStyle para afundar junto com o painel */}
           <Animated.View style={[styles.bottomBar, bottomBarStyle, { backgroundColor: backgroundPrimary, borderTopColor: 'rgba(150,150,150,0.1)' }]}>
             {user?.id === event.creator_id ? (
               <>
-                <TouchableOpacity onPress={() => setShowScannerModal(true)} style={[styles.mainBtn, { backgroundColor: accent }]}>
-                  <Scan size={20} color="#fff" />
-                  <Text style={[styles.btnText, { color: '#fff' }]}>Escanear Ingressos</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.chatBtn} onPress={() => router.push(`/event/${id}/chat`)}>
-                  <MessageCircle size={24} color={accent} />
+                <TouchableOpacity onPress={() => router.push(`/event/${id}/chat`)} style={[styles.mainBtn, { backgroundColor: accent }]}>
+                  <MessageCircle size={20} color="#fff" />
+                  <Text style={[styles.btnText, { color: '#fff' }]}>Chat do Evento</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -757,14 +802,7 @@ export default function EventDetails() {
                   </Text>
                 </TouchableOpacity>
                 
-                {rsvpStatus === 'going' && event.type === 'event' && (
-                  <TouchableOpacity 
-                    style={[styles.chatBtn, { backgroundColor: '#8000ff' }]} 
-                    onPress={() => setTicketModalVisible(true)}
-                  >
-                    <Ticket size={24} color="#fff" />
-                  </TouchableOpacity>
-                )}
+                {/* Ticket modal button removed per user request */}
 
                 <TouchableOpacity style={styles.chatBtn} onPress={() => router.push(`/event/${id}/chat`)}><MessageCircle size={24} color={accent} /></TouchableOpacity>
               </>
@@ -788,7 +826,7 @@ const styles = StyleSheet.create({
   catTag: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, alignSelf: 'flex-start', marginBottom: 8 },
   catText: { color: '#fff', fontWeight: '800', fontSize: 12 },
   heroTitle: { color: '#fff', fontSize: 34, fontWeight: '900', letterSpacing: -1 },
-  dragHandleArea: { width: '100%', height: 40, justifyContent: 'center', alignItems: 'center', zIndex: 100 },
+  dragHandleArea: { width: '100%', height: 52, justifyContent: 'center', alignItems: 'center', zIndex: 100 },
   dragIndicator: { width: 40, height: 5, backgroundColor: 'rgba(150,150,150,0.3)', borderRadius: 3 },
   mainContent: { padding: 24, paddingTop: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -804,7 +842,7 @@ const styles = StyleSheet.create({
   val: { fontSize: 15, fontWeight: '800' },
   section: { marginTop: 10 },
   secTitle: { fontSize: 19, fontWeight: '900', marginBottom: 12 },
-  desc: { fontSize: 16, lineHeight: 26 },
+  desc: { fontSize: 16, lineHeight: 28, flexWrap: 'wrap' },
   bottomBar: { padding: 20, paddingBottom: Platform.OS === 'ios' ? 34 : 20, flexDirection: 'row', gap: 12, borderTopWidth: 1 },
   mainBtn: { flex: 1, height: 60, borderRadius: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '900' },

@@ -10,9 +10,14 @@ import {
   Alert,
   ActivityIndicator,
   FlatList,
+  Linking,
 } from 'react-native';
+import ViewShot from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
+import * as Clipboard from 'expo-clipboard';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   X,
@@ -52,11 +57,13 @@ export function EventShareModal({
   event,
 }: EventShareModalProps) {
   const { user } = useAuth();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const [copied, setCopied] = useState(false);
   const [groupContacts, setGroupContacts] = useState<any[]>([]);
   const [userContacts, setUserContacts] = useState<any[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [sharedIds, setSharedIds] = useState<string[]>([]);
+  const viewShotRef = React.useRef<ViewShot>(null);
 
   React.useEffect(() => {
     if (visible && user) {
@@ -237,7 +244,8 @@ export function EventShareModal({
 
   const handleShare = async () => {
     try {
-      const shareMessage = `🎉 *${event.title}*\n📅 ${formatDate(event.event_date)} em ${event.location_name}\n\nConfira no UNИA: https://unna.app/event/${event.id}`;
+      const shareMessage = `🚀 *${event.title}*\n\n📅 Data: ${formatDate(event.event_date)}\n⏰ Horário: ${formatTime(event.event_time)}\n📍 Local: ${event.location_name}\n\nGaranta sua vaga e confira no app UNИA!\n👉 https://unna.app/event/${event.id}`;
+      
       await Share.share({
         message: shareMessage,
         title: event.title,
@@ -246,16 +254,52 @@ export function EventShareModal({
       Alert.alert('Erro', 'Não foi possível compartilhar');
     }
   };
+  
+  const handleShareImage = async () => {
+    try {
+      if (viewShotRef.current && viewShotRef.current.capture) {
+        const uri = await viewShotRef.current.capture();
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            dialogTitle: 'Compartilhar Ticket do Evento',
+            mimeType: 'image/png',
+            UTI: 'public.png',
+          });
+        }
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível compartilhar a imagem');
+    }
+  };
 
   const handleCopyLink = async () => {
     const link = `https://unna.app/event/${event.id}`;
+    await Clipboard.setStringAsync(link);
     Alert.alert('Copiado!', 'Link do evento copiado');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleWhatsAppShare = async () => {
+    const shareMessage = `🚀 *${event.title}*\n\n📅 Data: ${formatDate(event.event_date)}\n⏰ Horário: ${formatTime(event.event_time)}\n📍 Local: ${event.location_name}\n\nGaranta sua vaga e confira os detalhes no app UNИA!\n👉 https://unna.app/event/${event.id}`;
+    const url = `whatsapp://send?text=${encodeURIComponent(shareMessage)}`;
+    
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        // Fallback to normal share if WhatsApp is not installed
+        handleShare();
+      }
+    } catch (err) {
+      handleShare();
+    }
+  };
+
   const shareOptions = [
-    { id: 'whatsapp', title: 'WhatsApp', icon: MessageCircle, color: '#25D366', onPress: handleShare },
+    { id: 'whatsapp', title: 'WhatsApp', icon: MessageCircle, color: '#25D366', onPress: handleWhatsAppShare },
+    { id: 'image', title: 'Salvar/Enviar Ticket', icon: Calendar, color: '#ff1493', onPress: handleShareImage },
     { id: 'copy', title: 'Copiar Link', icon: Copy, color: '#00d9ff', onPress: handleCopyLink },
     { id: 'more', title: 'Mais', icon: Share2, color: '#FF9500', onPress: handleShare },
   ];
@@ -264,46 +308,89 @@ export function EventShareModal({
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
-        <View style={styles.modalContent}>
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Compartilhar Evento</Text>
+        <View style={[styles.modalContent, { backgroundColor: backgroundPrimary }]}>
+          <View style={[styles.header, { borderBottomColor: isDark ? '#222' : 'rgba(0,0,0,0.05)' }]}>
+            <Text style={[styles.headerTitle, { color: textPrimary }]}>Compartilhar Evento</Text>
             <TouchableOpacity onPress={onClose}>
-              <X size={28} color="#fff" />
+              <X size={28} color={textPrimary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.eventCard}>
-              {event.image_url ? (
-                <Image source={{ uri: event.image_url }} style={styles.eventImage} resizeMode="cover" />
-              ) : (
-                <LinearGradient colors={['#00d9ff', '#ff1493']} style={styles.eventImagePlaceholder}>
-                  <Text style={styles.placeholderText}>UNИA</Text>
-                </LinearGradient>
-              )}
-              <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
-                <View style={styles.detailsContainer}>
-                  <View style={styles.detailItem}>
-                    <Calendar size={14} color="#00d9ff" />
-                    <Text style={styles.detailText}>{formatDate(event.event_date)}</Text>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <Clock size={14} color="#FF9500" />
-                    <Text style={styles.detailText}>{formatTime(event.event_time)}</Text>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <MapPin size={14} color="#34C759" />
-                    <Text style={styles.detailText} numberOfLines={1}>{event.location_name}</Text>
+            <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
+              <View style={styles.premiumTicketCard}>
+                {/* Background Image / Blur */}
+                {event.image_url ? (
+                  <Image source={{ uri: event.image_url }} style={styles.ticketBgImage} resizeMode="cover" blurRadius={3} />
+                ) : (
+                  <LinearGradient colors={['#111', '#222']} style={styles.ticketBgImage} />
+                )}
+                <View style={styles.ticketOverlay} />
+
+                {/* Header (App Logo) */}
+                <View style={styles.ticketHeader}>
+                  <Text style={styles.ticketLogoText}>UNИA</Text>
+                  <View style={styles.ticketBadge}>
+                    <Text style={styles.ticketBadgeText}>PREMIUM EVENT</Text>
                   </View>
                 </View>
+
+                {/* Main Content Area */}
+                <View style={styles.ticketContent}>
+                  {event.image_url ? (
+                    <Image source={{ uri: event.image_url }} style={styles.ticketMainImage} resizeMode="cover" />
+                  ) : (
+                    <LinearGradient colors={['#00d9ff', '#ff1493']} style={styles.ticketMainImage}>
+                      <Text style={{color: '#fff', fontWeight: '900', fontSize: 24}}>UNИA</Text>
+                    </LinearGradient>
+                  )}
+                  
+                  <View style={styles.ticketInfoBox}>
+                    <Text style={styles.ticketTitle} numberOfLines={2}>{event.title}</Text>
+                    
+                    <View style={styles.ticketRow}>
+                      <View style={styles.ticketIconBg}>
+                        <Calendar size={16} color="#00d9ff" />
+                      </View>
+                      <View>
+                        <Text style={styles.ticketLabel}>DATA</Text>
+                        <Text style={styles.ticketValue}>{formatDate(event.event_date)}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.ticketRow}>
+                      <View style={styles.ticketIconBg}>
+                        <Clock size={16} color="#FF9500" />
+                      </View>
+                      <View>
+                        <Text style={styles.ticketLabel}>HORÁRIO</Text>
+                        <Text style={styles.ticketValue}>{formatTime(event.event_time)}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.ticketRow}>
+                      <View style={styles.ticketIconBg}>
+                        <MapPin size={16} color="#34C759" />
+                      </View>
+                      <View>
+                        <Text style={styles.ticketLabel}>LOCAL</Text>
+                        <Text style={styles.ticketValue} numberOfLines={1}>{event.location_name}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Footer (Scan to View) */}
+                <View style={styles.ticketFooter}>
+                  <Text style={styles.ticketFooterText}>https://unna.app/event/{event.id.split('-')[0]}</Text>
+                </View>
               </View>
-            </View>
+            </ViewShot>
 
             <View style={styles.internalShareContainer}>
-              <Text style={styles.optionsTitle}>Compartilhar nos Grupos ({groupContacts.length})</Text>
+              <Text style={[styles.optionsTitle, { color: textPrimary }]}>Compartilhar nos Grupos ({groupContacts.length})</Text>
               {loadingContacts ? (
-                <ActivityIndicator color="#00d9ff" style={{ marginVertical: 20 }} />
+                <ActivityIndicator color={accent} style={{ marginVertical: 20 }} />
               ) : (
                 <FlatList
                   horizontal
@@ -315,30 +402,30 @@ export function EventShareModal({
                     <TouchableOpacity style={styles.contactItem} onPress={() => shareToContact(item)}>
                       <View style={styles.avatarContainer}>
                         {item.avatar_url ? (
-                          <Image source={{ uri: item.avatar_url }} style={styles.contactAvatar} />
+                          <Image source={{ uri: item.avatar_url }} style={[styles.contactAvatar, { borderColor: isDark ? '#222' : 'rgba(0,0,0,0.05)' }]} />
                         ) : (
-                          <View style={[styles.avatarPlaceholder, { backgroundColor: '#ff1493' }]}>
+                          <View style={[styles.avatarPlaceholder, { backgroundColor: accent }]}>
                             <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
                           </View>
                         )}
                         {sharedIds.includes(item.id) && (
-                          <View style={styles.sharedBadge}>
+                          <View style={[styles.sharedBadge, { borderColor: backgroundPrimary }]}>
                             <Check size={10} color="#fff" strokeWidth={4} />
                           </View>
                         )}
                       </View>
-                      <Text style={styles.contactName} numberOfLines={1}>{item.name}</Text>
+                      <Text style={[styles.contactName, { color: textSecondary }]} numberOfLines={1}>{item.name}</Text>
                     </TouchableOpacity>
                   )}
-                  ListEmptyComponent={<Text style={styles.emptyText}>Você não participa de nenhum grupo</Text>}
+                  ListEmptyComponent={<Text style={[styles.emptyText, { color: textSecondary }]}>Você não participa de nenhum grupo</Text>}
                 />
               )}
             </View>
 
             <View style={styles.internalShareContainer}>
-              <Text style={styles.optionsTitle}>Compartilhar com Contatos ({userContacts.length})</Text>
+              <Text style={[styles.optionsTitle, { color: textPrimary }]}>Compartilhar com Contatos ({userContacts.length})</Text>
               {loadingContacts ? (
-                <ActivityIndicator color="#00d9ff" style={{ marginVertical: 20 }} />
+                <ActivityIndicator color={accent} style={{ marginVertical: 20 }} />
               ) : (
                 <FlatList
                   horizontal
@@ -350,43 +437,43 @@ export function EventShareModal({
                     <TouchableOpacity style={styles.contactItem} onPress={() => shareToContact(item)}>
                       <View style={styles.avatarContainer}>
                         {item.avatar_url ? (
-                          <Image source={{ uri: item.avatar_url }} style={styles.contactAvatar} />
+                          <Image source={{ uri: item.avatar_url }} style={[styles.contactAvatar, { borderColor: isDark ? '#222' : 'rgba(0,0,0,0.05)' }]} />
                         ) : (
                           <View style={[styles.avatarPlaceholder, { backgroundColor: '#00d9ff' }]}>
                             <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
                           </View>
                         )}
                         {sharedIds.includes(item.id) && (
-                          <View style={styles.sharedBadge}>
+                          <View style={[styles.sharedBadge, { borderColor: backgroundPrimary }]}>
                             <Check size={10} color="#fff" strokeWidth={4} />
                           </View>
                         )}
                       </View>
-                      <Text style={styles.contactName} numberOfLines={1}>{item.name.split(' ')[0]}</Text>
+                      <Text style={[styles.contactName, { color: textSecondary }]} numberOfLines={1}>{item.name.split(' ')[0]}</Text>
                     </TouchableOpacity>
                   )}
-                  ListEmptyComponent={<Text style={styles.emptyText}>Siga pessoas para compartilhar eventos!</Text>}
+                  ListEmptyComponent={<Text style={[styles.emptyText, { color: textSecondary }]}>Siga pessoas para compartilhar eventos!</Text>}
                 />
               )}
             </View>
 
             <View style={styles.optionsContainer}>
-              <Text style={styles.optionsTitle}>Outras opções</Text>
+              <Text style={[styles.optionsTitle, { color: textPrimary }]}>Outras opções</Text>
               <View style={styles.optionsGrid}>
                 {shareOptions.map((option) => (
                   <TouchableOpacity key={option.id} style={styles.optionButton} onPress={option.onPress}>
-                    <View style={[styles.optionIconContainer, { borderColor: option.color }]}>
+                    <View style={[styles.optionIconContainer, { borderColor: option.color, backgroundColor: isDark ? '#161616' : '#fff', borderWidth: isDark ? 1 : 1.5 }]}>
                       {React.createElement(option.icon, { size: 24, color: option.color })}
                     </View>
-                    <Text style={styles.optionTitle}>{option.title}</Text>
+                    <Text style={[styles.optionTitle, { color: textSecondary }]}>{option.title}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
           </ScrollView>
 
-          <View style={styles.footer}>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+          <View style={[styles.footer, { borderTopColor: isDark ? '#222' : 'rgba(0,0,0,0.05)' }]}>
+            <TouchableOpacity style={[styles.closeButton, { backgroundColor: accent }]} onPress={onClose}>
               <Text style={styles.closeButtonText}>Concluído</Text>
             </TouchableOpacity>
           </View>
@@ -403,15 +490,130 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#fff' },
   scrollContent: { padding: 20 },
-  eventCard: { backgroundColor: '#161616', borderRadius: 20, overflow: 'hidden', marginBottom: 25, borderWidth: 1, borderColor: '#222' },
-  eventImage: { width: '100%', height: 160 },
-  eventImagePlaceholder: { width: '100%', height: 160, justifyContent: 'center', alignItems: 'center' },
-  placeholderText: { fontSize: 32, fontWeight: '900', color: '#fff', letterSpacing: 2 },
-  eventInfo: { padding: 15 },
-  eventTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 10 },
-  detailsContainer: { gap: 8 },
-  detailItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  detailText: { fontSize: 12, color: '#aaa', fontWeight: '500' },
+  
+  // Premium Ticket Styles
+  premiumTicketCard: {
+    backgroundColor: '#0a0a0a',
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginBottom: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    position: 'relative',
+    width: 320, // fixed width for a consistent ticket shape
+    alignSelf: 'center', // center in the viewshot
+    shadowColor: '#00d9ff',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  ticketBgImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.4,
+  },
+  ticketOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  ticketHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    zIndex: 10,
+  },
+  ticketLogoText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  ticketBadge: {
+    backgroundColor: 'rgba(255, 20, 147, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 20, 147, 0.5)',
+  },
+  ticketBadgeText: {
+    color: '#ff1493',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  ticketContent: {
+    paddingHorizontal: 20,
+    zIndex: 10,
+  },
+  ticketMainImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 16,
+    marginBottom: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  ticketInfoBox: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  ticketTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#fff',
+    marginBottom: 16,
+    letterSpacing: -0.5,
+  },
+  ticketRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  ticketIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ticketLabel: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  ticketValue: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  ticketFooter: {
+    padding: 15,
+    backgroundColor: 'rgba(0,217,255,0.1)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,217,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    marginTop: 20, // ensure space from the content above
+  },
+  ticketFooterText: {
+    color: '#00d9ff',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  
   internalShareContainer: { marginBottom: 25 },
   optionsTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 15 },
   internalList: { gap: 15 },

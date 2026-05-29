@@ -46,7 +46,12 @@ export const eventService = {
       if (isNaN(eventDateTime.getTime())) return false;
       
       const eventEndTime = new Date(eventDateTime.getTime() + 6 * 60 * 60 * 1000); // 6h de duração
-      return eventEndTime > now;
+      const diff = eventDateTime.getTime() - now.getTime();
+      
+      const isHappening = diff <= 0 && eventEndTime > now;
+      const isFuture = diff > 0; // Qualquer evento no futuro
+
+      return isHappening || isFuture;
     });
   },
 
@@ -66,7 +71,7 @@ export const eventService = {
   /**
    * Calcula o status amigável do evento
    */
-  getEventStatus(event: Event): 'happening' | 'starting-soon' | 'upcoming' {
+  getEventStatus(event: Event): 'happening' | 'starting-soon' | 'upcoming' | 'finished' {
     const now = new Date();
     if (!event.event_date || !event.event_time) return 'upcoming';
     
@@ -78,8 +83,9 @@ export const eventService = {
     const eventEndTime = new Date(eventDateTime.getTime() + 4 * 60 * 60 * 1000);
     const diff = eventDateTime.getTime() - now.getTime();
 
-    if (diff < 0 && eventEndTime > now) return 'happening';
-    if (diff < 2 * 60 * 60 * 1000) return 'starting-soon';
+    if (diff <= 0 && eventEndTime > now) return 'happening';
+    if (diff > 0 && diff <= 2 * 60 * 60 * 1000) return 'starting-soon';
+    if (diff <= 0 && eventEndTime <= now) return 'finished';
     return 'upcoming';
   }
 };

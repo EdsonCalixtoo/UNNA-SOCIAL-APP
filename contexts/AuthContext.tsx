@@ -11,7 +11,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signUp: (email: string, password: string, username: string, fullName: string) => Promise<{ error: any; sessionCreated?: boolean }>;
+  signUp: (email: string, password: string, username: string, fullName: string, accountType?: string) => Promise<{ error: any; sessionCreated?: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signInWithGoogle: () => Promise<{ error: any }>;
   signInWithApple: () => Promise<{ error: any }>;
@@ -140,13 +140,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, username: string, fullName: string) => {
+  const signUp = async (email: string, password: string, username: string, fullName: string, accountType: string = 'user') => {
     try {
       if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { username, full_name: fullName } }
+        options: { data: { username, full_name: fullName, account_type: accountType } }
       });
       if (authError) return { error: authError };
       return { error: null, sessionCreated: !!authData.session };

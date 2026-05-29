@@ -8,8 +8,10 @@ import PostCard from '@/components/PostCard';
 import EventCard from '@/components/EventCard';
 import { EventCardSkeleton } from '@/components/Skeleton';
 import { EventParticipantsModal } from '@/components/EventParticipantsModal';
-import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle } from 'lucide-react-native';
+import CommentsModal from '@/components/CommentsModal';
+import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle, MapPin } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useScrollToTop } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
@@ -28,6 +30,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useUI } from '@/contexts/UIContext';
 import { notifyEventLike } from '@/lib/notifications';
+import { mapService } from '@/services/mapService';
 
 
 const { width } = Dimensions.get('window');
@@ -111,11 +114,15 @@ export default function Feed() {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
   const [selectedEventIdForParticipants, setSelectedEventIdForParticipants] = useState<string | null>(null);
+  const [commentsEventId, setCommentsEventId] = useState<string | null>(null);
   const [visibleItems, setVisibleItems] = useState<string[]>([]);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [appState, setAppState] = useState(AppState.currentState);
+  const [userLoc, setUserLoc] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [searchRadius, setSearchRadius] = useState<number>(0);
 
   useEffect(() => {
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
@@ -125,6 +132,9 @@ export default function Feed() {
       appStateSubscription.remove();
     };
   }, []);
+
+  const listRef = useRef(null);
+  useScrollToTop(listRef);
 
   const scrollY = useSharedValue(0);
   const headerTranslateY = useSharedValue(0);
@@ -168,6 +178,7 @@ export default function Feed() {
 
   useEffect(() => {
     loadUnreadNotifications();
+    loadUnreadMessages();
     
     // Gerar um ID único para esta instância da inscrição para evitar conflitos de HMR
     const instanceId = Math.random().toString(36).substring(7);
@@ -229,13 +240,58 @@ export default function Feed() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, () => loadPosts())
       .subscribe();
 
+    // Escutar mudanças em tempo real nas mensagens para a badge
+    const messagesSubscription = supabase
+      .channel(`messages-badge:${user?.id}:${instanceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+        },
+        () => {
+          loadUnreadMessages();
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(notificationSubscription);
       supabase.removeChannel(eventsSubscription);
       supabase.removeChannel(postsSubscription);
       supabase.removeChannel(interactionsSubscription);
+      supabase.removeChannel(messagesSubscription);
     };
   }, [user]);
+
+  const loadUnreadMessages = async () => {
+    if (!user) return;
+    try {
+      const { data: myConvs } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', user.id);
+        
+      const myConvIds = myConvs?.map(c => c.conversation_id) || [];
+      
+      if (myConvIds.length === 0) {
+        setUnreadMessagesCount(0);
+        return;
+      }
+
+      const { count } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .in('conversation_id', myConvIds)
+        .neq('sender_id', user.id)
+        .eq('read', false);
+        
+      setUnreadMessagesCount(count || 0);
+    } catch (error) {
+      console.error('Error loading unread messages:', error);
+    }
+  };
 
   const loadUnreadNotifications = async () => {
     if (!user) return;
@@ -287,7 +343,7 @@ export default function Feed() {
 
   useEffect(() => {
     loadPosts();
-  }, [selectedCategories, selectedSubcategories, dateFilter]);
+  }, [selectedCategories, selectedSubcategories, dateFilter, searchRadius]);
 
   const loadUserPreferences = async () => {
     if (!user) return;
@@ -333,12 +389,12 @@ export default function Feed() {
           *,
           profiles:user_id (id, username, full_name, avatar_url),
           events:event_id (
-            id, title, description, image_url, event_date, event_time, 
-            location_name, max_participants, is_paid, price, 
-            category_id, subcategory_id,
+            id, title, description, image_url, image_urls, media_types, event_date, event_time, 
+            location_name, latitude, longitude, max_participants, is_paid, price, 
+            category_id, subcategory_id, created_at,
             categories:category_id (name, icon),
             subcategories:subcategory_id (name),
-            profiles:creator_id (username, full_name, avatar_url)
+            profiles:creator_id (id, username, full_name, avatar_url)
           )
         `)
         .order('created_at', { ascending: false })
@@ -415,6 +471,33 @@ export default function Feed() {
         });
       }
 
+      let currentLoc = userLoc;
+      if (!currentLoc) {
+        currentLoc = await mapService.getUserLocation();
+        if (currentLoc) setUserLoc(currentLoc);
+      }
+
+      if (currentLoc) {
+        const distanceFiltered = filteredData.filter(post => {
+          const eventLat = post.events?.latitude;
+          const eventLon = post.events?.longitude;
+          if (eventLat && eventLon) {
+             const dist = mapService.getDistanceInKm(currentLoc.latitude, currentLoc.longitude, parseFloat(String(eventLat)), parseFloat(String(eventLon)));
+             if (searchRadius === 0) return true; // 0 significa "Qualquer distância"
+             return dist <= searchRadius;
+          }
+          return true; // Mantém posts sem localização específica
+        });
+        
+        // Fallback: se o filtro por KM esvaziou o feed de eventos locais, 
+        // e não há posts normais para mostrar, ignoramos a distância para a tela não ficar em branco
+        if (distanceFiltered.length === 0 && filteredData.length > 0) {
+          // Mantém o filteredData original (ignorando os KMs)
+        } else {
+          filteredData = distanceFiltered;
+        }
+      }
+
       const postsWithLikes = await Promise.all(
         filteredData
           .filter(post => {
@@ -444,13 +527,29 @@ export default function Feed() {
                 .eq('user_id', user?.id)
                 .maybeSingle();
 
+              let commentsCount = 0;
+              let participantsCount = 0;
+              
+              if (isEventPost && post.events) {
+                const [{ count: cCount }, { count: pCount }] = await Promise.all([
+                  supabase.from('event_comments').select('*', { count: 'exact', head: true }).eq('event_id', post.events.id),
+                  supabase.from('event_participants').select('*', { count: 'exact', head: true }).eq('event_id', post.events.id)
+                ]);
+                commentsCount = cCount || 0;
+                participantsCount = pCount || 0;
+              }
+
               return {
                 ...post,
                 likes_count: likesCount || 0,
+                comments_count: commentsCount,
+                participants_count: participantsCount,
                 is_liked: !!userLike,
                 events: post.events ? {
                   ...post.events,
                   likes_count: isEventPost ? (likesCount || 0) : post.events.likes_count,
+                  comments_count: isEventPost ? commentsCount : post.events.comments_count,
+                  participants_count: isEventPost ? participantsCount : post.events.participants_count,
                   is_liked: isEventPost ? !!userLike : post.events.is_liked
                 } : undefined
               };
@@ -580,6 +679,7 @@ export default function Feed() {
               setSelectedEventIdForParticipants(id);
               setParticipantsModalVisible(true);
             }}
+            onCommentPress={(id) => setCommentsEventId(id)}
             isVisible={isItemActive} 
           />
         ) : (
@@ -631,6 +731,11 @@ export default function Feed() {
             onPress={() => router.push('/messages')}
           >
             <MessageCircle size={18} color={accent} />
+            {unreadMessagesCount > 0 && (
+              <View style={[styles.notificationBadge, { backgroundColor: accent }]}>
+                <Text style={styles.notificationBadgeText}>{unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}
@@ -656,9 +761,15 @@ export default function Feed() {
       </Animated.View>
 
       <Animated.FlatList
+        ref={listRef}
         data={posts}
         keyExtractor={(item) => item.id}
-        ListHeaderComponent={<StoriesBar />}
+        ListHeaderComponent={
+          <View>
+            <StoriesBar />
+            {/* Categories horizontal list removed per user request */}
+          </View>
+        }
         renderItem={renderItem}
         onScroll={onScroll}
         scrollEventThrottle={16}
@@ -771,6 +882,47 @@ export default function Feed() {
 
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
+                  <MapPin size={18} color={accent} />
+                  <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>Distância Máxima</Text>
+                </View>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  contentContainerStyle={styles.dateChipsContainer}
+                >
+                  {[
+                    { value: 10, label: '10 km' },
+                    { value: 50, label: '50 km' },
+                    { value: 100, label: '100 km' },
+                    { value: 500, label: '500 km' },
+                    { value: 0, label: 'Qualquer' }
+                  ].map(option => (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.dateChip, 
+                        searchRadius === option.value && { backgroundColor: accent, borderColor: accent },
+                        { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }
+                      ]}
+                      onPress={() => {
+                        setSearchRadius(option.value);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <Text style={[
+                        styles.dateChipText, 
+                        { color: textSecondary }, 
+                        searchRadius === option.value && { color: '#fff', fontWeight: '800' }
+                      ]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.filterSection}>
+                <View style={styles.filterSectionHeader}>
                   <Filter size={18} color={accent} />
                   <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>O que te interessa?</Text>
                 </View>
@@ -870,6 +1022,7 @@ export default function Feed() {
                   setSelectedSubcategories([]);
                   setExpandedCategory(null);
                   setDateFilter('all');
+                  setSearchRadius(0);
                 }}
               >
                 <Text style={styles.clearButtonText}>Limpar Filtros</Text>
@@ -889,6 +1042,11 @@ export default function Feed() {
         visible={participantsModalVisible}
         onClose={() => setParticipantsModalVisible(false)}
         eventId={selectedEventIdForParticipants || ''}
+      />
+      <CommentsModal
+        visible={!!commentsEventId}
+        eventId={commentsEventId || ''}
+        onClose={() => setCommentsEventId(null)}
       />
     </View>
     </PageTransition>
@@ -996,6 +1154,18 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: vs(16),
+  },
+  quickFilterPill: {
+    paddingHorizontal: s(14),
+    paddingVertical: vs(8),
+    borderRadius: ms(20),
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  quickFilterText: {
+    fontSize: ms(13),
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
@@ -1233,5 +1403,30 @@ const styles = StyleSheet.create({
     paddingLeft: s(10),
     borderLeftWidth: 2,
     borderLeftColor: 'rgba(0, 217, 255, 0.2)',
+  },
+
+  bubblyFilterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: vs(48),
+    borderRadius: 24,
+    paddingLeft: s(6),
+    paddingRight: s(18),
+    gap: s(10),
+  },
+  bubblyFilterIconBox: {
+    width: vs(36),
+    height: vs(36),
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bubblyFilterIcon: {
+    fontSize: ms(18),
+  },
+  bubblyFilterText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: ms(14),
   },
 });

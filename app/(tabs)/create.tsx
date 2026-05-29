@@ -102,7 +102,10 @@ export default function CreateEvent() {
   const [capturedMedia, setCapturedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedSubcategory, setSelectedSubcategory] = useState('');
-  const [eventDate, setEventDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const getLocalDateString = (d: Date = new Date()) => {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [eventDate, setEventDate] = useState(() => getLocalDateString());
   const [eventTime, setEventTime] = useState(() => `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`);
   const [eventEndTime, setEventEndTime] = useState(() => {
     const end = new Date();
@@ -127,6 +130,7 @@ export default function CreateEvent() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
   const [ticketUrl, setTicketUrl] = useState('');
+  const [pubLocationEnabled, setPubLocationEnabled] = useState(false);
 
   // Recurrence State
   const [isRecurring, setIsRecurring] = useState(false);
@@ -135,7 +139,7 @@ export default function CreateEvent() {
   const [recurrenceEndDate, setRecurrenceEndDate] = useState(() => {
     const defaultEnd = new Date();
     defaultEnd.setMonth(defaultEnd.getMonth() + 1); // Padrão: 1 mês a frente
-    return defaultEnd.toISOString().split('T')[0];
+    return getLocalDateString(defaultEnd);
   });
   const [showRecurrenceEndPicker, setShowRecurrenceEndPicker] = useState(false);
 
@@ -147,7 +151,7 @@ export default function CreateEvent() {
     setCapturedMedia(null);
     setSelectedCategory('');
     setSelectedSubcategory('');
-    setEventDate(new Date().toISOString().split('T')[0]);
+    setEventDate(getLocalDateString());
     setEventTime(`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`);
     const end = new Date();
     end.setHours(end.getHours() + 3);
@@ -162,12 +166,13 @@ export default function CreateEvent() {
     setMaxParticipants('');
     setCatSearch('');
     setTicketUrl('');
+    setPubLocationEnabled(false);
     setIsRecurring(false);
     setRecurrenceType('none');
     setWeeklyDays([]);
     const defaultEnd = new Date();
     defaultEnd.setMonth(defaultEnd.getMonth() + 1);
-    setRecurrenceEndDate(defaultEnd.toISOString().split('T')[0]);
+    setRecurrenceEndDate(getLocalDateString(defaultEnd));
   };
 
   // Função generateRecurrentDates removida pois a lógica agora é feita no backend via Trigger do Supabase
@@ -372,8 +377,18 @@ export default function CreateEvent() {
         <Text style={[styles.stepTitle, { color: textPrimary }]}>{STEPS[currentStep].title}</Text>
         <Text style={[styles.stepSubtitle, { color: textSecondary }]}>{STEPS[currentStep].subtitle}</Text>
       </View>
-      <View style={[styles.progressBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-        <Animated.View style={[styles.progressBarFill, { width: `${((currentStep + 1) / STEPS.length) * 100}%`, backgroundColor: accent }]} />
+      <View style={[styles.progressBarBg, { backgroundColor: 'transparent', flexDirection: 'row', gap: 6, paddingHorizontal: 0, height: 4 }]}>
+        {STEPS.map((_, i) => (
+          <View 
+            key={i} 
+            style={{ 
+              flex: 1, 
+              height: 4, 
+              borderRadius: 2, 
+              backgroundColor: i <= currentStep ? accent : (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)') 
+            }} 
+          />
+        ))}
       </View>
     </View>
   );
@@ -387,43 +402,94 @@ export default function CreateEvent() {
           {currentStep === 0 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={styles.typeSelectionGrid}>
-                <TouchableOpacity style={[styles.typeCard, contentType === 'event' && { borderColor: accent, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setContentType('event'); }}>
-                  <LinearGradient colors={['#00d9ff', '#0055ff']} style={styles.typeIconBg}><Calendar size={32} color="#fff" /></LinearGradient>
+                <TouchableOpacity activeOpacity={0.9} style={[styles.typeCard, contentType === 'event' && { borderColor: accent, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.05)' }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setContentType('event'); }}>
+                  <View style={[styles.typeIconBg, { backgroundColor: contentType === 'event' ? accent : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)') }]}>
+                    <Calendar size={28} color={contentType === 'event' ? '#fff' : textPrimary} />
+                  </View>
                   <Text style={[styles.typeTitle, { color: textPrimary }]}>Evento</Text>
                   <Text style={[styles.typeDesc, { color: textSecondary }]}>Tem data, hora e local marcados. Ideal para festas, encontros e treinos.</Text>
-                  {contentType === 'event' && <View style={[styles.checkCircle, { backgroundColor: accent }]}><Check size={14} color="#fff" strokeWidth={4} /></View>}
+                  <View style={[styles.radioCircle, contentType === 'event' && { borderColor: accent, backgroundColor: accent }]}>
+                    {contentType === 'event' && <Check size={12} color="#fff" strokeWidth={4} />}
+                  </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.typeCard, contentType === 'publication' && { borderColor: '#ff1493', backgroundColor: 'rgba(255, 20, 147, 0.05)' }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setContentType('publication'); }}>
-                  <LinearGradient colors={['#ff1493', '#ff0055']} style={styles.typeIconBg}><Flag size={32} color="#fff" /></LinearGradient>
+                <TouchableOpacity activeOpacity={0.9} style={[styles.typeCard, contentType === 'publication' && { borderColor: '#ff1493', backgroundColor: isDark ? 'rgba(255, 20, 147, 0.08)' : 'rgba(255, 20, 147, 0.05)' }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setContentType('publication'); }}>
+                  <View style={[styles.typeIconBg, { backgroundColor: contentType === 'publication' ? '#ff1493' : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)') }]}>
+                    <Flag size={28} color={contentType === 'publication' ? '#fff' : textPrimary} />
+                  </View>
                   <Text style={[styles.typeTitle, { color: textPrimary }]}>Publicação</Text>
                   <Text style={[styles.typeDesc, { color: textSecondary }]}>Sem data fixa. Ideal para doações, avisos, anúncios ou compartilhamento geral.</Text>
-                  {contentType === 'publication' && <View style={[styles.checkCircle, { backgroundColor: '#ff1493' }]}><Check size={14} color="#fff" strokeWidth={4} /></View>}
+                  <View style={[styles.radioCircle, contentType === 'publication' && { borderColor: '#ff1493', backgroundColor: '#ff1493' }]}>
+                    {contentType === 'publication' && <Check size={12} color="#fff" strokeWidth={4} />}
+                  </View>
                 </TouchableOpacity>
               </View>
             </Animated.View>
           )}
           {currentStep === 1 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
-              <View style={styles.mediaGrid}>
-                {mediaFiles.map((media, index) => (
-                  <View key={index} style={[styles.mediaItem, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-                    {media.type === 'video' ? <Video source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode={ResizeMode.COVER} isLooping shouldPlay isMuted /> : <Image source={{ uri: media.uri }} style={styles.mediaPreview} />}
-                    <TouchableOpacity style={styles.removeMediaBtn} onPress={() => removeMedia(index)}><X size={16} color="#fff" /></TouchableOpacity>
+              <Text style={[styles.label, { color: textSecondary, marginBottom: 16, textAlign: 'center' }]}>Adicione até 5 fotos ou vídeos</Text>
+              
+              {/* Hero Dropzone */}
+              {mediaFiles.length === 0 ? (
+                <TouchableOpacity 
+                  activeOpacity={0.9} 
+                  style={[styles.heroDropzone, { borderColor: accent, backgroundColor: isDark ? 'rgba(0,217,255,0.05)' : 'rgba(0,217,255,0.08)' }]} 
+                  onPress={() => setShowCamera(true)}
+                >
+                  <View style={[styles.dropzoneIconBg, { backgroundColor: accent }]}>
+                    <Camera size={36} color="#fff" />
                   </View>
-                ))}
-                {mediaFiles.length < 5 && (
-                  <TouchableOpacity activeOpacity={0.9} style={[styles.mediaPickerSmall, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setShowCamera(true)}>
-                    <LinearGradient colors={isDark ? ['#1a1a25', '#0a0a0f'] : ['#ffffff', '#f0f0f0']} style={styles.mediaPlaceholderSmall}><Camera size={30} color={accent} /><Text style={[styles.placeholderSmallText, { color: textPrimary }]}>Adicionar</Text></LinearGradient>
-                  </TouchableOpacity>
-                )}
-              </View>
+                  <Text style={[styles.dropzoneTitle, { color: textPrimary }]}>Capa do Conteúdo</Text>
+                  <Text style={[styles.dropzoneDesc, { color: textSecondary }]}>Toque para abrir a câmera ou galeria</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ gap: 16 }}>
+                  {/* Capa Principal */}
+                  <View style={[styles.heroPreviewItem, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+                    {mediaFiles[0].type === 'video' ? 
+                      <Video source={{ uri: mediaFiles[0].uri }} style={styles.heroMediaPreview} resizeMode={ResizeMode.COVER} isLooping shouldPlay isMuted /> : 
+                      <Image source={{ uri: mediaFiles[0].uri }} style={styles.heroMediaPreview} />
+                    }
+                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.heroOverlay}>
+                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Capa Principal</Text>
+                    </LinearGradient>
+                    <TouchableOpacity style={styles.heroRemoveBtn} onPress={() => removeMedia(0)}><X size={20} color="#fff" /></TouchableOpacity>
+                  </View>
+
+                  {/* Outras Mídias */}
+                  {(mediaFiles.length > 1 || mediaFiles.length < 5) && (
+                    <View style={styles.mediaGrid}>
+                      {mediaFiles.slice(1).map((media, index) => (
+                        <View key={index + 1} style={[styles.mediaItem, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+                          {media.type === 'video' ? <Video source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode={ResizeMode.COVER} isLooping shouldPlay isMuted /> : <Image source={{ uri: media.uri }} style={styles.mediaPreview} />}
+                          <TouchableOpacity style={styles.removeMediaBtn} onPress={() => removeMedia(index + 1)}><X size={16} color="#fff" /></TouchableOpacity>
+                        </View>
+                      ))}
+                      {mediaFiles.length < 5 && (
+                        <TouchableOpacity activeOpacity={0.9} style={[styles.mediaPickerSmall, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setShowCamera(true)}>
+                          <LinearGradient colors={isDark ? ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)'] : ['rgba(0,0,0,0.02)', 'rgba(0,0,0,0.01)']} style={styles.mediaPlaceholderSmall}><Plus size={24} color={textSecondary} /></LinearGradient>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
             </Animated.View>
           )}
           {currentStep === 2 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: accent }]}>NOME DO EVENTO</Text>
-                <TextInput style={[styles.hugeInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary }]} placeholder="Seu evento aqui..." placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} value={title} onChangeText={setTitle} autoFocus />
+                <Text style={[styles.label, { color: accent }]}>
+                  {contentType === 'publication' ? 'TÍTULO DA PUBLICAÇÃO' : 'NOME DO EVENTO'}
+                </Text>
+                <TextInput
+                  style={[styles.hugeInput, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', color: textPrimary }]}
+                  placeholder={contentType === 'publication' ? 'Título da sua publicação...' : 'Seu evento aqui...'}
+                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
+                  value={title}
+                  onChangeText={setTitle}
+                  autoFocus
+                />
               </View>
               <View style={styles.categorySection}>
                 <Text style={[styles.label, { color: accent }]}>CATEGORIA</Text>
@@ -440,9 +506,53 @@ export default function CreateEvent() {
                 </View>
               )}
               <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: accent }]}>DESCRIÇÃO</Text>
-                <TextInput style={[styles.textArea, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary }]} placeholder="Conte os detalhes..." placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} value={description} onChangeText={setDescription} multiline />
+                <Text style={[styles.label, { color: accent }]}>
+                  {contentType === 'publication' ? 'DESCRIÇÃO DA PUBLICAÇÃO' : 'DESCRIÇÃO'}
+                </Text>
+                <TextInput
+                  style={[styles.textArea, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', color: textPrimary }]}
+                  placeholder={contentType === 'publication' ? 'Descreva sua publicação...' : 'Conte os detalhes...'}
+                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                />
               </View>
+
+              {/* Campo de localização opcional para publicações */}
+              {contentType === 'publication' && (
+                <View style={[styles.inputGroup, { marginTop: 8 }]}>
+                  <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', marginBottom: pubLocationEnabled ? 12 : 0 }]}>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={[styles.premiumTitle, { color: textPrimary }]}>Adicionar localização?</Text>
+                      <Text style={[styles.premiumSub, { color: textSecondary }]}>Opcional — não aparece no mapa</Text>
+                    </View>
+                    <Switch
+                      value={pubLocationEnabled}
+                      onValueChange={(val) => {
+                        setPubLocationEnabled(val);
+                        if (!val) setLocationName('');
+                      }}
+                      trackColor={{ false: isDark ? '#333' : '#ccc', true: '#ff1493' }}
+                      thumbColor={pubLocationEnabled ? '#fff' : '#f4f3f4'}
+                    />
+                  </View>
+                  {pubLocationEnabled && (
+                    <Animated.View entering={FadeInDown}>
+                      <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', width: '100%', flexDirection: 'row', alignItems: 'center', borderRadius: 16, paddingHorizontal: 16, height: 56, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
+                        <MapPin size={20} color="#ff1493" />
+                        <TextInput
+                          style={{ flex: 1, color: textPrimary, fontSize: 15, marginLeft: 10 }}
+                          placeholder="Ex: São Paulo, SP"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
+                          value={locationName}
+                          onChangeText={setLocationName}
+                        />
+                      </View>
+                    </Animated.View>
+                  )}
+                </View>
+              )}
             </Animated.View>
           )}
           {currentStep === 3 && (
@@ -517,7 +627,7 @@ export default function CreateEvent() {
               </View>
               <View style={[styles.inputGroup, { marginTop: 16 }]}>
                 <Text style={[styles.label, { color: accent }]}>NÚMERO E COMPLEMENTO</Text>
-                <TextInput style={[styles.hugeInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary, fontSize: 16, height: 60 }]} placeholder="Ex: 123, Apto 42" placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} value={locationNumber} onChangeText={setLocationNumber} />
+                <TextInput style={[styles.hugeInput, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', color: textPrimary, fontSize: 24, height: 60 }]} placeholder="Ex: 123, Apto 42" placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} value={locationNumber} onChangeText={setLocationNumber} />
               </View>
               {contentType === 'event' && (
                 <View style={{ marginTop: 24, gap: 12 }}>
@@ -878,7 +988,9 @@ export default function CreateEvent() {
             display="default"
             onChange={(event, selectedDate) => {
               setShowDatePicker(false);
-              if (selectedDate) setEventDate(selectedDate.toISOString().split('T')[0]);
+              if (selectedDate) {
+                setEventDate(getLocalDateString(selectedDate));
+              }
             }}
           />
         )
@@ -1047,7 +1159,7 @@ export default function CreateEvent() {
             display="default"
             onChange={(event, selectedDate) => {
               setShowRecurrenceEndPicker(false);
-              if (selectedDate) setRecurrenceEndDate(selectedDate.toISOString().split('T')[0]);
+              if (selectedDate) setRecurrenceEndDate(getLocalDateString(selectedDate));
             }}
           />
         )
@@ -1076,33 +1188,41 @@ const styles = StyleSheet.create({
   typeIconBg: { width: 60, height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   typeTitle: { fontSize: ms(18), fontWeight: '800', marginBottom: 8 },
   typeDesc: { fontSize: ms(13), lineHeight: 20, opacity: 0.8 },
-  checkCircle: { position: 'absolute', top: 20, right: 20, width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  radioCircle: { position: 'absolute', top: 20, right: 20, width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'rgba(150,150,150,0.2)' },
   mediaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  mediaItem: { width: (SCREEN_WIDTH - 52) / 2, height: (SCREEN_WIDTH - 52) / 2, borderRadius: 20, overflow: 'hidden', borderWidth: 1 },
+  mediaItem: { width: (SCREEN_WIDTH - 64) / 4, height: (SCREEN_WIDTH - 64) / 4, borderRadius: 16, overflow: 'hidden', borderWidth: 1 },
   mediaPreview: { width: '100%', height: '100%' },
-  removeMediaBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.5)', width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  mediaPickerSmall: { width: (SCREEN_WIDTH - 52) / 2, height: (SCREEN_WIDTH - 52) / 2, borderRadius: 20, borderWidth: 1, borderStyle: 'dashed' },
-  mediaPlaceholderSmall: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8, borderRadius: 20 },
-  placeholderSmallText: { fontSize: ms(13), fontWeight: '700' },
+  removeMediaBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  mediaPickerSmall: { width: (SCREEN_WIDTH - 64) / 4, height: (SCREEN_WIDTH - 64) / 4, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed' },
+  mediaPlaceholderSmall: { flex: 1, justifyContent: 'center', alignItems: 'center', borderRadius: 16 },
+  
+  heroDropzone: { height: vs(350), borderRadius: 32, borderWidth: 2, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', gap: 12 },
+  dropzoneIconBg: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  dropzoneTitle: { fontSize: ms(20), fontWeight: '900' },
+  dropzoneDesc: { fontSize: ms(13), opacity: 0.7 },
+  heroPreviewItem: { height: vs(350), width: '100%', borderRadius: 32, overflow: 'hidden', borderWidth: 1, position: 'relative' },
+  heroMediaPreview: { width: '100%', height: '100%' },
+  heroOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80, justifyContent: 'flex-end', padding: 20 },
+  heroRemoveBtn: { position: 'absolute', top: 20, right: 20, backgroundColor: 'rgba(0,0,0,0.5)', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   inputGroup: { gap: 10, marginBottom: 20 },
   label: { fontSize: ms(11), fontWeight: '900', letterSpacing: 1 },
-  hugeInput: { height: 70, borderRadius: 24, paddingHorizontal: 20, fontSize: ms(20), fontWeight: '700', borderWidth: 1 },
+  hugeInput: { height: 70, paddingHorizontal: 0, fontSize: ms(28), fontWeight: '900', borderBottomWidth: 1, borderWidth: 0, borderRadius: 0 },
   selectorButton: { height: 60, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderWidth: 1 },
   selectorInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   selectorText: { fontSize: ms(15), fontWeight: '600' },
-  textArea: { minHeight: 120, borderRadius: 24, padding: 20, fontSize: ms(16), borderWidth: 1, textAlignVertical: 'top' },
+  textArea: { minHeight: 120, borderRadius: 24, padding: 20, fontSize: ms(16), borderWidth: 0, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: 12 },
-  glassButton: { height: 64, borderRadius: 20, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 12, borderWidth: 1 },
+  glassButton: { height: 60, borderRadius: 30, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, gap: 12, borderWidth: 1 },
   glassLabel: { fontSize: ms(10), fontWeight: '800' },
-  glassValue: { fontSize: ms(14), fontWeight: '700' },
-  premiumCard: { padding: 20, borderRadius: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1 },
+  glassValue: { fontSize: ms(15), fontWeight: '700' },
+  premiumCard: { padding: 20, borderRadius: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 0 },
   premiumTitle: { fontSize: ms(16), fontWeight: '800' },
   premiumSub: { fontSize: ms(13), opacity: 0.7 },
-  priceBox: { height: 70, borderRadius: 24, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, gap: 10, marginTop: 16, borderWidth: 1 },
+  priceBox: { height: 70, borderRadius: 24, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, gap: 10, marginTop: 16, borderWidth: 0 },
   priceSymbol: { fontSize: ms(20), fontWeight: '900' },
   priceInput: { fontSize: ms(24), fontWeight: '900', flex: 1 },
   limitsRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  limitBox: { flex: 1, height: 60, borderRadius: 20, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 10, borderWidth: 1 },
+  limitBox: { flex: 1, height: 60, borderRadius: 20, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 10, borderWidth: 0 },
   limitInput: { fontSize: ms(15), fontWeight: '700', flex: 1 },
   reviewCard: { height: vs(350), borderRadius: 32, overflow: 'hidden', position: 'relative' },
   reviewMediaScroll: { ...StyleSheet.absoluteFillObject },

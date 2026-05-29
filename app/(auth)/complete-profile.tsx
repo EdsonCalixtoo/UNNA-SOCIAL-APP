@@ -43,9 +43,7 @@ export default function CompleteProfile() {
 
   useEffect(() => {
     // Se o perfil já estiver completo, pula esta página
-    if (user && profile?.username) {
-      router.replace('/(tabs)');
-    }
+    // Let AuthGuard handle the redirect based on profile type
 
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),

@@ -1,0 +1,505 @@
+<Animated.ScrollView
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { 
+              useNativeDriver: false,
+              listener: (event: any) => {
+                const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+                const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 400;
+                if (isCloseToBottom && activeTab === 'events' && visibleEvents < events.length) {
+                  setVisibleEvents((prev: number) => Math.min(prev + 5, events.length));
+                }
+              }
+            }
+          )}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={() => { setRefreshing(true); loadProfileData(); }} 
+              tintColor={accent} 
+            />
+          }
+        >
+          {/* PREMIUM BANNER AREA */}
+          <Animated.View style={[styles.heroContainer, { height: bannerHeight }]}>
+            {profile?.cover_url ? (
+              <Image 
+                source={{ uri: profile.cover_url }} 
+                style={StyleSheet.absoluteFill} 
+                resizeMode="cover"
+              />
+            ) : (
+              <LinearGradient 
+                colors={[accent, '#7b2fff', '#ff1493']} 
+                start={{ x: 0, y: 0 }} 
+                end={{ x: 1, y: 1 }} 
+                style={StyleSheet.absoluteFill} 
+              />
+            )}
+            {/* Overlay Pattern */}
+            {!profile?.cover_url && (
+              <View style={styles.bannerOverlay}>
+                <View style={styles.patternCircle} />
+              </View>
+            )}
+
+            {/* TOP ACTIONS */}
+            <View style={[styles.topActions, { marginTop: insets.top + 6 }]}>
+              <TouchableOpacity onPress={() => router.push('/search-users')} style={styles.glassBtn}>
+                <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+                <Search size={20} color="#fff" />
+              </TouchableOpacity>
+              <View style={styles.topActionsRight}>
+                {(profile as any)?.account_type === 'business' && (
+                  <TouchableOpacity onPress={() => router.push('/business/dashboard' as any)} style={[styles.glassBtn, { width: 'auto', paddingHorizontal: 12, flexDirection: 'row', gap: 6, backgroundColor: 'rgba(0, 217, 255, 0.2)' }]}>
+                    <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+                    <Briefcase size={16} color="#fff" />
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>Painel Empresa</Text>
+                  </TouchableOpacity>
+                )}
+                {/* {((profile as any)?.account_type === 'business' || isStaff) && (
+                  <TouchableOpacity onPress={() => router.push('/scanner' as any)} style={[styles.glassBtn, { width: 'auto', paddingHorizontal: 12, flexDirection: 'row', gap: 6, backgroundColor: 'rgba(0, 217, 255, 0.2)' }]}>
+                    <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+                    <QrCode size={16} color="#fff" />
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>Escanear</Text>
+                  </TouchableOpacity>
+                )}
+                {((profile as any)?.account_type === 'business') && (
+                  <TouchableOpacity onPress={() => router.push('/business/rewards' as any)} style={[styles.glassBtn, { width: 'auto', paddingHorizontal: 12, flexDirection: 'row', gap: 6, backgroundColor: 'rgba(255, 20, 147, 0.2)' }]}>
+                    <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+                    <Award size={16} color="#fff" />
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>Prêmios</Text>
+                  </TouchableOpacity>
+                )} */}
+                <TouchableOpacity onPress={() => setSettingsModalVisible(true)} style={styles.glassBtn}>
+                  <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+                  <Settings size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Animated.View>
+
+          {/* PROFILE CARD */}
+          <View style={[styles.profileCard, { backgroundColor: backgroundSecondary }]}>
+            <Animated.View 
+              style={[
+                styles.avatarContainer, 
+                { 
+                  transform: [
+                    { scale: avatarScale },
+                    { translateY: avatarTranslateY }
+                  ] 
+                }
+              ]}
+            >
+              <TouchableOpacity 
+                activeOpacity={0.9} 
+                onPress={() => profile?.avatar_url && setIsViewerVisible(true)}
+              >
+                <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ rotate: spin }], borderRadius: 65 }]}>
+                  <LinearGradient colors={[profile?.primary_color || accent, '#ff1493', '#7b2fff', profile?.primary_color || accent]} style={{ flex: 1, borderRadius: 65 }} />
+                </Animated.View>
+                <View style={[styles.avatarBorder, { margin: 3, backgroundColor: backgroundPrimary }]}>
+                  {profile?.avatar_url ? (
+                    <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg as any} />
+                  ) : (
+                    <View style={styles.avatarPlaceholder}><Text style={styles.avatarInitials}>{initials}</Text></View>
+                  )}
+                </View>
+              </TouchableOpacity>
+              {profile?.is_verified && (
+                <View style={[styles.verifiedBadge, { backgroundColor: accent }]}>
+                  <Sparkles size={12} color="#fff" fill="#fff" />
+                </View>
+              )}
+            </Animated.View>
+
+            <View style={styles.infoSection}>
+              <Text style={[styles.nameText, { color: textPrimary }]}>{profile?.full_name}</Text>
+              <Text style={[styles.usernameText, { color: textSecondary }]}>@{profile?.username}</Text>
+              
+              {profile?.bio && (
+                <Text style={[styles.bioText, { color: textPrimary }]}>{profile.bio}</Text>
+              )}
+
+              {profile?.birth_date && (
+                <View style={[styles.birthdayContainer, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)', borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }]}>
+                  <Text style={[styles.birthdayText, { color: textPrimary }]}>🎂 {formatBirthDate(profile.birth_date)}</Text>
+                </View>
+              )}
+
+              {/* LINKS SOCIAIS (Pill Shape) */}
+              {(profile?.instagram_url || profile?.website_url) && (
+                <View style={styles.socialButtonsRow}>
+                  {profile.instagram_url && (
+                    <TouchableOpacity 
+                      style={[styles.socialPill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+                      onPress={() => openInstagram(profile.instagram_url)}
+                    >
+                      <Text style={[styles.socialPillText, { color: textPrimary }]}>📷 @{profile.instagram_url.replace('@', '')}</Text>
+                    </TouchableOpacity>
+                  )}
+                  
+                  {profile.website_url && (
+                    <TouchableOpacity 
+                      style={[styles.socialPill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+                      onPress={() => openWebsite(profile.website_url)}
+                    >
+                      <Text style={[styles.socialPillText, { color: textPrimary }]} numberOfLines={1}>🔗 {profile.website_url.replace('https://', '').replace('http://', '')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {/* STATS ROW */}
+              <View style={styles.statsRow}>
+                <TouchableOpacity style={styles.statBox}>
+                  <Text style={[styles.statNumber, { color: textPrimary }]}>{posts.length}</Text>
+                  <Text style={[styles.statLabel, { color: textSecondary }]}>Posts</Text>
+                </TouchableOpacity>
+                <View style={[styles.statDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} />
+                <TouchableOpacity 
+                  style={styles.statBox}
+                  onPress={() => router.push(`/profile/${user?.id}/followers`)}
+                >
+                  <Text style={[styles.statNumber, { color: textPrimary }]}>{followersCount}</Text>
+                  <Text style={[styles.statLabel, { color: textSecondary }]}>Seguidores</Text>
+                </TouchableOpacity>
+                <View style={[styles.statDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} />
+                <TouchableOpacity 
+                  style={styles.statBox}
+                  onPress={() => router.push(`/profile/${user?.id}/following`)}
+                >
+                  <Text style={[styles.statNumber, { color: textPrimary }]}>{followingCount}</Text>
+                  <Text style={[styles.statLabel, { color: textSecondary }]}>Seguindo</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* INTERESTS */}
+            {userInterests.length > 0 && (
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.interestsScroll}
+              >
+                {userInterests.map((cat) => (
+                  <View key={cat.id} style={[styles.interestTag, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+                    <Text style={styles.tagEmoji}>{cat.icon || '✨'}</Text>
+                    <Text style={[styles.tagText, { color: textSecondary }]}>{cat.name}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+
+          {/* TABS SELECTOR */}
+          <View style={[styles.tabsWrapper, { backgroundColor: backgroundPrimary }]}>
+            <View style={[styles.tabsContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}>
+              <Animated.View 
+                style={[
+                  styles.tabIndicator, 
+                  { 
+                    backgroundColor: backgroundSecondary,
+                    transform: [{ translateX: tabIndicatorPos }]
+                  }
+                ]} 
+              />
+              <TouchableOpacity style={styles.tabItem} onPress={() => { hapticFeedback.selection(); setActiveTab('posts'); }}>
+                <Grid3X3 size={20} color={activeTab === 'posts' ? accent : textSecondary} />
+                <Text style={[styles.tabLabel, { color: activeTab === 'posts' ? textPrimary : textSecondary }]}>Mural</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.tabItem} onPress={() => { hapticFeedback.selection(); setActiveTab('events'); }}>
+                <Calendar size={20} color={activeTab === 'events' ? accent : textSecondary} />
+                <Text style={[styles.tabLabel, { color: activeTab === 'events' ? textPrimary : textSecondary }]}>Experiências</Text>
+              </TouchableOpacity>
+              {/* <TouchableOpacity style={styles.tabItem} onPress={() => { hapticFeedback.selection(); setActiveTab('achievements'); }}>
+                <Award size={20} color={activeTab === 'achievements' ? accent : textSecondary} />
+                <Text style={[styles.tabLabel, { color: activeTab === 'achievements' ? textPrimary : textSecondary }]}>Conquistas</Text>
+              </TouchableOpacity> */}
+            </View>
+          </View>
+
+          {/* CONTENT AREA */}
+          <View style={styles.contentArea}>
+            {activeTab === 'posts' && (
+              <View style={{ paddingHorizontal: 4 }}>
+                {memories.length > 0 ? (
+                  memories.map((memory, idx) => {
+                    const date = new Date(memory.event_date);
+                    const month = date.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase();
+                    const year = date.getFullYear();
+                    const showYear = idx === 0 || new Date(memories[idx - 1]?.event_date).getFullYear() !== year;
+
+                    return (
+                      <View key={memory.id}>
+                        {showYear && (
+                          <View style={styles.memoryYearDivider}>
+                            <View style={[styles.memoryYearLine, { backgroundColor: accent + '40' }]} />
+                            <Text style={[styles.memoryYearText, { color: accent }]}>{year}</Text>
+                            <View style={[styles.memoryYearLine, { backgroundColor: accent + '40' }]} />
+                          </View>
+                        )}
+                        <TouchableOpacity
+                          style={[
+                            styles.premiumMemoryCard,
+                            {
+                              borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)'
+                            }
+                          ]}
+                          activeOpacity={0.95}
+                          onPress={() => {
+                            setSelectedMemoryIdx(idx);
+                            setIsMemoryViewerVisible(true);
+                          }}
+                        >
+                          <Image source={{ uri: memory.image_url }} style={styles.premiumMemoryImage} />
+                          
+                          <LinearGradient
+                            colors={['transparent', 'rgba(0, 0, 0, 0.1)', 'rgba(0, 0, 0, 0.85)']}
+                            style={styles.premiumMemoryGradient}
+                          >
+                            <View style={styles.premiumMemoryFooter}>
+                              <View style={styles.premiumMemoryMeta}>
+                                <Text style={styles.premiumMemoryTitle} numberOfLines={1}>
+                                  📸 {memory.title}
+                                </Text>
+                                <Text style={styles.premiumMemorySub} numberOfLines={1}>
+                                  {date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                  {memory.location ? ` • ${memory.location}` : ''}
+                                </Text>
+                              </View>
+                              
+                              {memory.event_id && (
+                                <TouchableOpacity
+                                  style={styles.premiumMemoryEventBtn}
+                                  activeOpacity={0.8}
+                                  onPress={() => router.push(`/event/${memory.event_id}`)}
+                                >
+                                  <BlurView intensity={35} tint="light" style={styles.premiumMemoryBtnBlur}>
+                                    <Text style={styles.premiumMemoryBtnText}>Ver Evento</Text>
+                                  </BlurView>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={styles.emptyContent}>
+                    <Heart size={48} color={textSecondary} strokeWidth={1} />
+                    <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem Memórias Ainda</Text>
+                    <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Participe de eventos e poste fotos lá para criar seu mural de memórias! 📸</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {activeTab === 'events' && (
+              <View style={styles.eventsList}>
+                {events.length > 0 ? (
+                  <>
+                    {events.slice(0, visibleEvents).map((event) => (
+                      <EventCard 
+                        key={event.id} 
+                        event={event} 
+                        onPress={() => router.push(`/event/${event.id}` as any)} 
+                      />
+                    ))}
+                    {/* Botão 'Carregar mais' removido, o carregamento agora é automático no scroll */}
+                  </>
+                ) : (
+                  <View style={styles.emptyContent}>
+                    <Calendar size={48} color={textSecondary} strokeWidth={1} />
+                    <Text style={[styles.emptyTitle, { color: textPrimary }]}>Nenhum evento ainda</Text>
+                    <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Participe de novas experiências e faça parte da comunidade.</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {activeTab === 'achievements' && (
+              <View style={styles.achievementsContainer}>
+                {/* LEVEL CARD - GLASSMORPHISM STYLE */}
+                <LinearGradient
+                  colors={isDark ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.02)'] : ['#fff', '#f0f0f0']}
+                  style={[styles.levelCard, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+                >
+                  <View style={styles.levelHeader}>
+                    <View style={[styles.levelIconContainer, { backgroundColor: accent + '20' }]}>
+                      <TrendingUp size={24} color={accent} />
+                    </View>
+                    <View style={styles.levelMainInfo}>
+                      <Text style={[styles.levelLabel, { color: textSecondary }]}>Ranking Atual</Text>
+                      <Text style={[styles.levelValue, { color: textPrimary }]}>
+                        {profileStats?.level <= 5 ? 'Explorador' : profileStats?.level <= 15 ? 'Aventureiro' : 'Lenda'} Lvl {profileStats?.level || 1}
+                      </Text>
+                    </View>
+                    <View style={styles.xpBadge}>
+                      <Text style={styles.xpBadgeText}>{profileStats?.xp || 0} XP</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.progressWrapper}>
+                    <View style={[styles.levelProgressContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                      <LinearGradient 
+                        colors={[accent, '#7b2fff']} 
+                        start={{ x: 0, y: 0 }} 
+                        end={{ x: 1, y: 0 }} 
+                        style={[styles.levelProgressBar, { width: `${Math.min(((profileStats?.xp || 0) % 100), 100)}%` }]}
+                      />
+                    </View>
+                    <View style={styles.progressLabels}>
+                      <Text style={[styles.progressText, { color: textSecondary }]}>{profileStats?.xp % 100 || 0}/100 para o próximo nível</Text>
+                    </View>
+                  </View>
+                </LinearGradient>
+
+                {/* STATS GRID - NEOMORPHIC CARDS */}
+                <View style={styles.reputationGrid}>
+                  <TouchableOpacity style={[styles.repCard, { backgroundColor: backgroundSecondary }]}>
+                    <LinearGradient
+                      colors={['rgba(255, 215, 0, 0.2)', 'transparent']}
+                      style={styles.repGradient}
+                    />
+                    <View style={[styles.repIcon, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
+                      <TrendingUp size={20} color="#FFD700" />
+                    </View>
+                    <Text style={[styles.repValue, { color: textPrimary }]}>{profileStats?.coins || 0}</Text>
+                    <Text style={[styles.repLabel, { color: textSecondary }]}>UNNA Coins</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={[styles.repCard, { backgroundColor: backgroundSecondary }]}>
+                     <LinearGradient
+                      colors={[(profile?.flaker_count || 0) > 0 ? 'rgba(255, 59, 48, 0.2)' : 'rgba(52, 199, 89, 0.2)', 'transparent']}
+                      style={styles.repGradient}
+                    />
+                    <View style={[styles.repIcon, { backgroundColor: (profile?.flaker_count || 0) > 0 ? 'rgba(255, 59, 48, 0.15)' : 'rgba(52, 199, 89, 0.15)' }]}>
+                      {(profile?.flaker_count || 0) > 0 ? (
+                        <Clock size={20} color="#FF3B30" />
+                      ) : (
+                        <Star size={20} color="#34C759" fill="#34C759" />
+                      )}
+                    </View>
+                    <Text style={[styles.repValue, { color: textPrimary }]}>
+                      {(profile?.flaker_count || 0) > 0 ? `${profile?.flaker_count} Furos` : 'Fiel ao Rolê'}
+                    </Text>
+                    <Text style={[styles.repLabel, { color: textSecondary }]}>Fura-ô-metro</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* COMO GANHAR MOEDAS INFO */}
+                <View style={[styles.infoBox, { backgroundColor: isDark ? 'rgba(0,217,255,0.05)' : 'rgba(0,217,255,0.03)', marginTop: 15 }]}>
+                  <Text style={[styles.infoBoxText, { color: textSecondary }]}>
+                    💡 <Text style={{ color: textPrimary, fontWeight: 'bold' }}>Dica:</Text> Ganhe XP e Moedas fazendo check-in em eventos (+50) ou hospedando os seus próprios (+100).
+                  </Text>
+                </View>
+
+                {/* BADGES SECTION */}
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: textPrimary }]}>Selos de Conquista</Text>
+                  <TouchableOpacity><Text style={{ color: accent, fontWeight: '700', fontSize: 12 }}>Ver Todos</Text></TouchableOpacity>
+                </View>
+
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  contentContainerStyle={styles.badgesRow}
+                >
+                  {badges.length > 0 ? (
+                    badges.map((badge: any) => (
+                      <TouchableOpacity 
+                        key={badge.id} 
+                        style={styles.badgeItem}
+                        onPress={() => Alert.alert(badge.label, badge.description)}
+                      >
+                        <LinearGradient colors={[badge.color || accent, badge.color ? badge.color + '80' : accent + '80']} style={styles.badgeCircle}>
+                          {badge.icon === 'Sparkles' && <Sparkles size={32} color="#fff" />}
+                          {badge.icon === 'Users' && <Users size={32} color="#fff" />}
+                          {badge.icon === 'Award' && <Award size={32} color="#fff" />}
+                          {badge.icon === 'Star' && <Star size={32} color="#fff" />}
+                        </LinearGradient>
+                        <Text style={[styles.badgeName, { color: textPrimary }]}>{badge.label}</Text>
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <Text style={{ color: textSecondary, paddingHorizontal: 20 }}>Você ainda não tem selos.</Text>
+                  )}
+                </ScrollView>
+
+                {/* MEUS CUPONS ATIVOS */}
+                {userRewards.filter(r => r.status === 'active').length > 0 && (
+                  <>
+                    <View style={[styles.sectionHeader, { marginTop: 30 }]}>
+                      <Text style={[styles.sectionTitle, { color: textPrimary }]}>Meus Cupons</Text>
+                    </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 15, paddingHorizontal: 4, paddingBottom: 10 }}>
+                      {userRewards.filter(r => r.status === 'active').map(ur => (
+                        <TouchableOpacity 
+                          key={ur.id}
+                          style={[styles.rewardCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', width: 140 }]}
+                          onPress={() => {
+                            setSelectedCoupon(ur);
+                            setCouponModalVisible(true);
+                          }}
+                        >
+                          <View style={[styles.rewardIconBg, { backgroundColor: (ur.rewards?.color || accent) + '20', width: 50, height: 50 }]}>
+                            <Text style={{ fontSize: 24 }}>{ur.rewards?.icon || '🎫'}</Text>
+                          </View>
+                          <Text style={[styles.rewardTitle, { color: textPrimary, fontSize: 14 }]} numberOfLines={1}>{ur.rewards?.title}</Text>
+                          <Text style={{ color: accent, fontWeight: '800', fontSize: 11, marginTop: 6, textTransform: 'uppercase' }}>Toque p/ Usar</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </>
+                )}
+
+                {/* REWARDS STORE SECTION */}
+                <View style={[styles.sectionHeader, { marginTop: 30 }]}>
+                  <Text style={[styles.sectionTitle, { color: textPrimary }]}>Loja de Prêmios</Text>
+                  <View style={[styles.coinPill, { backgroundColor: 'rgba(255, 215, 0, 0.2)' }]}>
+                    <TrendingUp size={14} color="#FFD700" />
+                    <Text style={[styles.coinPillText, { color: textPrimary }]}>{profileStats?.coins || 0}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.rewardsGrid}>
+                  {rewards.map(reward => {
+                    const canAfford = (profileStats?.coins || 0) >= reward.cost_coins;
+                    return (
+                      <View key={reward.id} style={[styles.rewardCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                        <View style={[styles.rewardIconBg, { backgroundColor: (reward.color || accent) + '20' }]}>
+                          <Text style={{ fontSize: 32 }}>{reward.icon || '🎁'}</Text>
+                        </View>
+                        <Text style={[styles.rewardTitle, { color: textPrimary }]}>{reward.title}</Text>
+                        <Text style={[styles.rewardDesc, { color: textSecondary }]} numberOfLines={2}>{reward.description}</Text>
+                        
+                        {reward.provider && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, marginBottom: 8 }}>
+                            <Image source={{ uri: reward.provider.avatar_url || 'https://via.placeholder.com/20' }} style={{ width: 20, height: 20, borderRadius: 10 }} />
+                            <Text style={{ color: textSecondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>{reward.provider.full_name}</Text>
+                          </View>
+                        )}
+                        
+                        <TouchableOpacity 
+                          style={[styles.redeemBtn, { backgroundColor: canAfford ? (reward.color || accent) : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)') }]}
+                          disabled={!canAfford || redeemLoading}
+                          onPress={() => openRewardDetails(reward)}
+                        >
+                          <Text style={[styles.redeemBtnText, { color: canAfford ? '#fff' : textSecondary }]}>
+                            {canAfford ? `Resgatar por ${reward.cost_coins}` : `Faltam ${reward.cost_coins - (profileStats?.coins || 0)}`}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+          </View>
+        </Animated.ScrollView>

@@ -3,7 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
@@ -38,6 +38,16 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const [minTimeElapsed, setMinTimeElapsed] = useState(false);
+
+  useEffect(() => {
+    // Garante que a splash animada fique visível por pelo menos 2.5 segundos
+    // para dar tempo do Expo Go ocultar a splash nativa dele
+    const timer = setTimeout(() => {
+      setMinTimeElapsed(true);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -60,16 +70,16 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           router.replace('/(auth)/onboarding');
         }
       } else if (onboardingCompleted && inAuthGroup) {
-        router.replace('/(tabs)');
+        if (profile?.account_type === 'business') {
+          router.replace('/(business-tabs)' as any);
+        } else {
+          router.replace('/(tabs)');
+        }
       }
     }
   }, [user, profile, loading, segments]);
 
-  useEffect(() => {
-    // A Splash Screen nativa agora é controlada no RootLayout para aparecer o AnimatedSplashScreen mais rápido
-  }, [loading]);
-
-  if (loading) {
+  if (loading || !minTimeElapsed) {
     return <AnimatedSplashScreen />;
   }
 
@@ -110,6 +120,7 @@ function MainAppContent() {
       >
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(business-tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="event/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />

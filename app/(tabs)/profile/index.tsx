@@ -123,9 +123,9 @@ export default function Profile() {
   }, [user]);
 
   useEffect(() => {
-    const tabIndex = activeTab === 'posts' ? 0 : activeTab === 'events' ? 1 : 2;
+    const tabIndex = activeTab === 'posts' ? 0 : 1;
     Animated.spring(tabIndicatorPos, {
-      toValue: tabIndex * ((SCREEN_WIDTH - 40) / 3),
+      toValue: tabIndex * ((SCREEN_WIDTH - 32) / 2),
       useNativeDriver: true,
       tension: 50,
       friction: 8
@@ -405,8 +405,8 @@ export default function Profile() {
                   setTimeout(async () => {
                     try {
                       await Share.share({
-                        message: `Vem pro UNNA Social! Use meu convite para ganhar 500 UNNA Coins: https://unnasocial.app/invite/${user?.id}`,
-                        title: 'Convite UNNA Social'
+                        message: `Vem pro UNNA Social! Use meu link para ver meu perfil no app: unna-social-app://profile/${user?.id}`,
+                        title: 'Perfil UNNA Social'
                       });
                       hapticFeedback.success();
                     } catch (e) {
@@ -670,104 +670,79 @@ export default function Profile() {
           </View>
 
           {/* TABS SELECTOR */}
-          <View style={[styles.tabsWrapper, { backgroundColor: backgroundPrimary }]}>
-            <View style={[styles.tabsContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}>
-              <Animated.View 
-                style={[
-                  styles.tabIndicator, 
-                  { 
-                    backgroundColor: backgroundSecondary,
-                    transform: [{ translateX: tabIndicatorPos }]
-                  }
-                ]} 
-              />
-              <TouchableOpacity style={styles.tabItem} onPress={() => { hapticFeedback.selection(); setActiveTab('posts'); }}>
-                <Grid3X3 size={20} color={activeTab === 'posts' ? accent : textSecondary} />
-                <Text style={[styles.tabLabel, { color: activeTab === 'posts' ? textPrimary : textSecondary }]}>Mural</Text>
+          <View style={styles.tabsWrapper}>
+            <View style={[styles.tabsTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+              <Animated.View style={[styles.tabIndicator, { backgroundColor: backgroundSecondary, transform: [{ translateX: tabIndicatorPos }] }]} />
+              <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('posts'); }}>
+                <Grid3X3 size={18} color={activeTab === 'posts' ? accent : textSecondary} />
+                <Text style={[styles.tabBtnText, { color: activeTab === 'posts' ? textPrimary : textSecondary }]}>Mural</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.tabItem} onPress={() => { hapticFeedback.selection(); setActiveTab('events'); }}>
-                <Calendar size={20} color={activeTab === 'events' ? accent : textSecondary} />
-                <Text style={[styles.tabLabel, { color: activeTab === 'events' ? textPrimary : textSecondary }]}>Experiências</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.tabItem} onPress={() => { hapticFeedback.selection(); setActiveTab('achievements'); }}>
-                <Award size={20} color={activeTab === 'achievements' ? accent : textSecondary} />
-                <Text style={[styles.tabLabel, { color: activeTab === 'achievements' ? textPrimary : textSecondary }]}>Conquistas</Text>
+              <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('events'); }}>
+                <Calendar size={18} color={activeTab === 'events' ? accent : textSecondary} />
+                <Text style={[styles.tabBtnText, { color: activeTab === 'events' ? textPrimary : textSecondary }]}>Experiências</Text>
               </TouchableOpacity>
             </View>
           </View>
 
           {/* CONTENT AREA */}
-          <View style={styles.contentArea}>
+          <View style={styles.listContainer}>
             {activeTab === 'posts' && (
-              <View style={{ paddingHorizontal: 4 }}>
+              <View style={styles.postsGrid}>
                 {memories.length > 0 ? (
-                  memories.map((memory, idx) => {
-                    const date = new Date(memory.event_date);
-                    const month = date.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase();
-                    const year = date.getFullYear();
-                    const showYear = idx === 0 || new Date(memories[idx - 1]?.event_date).getFullYear() !== year;
-
-                    return (
-                      <View key={memory.id}>
-                        {showYear && (
-                          <View style={styles.memoryYearDivider}>
-                            <View style={[styles.memoryYearLine, { backgroundColor: accent + '40' }]} />
-                            <Text style={[styles.memoryYearText, { color: accent }]}>{year}</Text>
-                            <View style={[styles.memoryYearLine, { backgroundColor: accent + '40' }]} />
-                          </View>
-                        )}
-                        <TouchableOpacity
-                          style={[
-                            styles.premiumMemoryCard,
-                            {
-                              borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)'
-                            }
-                          ]}
-                          activeOpacity={0.95}
-                          onPress={() => {
-                            setSelectedMemoryIdx(idx);
-                            setIsMemoryViewerVisible(true);
-                          }}
-                        >
-                          <Image source={{ uri: memory.image_url }} style={styles.premiumMemoryImage} />
-                          
-                          <LinearGradient
-                            colors={['transparent', 'rgba(0, 0, 0, 0.1)', 'rgba(0, 0, 0, 0.85)']}
-                            style={styles.premiumMemoryGradient}
-                          >
-                            <View style={styles.premiumMemoryFooter}>
-                              <View style={styles.premiumMemoryMeta}>
-                                <Text style={styles.premiumMemoryTitle} numberOfLines={1}>
-                                  📸 {memory.title}
-                                </Text>
-                                <Text style={styles.premiumMemorySub} numberOfLines={1}>
-                                  {date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                                  {memory.location ? ` • ${memory.location}` : ''}
-                                </Text>
-                              </View>
-                              
-                              {memory.event_id && (
-                                <TouchableOpacity
-                                  style={styles.premiumMemoryEventBtn}
-                                  activeOpacity={0.8}
-                                  onPress={() => router.push(`/event/${memory.event_id}`)}
-                                >
-                                  <BlurView intensity={35} tint="light" style={styles.premiumMemoryBtnBlur}>
-                                    <Text style={styles.premiumMemoryBtnText}>Ver Evento</Text>
-                                  </BlurView>
-                                </TouchableOpacity>
-                              )}
-                            </View>
-                          </LinearGradient>
-                        </TouchableOpacity>
+                  memories.map((memory, idx) => (
+                    <TouchableOpacity
+                      key={memory.id}
+                      style={styles.postThumbnail}
+                      activeOpacity={0.9}
+                      onPress={() => {
+                        setSelectedMemoryIdx(idx);
+                        setIsMemoryViewerVisible(true);
+                      }}
+                    >
+                      <Image source={{ uri: memory.image_url }} style={styles.thumbnailImg} />
+                      <View style={styles.gridIconOverlay}>
+                        <Grid3X3 size={12} color="#FFF" />
                       </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.emptyContent}>
+                    <Heart size={48} color={textSecondary} strokeWidth={1} />
+                    <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem Memórias</Text>
+                    <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma memória compartilhada ainda.</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {activeTab === 'events' && (
+              <View style={styles.postsGrid}>
+                {events.length > 0 ? (
+                  events.map(event => {
+                    const imageUri = event.image_urls?.[0] || event.image_url;
+                    return (
+                      <TouchableOpacity
+                        key={event.id}
+                        style={styles.postThumbnail}
+                        activeOpacity={0.9}
+                        onPress={() => router.push(`/event/${event.id}`)}
+                      >
+                        {imageUri ? (
+                          <Image source={{ uri: imageUri }} style={styles.thumbnailImg} />
+                        ) : (
+                          <View style={[styles.thumbnailImg, { backgroundColor: '#444' }]} />
+                        )}
+                        <View style={styles.gridIconOverlay}>
+                          <Calendar size={12} color="#FFF" />
+                        </View>
+                      </TouchableOpacity>
                     );
                   })
                 ) : (
                   <View style={styles.emptyContent}>
-                    <Heart size={48} color={textSecondary} strokeWidth={1} />
-                    <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem Memórias Ainda</Text>
-                    <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Participe de eventos e poste fotos lá para criar seu mural de memórias! 📸</Text>
+                    <Calendar size={48} color={textSecondary} strokeWidth={1} />
+                    <Text style={[styles.emptyTitle, { color: textPrimary }]}>Nenhum evento</Text>
+                    <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma experiência criada por você.</Text>
                   </View>
                 )}
               </View>
@@ -1010,14 +985,16 @@ const styles = StyleSheet.create({
   interestTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, gap: 6 },
   tagEmoji: { fontSize: ms(14) },
   tagText: { fontSize: ms(13), fontWeight: '700' },
-  tabsWrapper: { paddingVertical: 15, paddingHorizontal: 20, zIndex: 10 },
-  tabsContainer: { height: 56, borderRadius: 28, flexDirection: 'row', padding: 4, position: 'relative' },
-  tabIndicator: { position: 'absolute', top: 4, bottom: 4, left: 4, width: (SCREEN_WIDTH - 40) / 3 - 2.6, borderRadius: 24, elevation: 3, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-  tabItem: { flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 },
-  tabLabel: { fontSize: ms(11), fontWeight: '800', textTransform: 'uppercase' },
-  contentArea: { paddingHorizontal: 16 },
-  postsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  postThumbnail: { width: (SCREEN_WIDTH - 32 - 16) / 3, height: (SCREEN_WIDTH - 32 - 16) / 3, borderRadius: 12, overflow: 'hidden' },
+  tabsWrapper: { paddingHorizontal: 16, marginBottom: 20 },
+  tabsTrack: { flexDirection: 'row', borderRadius: 30, height: 56, padding: 4, position: 'relative' },
+  tabIndicator: { position: 'absolute', top: 4, bottom: 4, left: 4, width: (SCREEN_WIDTH - 32) / 2 - 4, borderRadius: 26, elevation: 2 },
+  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  tabBtnText: { fontSize: ms(14), fontWeight: '800' },
+  listContainer: { paddingHorizontal: 0 },
+  postsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 8, width: '100%' },
+  postThumbnail: { width: (SCREEN_WIDTH - 32 - 16) / 3, height: (SCREEN_WIDTH - 32 - 16) / 3 * 1.3, backgroundColor: '#333', borderRadius: 16, overflow: 'hidden', position: 'relative' },
+  thumbnailImg: { width: '100%', height: '100%' },
+  gridIconOverlay: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)', padding: 6, borderRadius: 10 },
   thumbnailImg: { width: '100%', height: '100%' },
   thumbnailPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', padding: 10 },
   thumbnailText: { fontSize: ms(10), textAlign: 'center', fontWeight: '500' },

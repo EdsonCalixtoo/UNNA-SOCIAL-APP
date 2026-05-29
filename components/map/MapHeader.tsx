@@ -18,12 +18,14 @@ interface MapHeaderProps {
   onTrendingChange: (val: boolean) => void;
   showHeatmap: boolean;
   onHeatmapChange: (val: boolean) => void;
+  liveOnly: boolean;
+  onLiveOnlyChange: (val: boolean) => void;
 }
 
-const MapHeader = ({ 
-  onFilterPress, 
-  eventCount, 
-  searchQuery, 
+const MapHeader = ({
+  onFilterPress,
+  eventCount,
+  searchQuery,
   onSearchChange,
   categories,
   selectedCategory,
@@ -31,7 +33,9 @@ const MapHeader = ({
   trendingOnly,
   onTrendingChange,
   showHeatmap,
-  onHeatmapChange
+  onHeatmapChange,
+  liveOnly,
+  onLiveOnlyChange
 }: MapHeaderProps) => {
   const insets = useSafeAreaInsets();
   const { textPrimary, textSecondary, accent, backgroundSecondary, isDark } = useTheme();
@@ -69,11 +73,11 @@ const MapHeader = ({
               onChangeText={onSearchChange}
             />
           </View>
-          
+
           <View style={styles.divider} />
-          
-          <TouchableOpacity 
-            style={styles.filterBtn} 
+
+          <TouchableOpacity
+            style={styles.filterBtn}
             onPress={onFilterPress}
           >
             <SlidersHorizontal size={20} color={accent} />
@@ -83,28 +87,39 @@ const MapHeader = ({
 
       {/* Live Badge & Horizontal Filter */}
       <View style={styles.bottomSection}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
           {/* Live Now Button */}
           <TouchableOpacity
-            onPress={() => onSelectCategory(null)}
+            onPress={() => {
+              const newState = !liveOnly;
+              onLiveOnlyChange(newState);
+              if (newState) onTrendingChange(false);
+              hapticFeedback.light();
+            }}
             style={[
               styles.liveChip,
-              { backgroundColor: isDark ? 'rgba(52, 199, 89, 0.15)' : 'rgba(52, 199, 89, 0.1)' }
+              { backgroundColor: liveOnly ? (isDark ? 'rgba(52, 199, 89, 0.25)' : 'rgba(52, 199, 89, 0.2)') : (isDark ? 'rgba(52, 199, 89, 0.1)' : 'rgba(52, 199, 89, 0.05)') },
+              liveOnly && { borderColor: '#34C759', borderWidth: 1 }
             ]}
           >
             <View style={styles.pulseContainer}>
               <Animated.View style={[styles.pulseDot, { transform: [{ scale: pulseAnim }] }]} />
               <View style={styles.dot} />
             </View>
-            <Text style={styles.liveText}>{eventCount} AO VIVO</Text>
+            <Text style={styles.liveText}>AO VIVO</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => onTrendingChange(!trendingOnly)}
+            onPress={() => {
+              const newState = !trendingOnly;
+              onTrendingChange(newState);
+              if (newState) onLiveOnlyChange(false);
+              hapticFeedback.light();
+            }}
             style={[
               styles.trendingChip,
               trendingOnly && { backgroundColor: 'rgba(255, 20, 147, 0.15)', borderColor: '#ff1493', borderWidth: 1 }
@@ -130,14 +145,16 @@ const MapHeader = ({
             onPress={() => {
               onSelectCategory(null);
               onTrendingChange(false);
+              onLiveOnlyChange(false);
+              hapticFeedback.light();
             }}
             style={[
               styles.chip,
-              (!selectedCategory && !trendingOnly) && [styles.activeChip, { borderColor: accent }],
+              (!selectedCategory && !trendingOnly && !liveOnly) && [styles.activeChip, { borderColor: accent }],
               { backgroundColor: backgroundSecondary }
             ]}
           >
-            <Text style={[styles.chipText, { color: (!selectedCategory && !trendingOnly) ? accent : textPrimary }]}>🌍 Todos</Text>
+            <Text style={[styles.chipText, { color: (!selectedCategory && !trendingOnly && !liveOnly) ? accent : textPrimary }]}>🌍 Todos</Text>
           </TouchableOpacity>
 
           {categories.map((cat) => (

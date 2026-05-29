@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedTabBar } from '@/components/AnimatedTabBar';
 import { reputationService } from '@/services/reputationService';
+import { InterestOnboardingModal } from '@/components/InterestOnboardingModal';
 
 function ProfileIcon({ focused, avatarUrl }: { focused: boolean; avatarUrl?: string | null }) {
   const [error, setError] = useState(false);
@@ -48,6 +49,7 @@ export default function TabLayout() {
   }, [profile?.id]);
 
   return (
+    <>
     <Tabs
       tabBar={(props) => <AnimatedTabBar {...props} />}
       screenOptions={{
@@ -93,7 +95,12 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
-
+    
+    <InterestOnboardingModal 
+      visible={profile ? !profile.onboarding_completed : false}
+      onComplete={() => {}}
+    />
+    </>
   );
 }
 

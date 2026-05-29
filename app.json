@@ -3,7 +3,7 @@
     "name": "UNNA Social App",
     "slug": "bolt-expo-starter",
     "scheme": "unna-social-app",
-    "version": "2.2.7",
+    "version": "3.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "splash": {
@@ -35,7 +35,6 @@
         "expo-build-properties",
         {
           "android": {
-            "kotlinVersion": "2.0.21",
             "extraMavenRepos": [
               "https://maven.google.com"
             ]
@@ -62,10 +61,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.unna.socialapp",
-      "buildNumber": "21",
+      "buildNumber": "23",
       "associatedDomains": [
         "applinks:unna.app"
       ],
+      "splash": {
+        "image": "./assets/images/transparent.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#050505"
+      },
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyC6r64NqanwHatrR3M99tg44y3nkRsOW94"
@@ -82,7 +86,8 @@
           "comgooglemaps",
           "waze",
           "maps",
-          "unna"
+          "unna",
+          "whatsapp"
         ]
       }
     },
@@ -92,7 +97,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "com.bolt.starter",
-      "versionCode": 21,
+      "versionCode": 23,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -140,8 +145,10 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "8d7349e6-9f11-4973-aaf2-aec83d650f26"
+        "projectId": "7980db6f-2fb3-41cf-9fed-0701c89d5727"
       }
-    }
+    },
+    "runtimeVersion": "3.0.1",
+    "owner": "edson123juninho"
   }
 }

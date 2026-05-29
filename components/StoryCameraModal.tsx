@@ -31,7 +31,9 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
   const [isRecording, setIsRecording] = useState(false);
   const [mounted, setMounted] = useState(false);
   const cameraRef = useRef<any>(null);
-  const isRecordingRef = useRef(false); // ref para evitar stale closure
+  const isRecordingRef = useRef(false);
+  const justRecordedRef = useRef(false);
+  const isHoldingRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
@@ -47,7 +49,7 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
   }, [visible]);
 
   const takePhoto = useCallback(async () => {
-    if (!cameraRef.current || !cameraReady || isRecordingRef.current) return;
+    if (!cameraRef.current || !cameraReady || isRecordingRef.current || justRecordedRef.current) return;
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.75,
@@ -75,11 +77,12 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
     } finally {
       isRecordingRef.current = false;
       setIsRecording(false);
+      justRecordedRef.current = true;
+      setTimeout(() => { justRecordedRef.current = false; }, 1000);
     }
   }, [cameraReady, micPermission, onCapture]);
 
   const stopRecording = useCallback(async () => {
-    // Só para se REALMENTE estiver gravando
     if (!isRecordingRef.current || !cameraRef.current) return;
     try {
       await cameraRef.current.stopRecording();
@@ -87,6 +90,28 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
       console.log('Stop error:', e);
     }
   }, []);
+
+  const handlePressIn = useCallback(() => {
+    isHoldingRef.current = false;
+  }, []);
+
+  const handleLongPress = useCallback(() => {
+    isHoldingRef.current = true;
+    startRecording();
+  }, [startRecording]);
+
+  const handlePressOut = useCallback(() => {
+    if (isHoldingRef.current) {
+      stopRecording();
+    }
+  }, [stopRecording]);
+
+  const handlePress = useCallback(() => {
+    if (!isHoldingRef.current) {
+      takePhoto();
+    }
+    isHoldingRef.current = false;
+  }, [takePhoto]);
 
   const pickFromGallery = useCallback(async () => {
     try {
@@ -142,7 +167,7 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
               style={st.camera}
               facing={facing}
               flash={flash}
-              mode={isRecording ? "video" : "picture"}
+              mode="video"
               onCameraReady={() => setCameraReady(true)}
             />
 
@@ -176,9 +201,10 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
               {/* Botão principal: toque = foto / segurar = vídeo */}
               <TouchableOpacity
                 style={[st.shutter, isRecording && st.shutterRec]}
-                onPress={takePhoto}
-                onLongPress={startRecording}
-                onPressOut={stopRecording}
+                onPress={handlePress}
+                onLongPress={handleLongPress}
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
                 delayLongPress={300}
                 activeOpacity={0.85}
                 disabled={!cameraReady}

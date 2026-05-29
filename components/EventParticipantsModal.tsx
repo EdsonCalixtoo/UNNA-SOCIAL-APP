@@ -184,7 +184,7 @@ export function EventParticipantsModal({
                   <Users size={22} color="#fff" />
                 </LinearGradient>
                 <View>
-                  <Text style={[styles.headerTitle, { color: textPrimary }]}>Comunidade</Text>
+                  <Text style={[styles.headerTitle, { color: textPrimary }]}>CONFIRMADAS</Text>
                   <Text style={[styles.headerSubtitle, { color: textSecondary }]}>
                     {participants.length} {participants.length === 1 ? 'membro confirmado' : 'membros confirmados'}
                   </Text>

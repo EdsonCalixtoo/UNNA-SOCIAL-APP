@@ -19,9 +19,11 @@ export interface Profile {
   presence_score?: number;
   is_verified?: boolean;
   role?: string;
+  account_type?: string;
   birth_date?: string;
   instagram_url?: string;
   website_url?: string;
+  whatsapp_number?: string;
 }
 
 
@@ -136,6 +138,15 @@ export interface ConversationParticipant {
   profiles?: Profile;
 }
 
+export interface MessageReaction {
+  id: string;
+  message_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+  profiles?: Profile;
+}
+
 export interface Message {
   id: string;
   conversation_id: string;
@@ -144,6 +155,7 @@ export interface Message {
   read: boolean;
   created_at: string;
   profiles?: Profile;
+  reactions?: MessageReaction[];
 }
 
 export interface Notification {

@@ -31,7 +31,7 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'verification' | 'categories'>('verification');
+  const [activeTab, setActiveTab] = useState<'verification' | 'categories' | 'notifications'>('verification');
 
   // Verification State
   const [search, setSearch] = useState('');
@@ -55,6 +55,44 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
   // General feedback overlay state
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Notifications State
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any | null>(null);
+  const [templateTitle, setTemplateTitle] = useState('');
+  const [templateBody, setTemplateBody] = useState('');
+
+  const loadTemplates = async () => {
+    setLoadingTemplates(true);
+    try {
+      const { data, error } = await supabase.from('notification_templates').select('*');
+      // If table doesn't exist yet, it will error, we just ignore for now
+      if (error && error.code !== '42P01') throw error;
+      setTemplates(data || []);
+    } catch (err: any) {
+      console.error('Error fetching templates:', err);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!editingTemplate) return;
+    try {
+      const { error } = await supabase
+        .from('notification_templates')
+        .update({ title_template: templateTitle, body_template: templateBody, updated_at: new Date().toISOString() })
+        .eq('id', editingTemplate.id);
+      
+      if (error) throw error;
+      setFeedback({ type: 'success', message: 'Notificação atualizada com sucesso!' });
+      setEditingTemplate(null);
+      loadTemplates();
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: 'Erro ao salvar: ' + err.message });
+    }
+  };
+
   // Load initial data
   useEffect(() => {
     if (visible) {
@@ -62,6 +100,8 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
         searchUsers('');
       } else if (activeTab === 'categories') {
         loadCategories();
+      } else if (activeTab === 'notifications') {
+        loadTemplates();
       }
     }
   }, [visible, activeTab]);
@@ -264,6 +304,14 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
             >
               <Text style={[styles.tabText, { color: activeTab === 'categories' ? textPrimary : textSecondary, fontWeight: activeTab === 'categories' ? '800' : '500' }]}>
                 Categorias & Sub
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.tabButton, activeTab === 'notifications' && { borderBottomColor: accent }]}
+              onPress={() => setActiveTab('notifications')}
+            >
+              <Text style={[styles.tabText, { color: activeTab === 'notifications' ? textPrimary : textSecondary, fontWeight: activeTab === 'notifications' ? '800' : '500' }]}>
+                Notificações
               </Text>
             </TouchableOpacity>
           </View>
@@ -561,6 +609,108 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                       </View>
                     );
                   }}
+                />
+              )}
+            </View>
+          )}
+
+          {/* TAB 3: NOTIFICATIONS TEMPLATES */}
+          {activeTab === 'notifications' && (
+            <View style={{ flex: 1, paddingHorizontal: 20 }}>
+              <View style={{ marginVertical: 15 }}>
+                <Text style={[styles.catSectionTitle, { color: textPrimary }]}>Mensagens Automáticas</Text>
+                <Text style={{ color: textSecondary, fontSize: 13, marginTop: 4 }}>
+                  Personalize os textos que o app dispara sozinho. Você pode usar tags como [NOME], [EVENTO], [CATEGORIA] e [DIA_SEMANA].
+                </Text>
+              </View>
+
+              {/* DYNAMIC EDIT TEMPLATE OVERLAY CARD */}
+              {editingTemplate && (
+                <View style={[styles.catFormCard, { backgroundColor: backgroundSecondary, borderColor: accent + '33', marginBottom: 20 }]}>
+                  <Text style={[styles.formTitle, { color: textPrimary }]}>
+                    ✏️ Editando: {editingTemplate.id === 'event_presence' ? 'Presença no seu Evento' : editingTemplate.id === 'event_friend_presence' ? 'Amigo vai ao Evento' : editingTemplate.id === 'smart_recommendation' ? 'Recomendação de Fim de Semana' : editingTemplate.id}
+                  </Text>
+                  
+                  <View style={{ gap: 10, marginTop: 10 }}>
+                    <Text style={{ color: textSecondary, fontSize: 12, fontWeight: '700' }}>TÍTULO DA NOTIFICAÇÃO</Text>
+                    <TextInput 
+                      style={[styles.formInput, { color: textPrimary, paddingVertical: 12 }]} 
+                      placeholder="Ex: Nova presença confirmada!"
+                      placeholderTextColor={textSecondary}
+                      value={templateTitle}
+                      onChangeText={setTemplateTitle}
+                    />
+                    
+                    <Text style={{ color: textSecondary, fontSize: 12, fontWeight: '700', marginTop: 10 }}>MENSAGEM (CORPO)</Text>
+                    <TextInput 
+                      style={[styles.formInput, { color: textPrimary, minHeight: 80, textAlignVertical: 'top' }]} 
+                      placeholder="Ex: Ei [NOME], partiu [EVENTO]?"
+                      placeholderTextColor={textSecondary}
+                      value={templateBody}
+                      onChangeText={setTemplateBody}
+                      multiline
+                    />
+                  </View>
+                  
+                  <View style={[styles.formActions, { marginTop: 20 }]}>
+                    <TouchableOpacity 
+                      style={[styles.formCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]} 
+                      onPress={() => setEditingTemplate(null)}
+                    >
+                      <Text style={[styles.formActionText, { color: textSecondary }]}>Cancelar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.formSaveBtn, { backgroundColor: accent }]} 
+                      onPress={handleSaveTemplate}
+                    >
+                      <Text style={[styles.formActionText, { color: '#fff' }]}>Salvar Texto</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {loadingTemplates ? (
+                <View style={styles.loaderContainer}>
+                  <ActivityIndicator size="large" color={accent} />
+                  <Text style={[styles.loaderText, { color: textSecondary }]}>Carregando mensagens...</Text>
+                </View>
+              ) : templates.length === 0 ? (
+                <View style={styles.emptyContent}>
+                  <Text style={[styles.emptyTitle, { color: textPrimary }]}>Tabela Não Encontrada</Text>
+                  <Text style={[styles.emptySubtitle, { color: textSecondary, textAlign: 'center' }]}>
+                    Por favor, rode o script SQL '20260522_notification_templates.sql' no Supabase primeiro.
+                  </Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={templates}
+                  keyExtractor={item => item.id}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 50, gap: 12 }}
+                  renderItem={({ item }) => (
+                    <View style={[styles.catCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+                      <View style={{ flex: 1, paddingRight: 10 }}>
+                        <Text style={[styles.catName, { color: textPrimary, fontSize: 16 }]}>
+                          {item.id === 'event_presence' ? '🎉 Presença no seu Evento' : item.id === 'event_friend_presence' ? '👀 Amigo vai ao Evento (FOMO)' : item.id === 'smart_recommendation' ? '🔥 Recomendação Semanal' : item.id}
+                        </Text>
+                        <Text style={{ color: textSecondary, fontSize: 13, marginTop: 8, fontWeight: '700' }}>Título Atual:</Text>
+                        <Text style={{ color: textPrimary, fontSize: 14 }}>{item.title_template}</Text>
+                        <Text style={{ color: textSecondary, fontSize: 13, marginTop: 8, fontWeight: '700' }}>Mensagem Atual:</Text>
+                        <Text style={{ color: textPrimary, fontSize: 14 }}>{item.body_template}</Text>
+                      </View>
+                      
+                      <TouchableOpacity 
+                        onPress={() => {
+                          setEditingTemplate(item);
+                          setTemplateTitle(item.title_template);
+                          setTemplateBody(item.body_template);
+                        }}
+                        style={[styles.actionIconBtn, { backgroundColor: accent + '20', height: 44, width: 44, alignSelf: 'flex-start' }]}
+                      >
+                        <Text style={{ fontSize: 18 }}>✏️</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 />
               )}
             </View>
@@ -1002,5 +1152,25 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  emptyContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingBottom: 60,
+  },
+  emptyTitle: {
+    fontSize: ms(18),
+    fontWeight: '900',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: ms(14),
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
+    fontWeight: '500',
   },
 });

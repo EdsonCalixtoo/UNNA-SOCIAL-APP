@@ -9,16 +9,15 @@ import { Platform } from 'react-native';
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
-    // Para Android, desabilitamos o alerta do sistema no foreground para que mostre APENAS
-    // o nosso banner glassmorphism customizado in-app, evitando a duplicidade com o cabeçalho nativo do sistema!
-    // No iOS, mantemos o comportamento atual intacto que está perfeito.
-    const isAndroid = Platform.OS === 'android';
+    // Desabilitamos o alerta do sistema no foreground (app aberto) em AMBAS as plataformas
+    // para que mostre APENAS o nosso banner glassmorphism customizado in-app,
+    // evitando a duplicidade de chegar 2 notificações ao mesmo tempo!
     return {
-      shouldShowAlert: !isAndroid,
-      shouldPlaySound: !isAndroid,
+      shouldShowAlert: false,
+      shouldPlaySound: true,
       shouldSetBadge: true,
-      shouldShowBanner: !isAndroid,
-      shouldShowList: !isAndroid,
+      shouldShowBanner: false,
+      shouldShowList: false,
     };
   },
 });
@@ -65,8 +64,17 @@ export const usePushNotifications = () => {
           return;
         }
 
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'default',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#00d9ff',
+          });
+        }
+
         try {
-          const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId ?? '8d7349e6-9f11-4973-aaf2-aec83d650f26';
+          const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId ?? '7980db6f-2fb3-41cf-9fed-0701c89d5727';
           const token = await Notifications.getExpoPushTokenAsync({
             projectId,
           });

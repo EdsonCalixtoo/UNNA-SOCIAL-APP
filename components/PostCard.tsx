@@ -1,12 +1,21 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Heart, MessageCircle as MessageIcon, Calendar, Volume2, VolumeX, Sparkles } from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, Dimensions } from 'react-native';
+import { Heart, MessageCircle as MessageIcon, Calendar, Sparkles, MoreHorizontal, Share2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Video, ResizeMode } from 'expo-av';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import MediaCarousel from './MediaCarousel';
 import { s, vs, ms } from '@/utils/responsive';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  withTiming,
+  LinearTransition,
+  FadeInDown
+} from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
+import { hapticFeedback } from '@/utils/haptics';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface PostCardProps {
   post: any;
@@ -18,7 +27,6 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
   const router = useRouter();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   
-  // SEGURANÇA: Se for um post automático de sistema e o conteúdo original sumiu, não renderiza nada.
   const isAutoPost = post.content?.includes('Criei um novo evento') || post.content?.includes('Publiquei algo novo');
   if (isAutoPost && (!post.events || !post.events.id || !post.events.title)) {
     return null;
@@ -26,10 +34,15 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
 
   const contentTranslateY = useSharedValue(0);
   const contentOpacity = useSharedValue(1);
+  const likeScale = useSharedValue(1);
 
   const contentAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: contentTranslateY.value }],
     opacity: contentOpacity.value,
+  }));
+
+  const likeAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: likeScale.value }],
   }));
 
   const handleFullScreenChange = (visible: boolean) => {
@@ -42,212 +55,266 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
     }
   };
 
+  const handleLikePress = () => {
+    hapticFeedback.light();
+    onLike(post.id, post.is_liked || false);
+    likeScale.value = withSpring(1.5, { damping: 2, stiffness: 200 }, () => {
+      likeScale.value = withSpring(1, { damping: 10, stiffness: 100 });
+    });
+  };
+
+  const hasMedia = (post.image_urls && post.image_urls.length > 0) || post.image_url;
+
   return (
-    <View style={[styles.card, { backgroundColor: backgroundSecondary, shadowOpacity: isDark ? 0 : 0.05 }]}>
+    <Animated.View 
+      layout={LinearTransition}
+      entering={FadeInDown.delay(50)}
+      style={[
+        styles.card, 
+        { 
+          backgroundColor: backgroundSecondary, 
+          borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' 
+        }
+      ]}
+    >
+      {/* ── HEADER ── */}
       <View style={styles.header}>
-        {post.profiles?.avatar_url ? (
-          <Image
-            source={{ uri: post.profiles.avatar_url }}
-            style={[styles.avatar, { borderColor: accent, borderWidth: 1 }]}
-          />
-        ) : (
-          <View style={[styles.avatarPlaceholder, { backgroundColor: accent }]}>
-            <Text style={styles.avatarText}>
-              {post.profiles?.username?.charAt(0).toUpperCase()}
+        <TouchableOpacity style={styles.headerProfile} activeOpacity={0.8} onPress={() => {}}>
+          {post.profiles?.avatar_url ? (
+            <Image
+              source={{ uri: post.profiles.avatar_url }}
+              style={[styles.avatar, { borderColor: accent }]}
+            />
+          ) : (
+            <View style={[styles.avatarPlaceholder, { backgroundColor: accent }]}>
+              <Text style={styles.avatarText}>
+                {post.profiles?.username?.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.headerInfo}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={[styles.username, { color: textPrimary }]} numberOfLines={1}>
+                {post.profiles?.full_name || post.profiles?.username}
+              </Text>
+              {post.profiles?.is_verified && (
+                <Sparkles size={14} color={accent} fill={accent} />
+              )}
+            </View>
+            <Text style={[styles.handle, { color: textSecondary }]}>
+              @{post.profiles?.username}
             </Text>
           </View>
-        )}
-        <View style={styles.headerInfo}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Text style={[styles.username, { color: textPrimary }]}>{post.profiles?.full_name}</Text>
-            {post.profiles?.is_verified && (
-              <Sparkles size={14} color={accent} fill={accent} />
-            )}
-          </View>
-          <Text style={[styles.handle, { color: textSecondary }]}>@{post.profiles?.username}</Text>
-        </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.moreButton} activeOpacity={0.7}>
+          <MoreHorizontal size={20} color={textSecondary} />
+        </TouchableOpacity>
       </View>
 
+      {/* ── TEXT CONTENT ── */}
       <Animated.View style={contentAnimatedStyle}>
         <Text style={[styles.content, { color: textPrimary }]}>{post.content}</Text>
       </Animated.View>
 
-      {post.image_urls && post.image_urls.length > 0 ? (
+      {/* ── MEDIA ── */}
+      {hasMedia && (
         <View style={styles.mediaContainer}>
           <MediaCarousel 
-            mediaUrls={post.image_urls} 
-            height={vs(250)}
-            borderRadius={0}
-            isVisible={isVisible}
-            onFullScreenChange={handleFullScreenChange}
-          />
-        </View>
-      ) : post.image_url ? (
-        <View style={styles.mediaContainer}>
-          <MediaCarousel 
-            mediaUrls={[post.image_url]} 
+            mediaUrls={post.image_urls?.length > 0 ? post.image_urls : [post.image_url]} 
             mediaTypes={post.media_type ? [post.media_type] : undefined}
-            height={vs(250)}
+            height={vs(350)}
             borderRadius={0}
             isVisible={isVisible}
             onFullScreenChange={handleFullScreenChange}
           />
         </View>
-      ) : null}
+      )}
 
       <Animated.View style={contentAnimatedStyle}>
+        {/* ── EVENT SNIPPET ── */}
         {post.events && post.events.title && post.events.event_date && (
           <TouchableOpacity 
             activeOpacity={0.9}
             onPress={() => router.push(`/event/${post.events.id}`)}
-            style={[styles.eventCard, { backgroundColor: backgroundPrimary }]}
+            style={[
+              styles.eventCard, 
+              { 
+                backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F2F2F7',
+                borderLeftColor: accent 
+              }
+            ]}
           >
-            <Calendar size={16} color={accent} />
+            <View style={[styles.eventIconWrap, { backgroundColor: accent + '20' }]}>
+              <Calendar size={18} color={accent} />
+            </View>
             <View style={styles.eventInfo}>
-              <Text style={[styles.eventTitle, { color: textPrimary }]}>{post.events.title}</Text>
-              <Text style={[styles.eventDetails, { color: textSecondary }]}>
-                {post.events.event_date ? post.events.event_date.split('-').reverse().join('/') : ''} às {post.events.event_time ? post.events.event_time.slice(0, 5) : ''}
+              <Text style={[styles.eventTitle, { color: textPrimary }]} numberOfLines={1}>
+                {post.events.title}
               </Text>
-              <Text style={[styles.eventLocation, { color: textSecondary }]}>{post.events.location_name}</Text>
+              <Text style={[styles.eventDetails, { color: textSecondary }]}>
+                {post.events.event_date ? post.events.event_date.split('-').reverse().join('/') : ''} • {post.events.event_time ? post.events.event_time.slice(0, 5) : ''}
+              </Text>
             </View>
           </TouchableOpacity>
         )}
 
+        {/* ── ACTIONS ── */}
         <View style={[styles.actions, { borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => onLike(post.id, post.is_liked || false)}
+            onPress={handleLikePress}
+            activeOpacity={0.7}
           >
-            <Heart
-              size={20}
-              color={post.is_liked ? '#FF3B30' : textSecondary}
-              fill={post.is_liked ? '#FF3B30' : 'none'}
-            />
+            <Animated.View style={likeAnimStyle}>
+              <Heart
+                size={24}
+                color={post.is_liked ? '#FF3B30' : textSecondary}
+                fill={post.is_liked ? '#FF3B30' : 'none'}
+              />
+            </Animated.View>
             <Text style={[styles.actionText, { color: textSecondary }, post.is_liked && styles.likedText]}>
               {post.likes_count || 0}
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton}>
-            <MessageIcon size={20} color={textSecondary} />
-            <Text style={[styles.actionText, { color: textSecondary }]}>Comentar</Text>
+          <TouchableOpacity style={styles.actionButton} activeOpacity={0.7}>
+            <MessageIcon size={24} color={textSecondary} />
+            <Text style={[styles.actionText, { color: textSecondary }]}>
+              Comentar
+            </Text>
+          </TouchableOpacity>
+          
+          <View style={{ flex: 1 }} />
+          
+          <TouchableOpacity style={styles.actionButtonRight} activeOpacity={0.7}>
+            <Share2 size={22} color={textSecondary} />
           </TouchableOpacity>
         </View>
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 20, // Mais redondo para visual premium
-    paddingTop: 16,
-    paddingBottom: 0,
+    marginBottom: vs(12),
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    paddingTop: vs(14),
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 3,
-    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 16, // Header com padding
+    justifyContent: 'space-between',
+    marginBottom: vs(10),
+    paddingHorizontal: s(16),
+  },
+  headerProfile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: s(44),
+    height: s(44),
+    borderRadius: ms(22),
+    borderWidth: 1.5,
   },
   avatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#007AFF',
+    width: s(44),
+    height: s(44),
+    borderRadius: ms(22),
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: ms(18),
     fontWeight: 'bold',
   },
   headerInfo: {
-    marginLeft: 12,
+    marginLeft: s(12),
     flex: 1,
   },
   username: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: ms(15),
+    fontWeight: '700',
   },
   handle: {
-    fontSize: 13,
-    color: '#8E8E93',
+    fontSize: ms(13),
+    marginTop: vs(1),
+  },
+  moreButton: {
+    padding: s(5),
   },
   content: {
-    fontSize: 15,
-    lineHeight: 20,
-    marginBottom: 12,
-    paddingHorizontal: 16, // Content com padding
+    fontSize: ms(15),
+    lineHeight: vs(22),
+    marginBottom: vs(12),
+    paddingHorizontal: s(16),
   },
-  postImage: {
+  mediaContainer: {
+    position: 'relative',
     width: '100%',
-    height: 200,
-    borderRadius: 8,
-    marginBottom: 12,
+    marginBottom: vs(10),
   },
   eventCard: {
     flexDirection: 'row',
-    backgroundColor: '#F2F2F7',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
+    alignItems: 'center',
+    marginHorizontal: s(16),
+    padding: ms(12),
+    borderRadius: ms(12),
+    marginBottom: vs(12),
+    borderLeftWidth: 4,
+  },
+  eventIconWrap: {
+    width: s(36),
+    height: s(36),
+    borderRadius: ms(18),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   eventInfo: {
-    marginLeft: 12,
+    marginLeft: s(12),
     flex: 1,
   },
   eventTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
+    fontSize: ms(14),
+    fontWeight: '700',
+    marginBottom: vs(2),
   },
   eventDetails: {
-    fontSize: 12,
-    color: '#8E8E93',
-    marginBottom: 2,
-  },
-  eventLocation: {
-    fontSize: 12,
-    color: '#8E8E93',
+    fontSize: ms(13),
+    fontWeight: '500',
   },
   actions: {
     flexDirection: 'row',
-    paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
+    alignItems: 'center',
+    paddingVertical: vs(12),
+    paddingHorizontal: s(16),
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 24,
+    marginRight: s(24),
+  },
+  actionButtonRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   actionText: {
-    fontSize: 14,
-    color: '#8E8E93',
-    marginLeft: 6,
+    fontSize: ms(15),
+    fontWeight: '600',
+    marginLeft: s(6),
   },
   likedText: {
     color: '#FF3B30',
-  },
-  mediaContainer: {
-    position: 'relative',
-    marginBottom: 0,
   },
 });

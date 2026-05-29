@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Dimensions, Share, Animated, RefreshControl, Platform, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Dimensions, Share, Animated, Easing, RefreshControl, Platform, Linking } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Profile, Event } from '@/types/database';
@@ -106,12 +106,30 @@ export default function UserProfile() {
   const [isMemoryViewerVisible, setIsMemoryViewerVisible] = useState(false);
   const [selectedMemoryIdx, setSelectedMemoryIdx] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [visibleEvents, setVisibleEvents] = useState(5);
 
   // Animations
   const scrollY = useRef(new Animated.Value(0)).current;
   const tabIndicatorPos = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const rotationAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(rotationAnim, {
+        toValue: 1,
+        duration: 8000,
+        easing: Easing.linear,
+        useNativeDriver: true
+      })
+    ).start();
+  }, []);
+
+  const spin = rotationAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  });
 
   const formatBirthDate = (dateString?: string) => {
     if (!dateString) return null;
@@ -155,9 +173,9 @@ export default function UserProfile() {
   }, [activeTab]);
 
   useEffect(() => {
-    const tabIndex = activeTab === 'posts' ? 0 : activeTab === 'events' ? 1 : 2;
+    const tabIndex = activeTab === 'posts' ? 0 : 1;
     Animated.spring(tabIndicatorPos, {
-      toValue: tabIndex * ((SCREEN_WIDTH - 32) / 3),
+      toValue: tabIndex * ((SCREEN_WIDTH - 32) / 2),
       useNativeDriver: true,
       tension: 50,
       friction: 8
@@ -165,7 +183,15 @@ export default function UserProfile() {
   }, [activeTab, SCREEN_WIDTH]);
 
   const loadUserProfile = async () => {
-    if (!id || id === 'undefined') return;
+    if (!id || id === 'undefined' || id === 'edit') return;
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id as string)) {
+      router.back();
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -201,7 +227,7 @@ export default function UserProfile() {
       setIsFollowing(!!followData.data);
       setHasRequestPending(!!requestData.data);
       setEventsCount(eventsData.count || 0);
-      setPosts((postsRes.data || []).filter((p: any) => !!p.image_url));
+      setPosts(postsRes.data || []);
       setProfileStats(statsRes.data);
 
       // Carregar memórias: fotos que o usuário postou nos eventos (via EventStoriesBar)
@@ -282,36 +308,46 @@ export default function UserProfile() {
   };
 
   const loadEvents = async () => {
-    if (!id || id === 'undefined') return;
+    if (!id || id === 'undefined' || id === 'edit') return;
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id as string)) return;
+
     try {
       // No perfil público, mostramos todos os eventos criados por ele
       const { data, error } = await supabase
         .from('events')
-        .select('*, profiles:creator_id (id, username, full_name, avatar_url), categories:category_id (name, icon), subcategories:subcategory_id (name)')
+        .select('*, profiles:creator_id (id, username, full_name, avatar_url), categories:category_id (name, icon), subcategories:subcategory_id (name), likes:event_likes(count)')
         .eq('creator_id', id)
-        .order('event_date', { ascending: true });
+        .order('created_at', { ascending: false })
+        .limit(30);
 
       if (error) throw error;
+      if (!data || data.length === 0) {
+        setEvents([]);
+        return;
+      }
 
-      // Fetch likes count and is_liked status for each event
-      const eventsWithLikes = await Promise.all((data || []).map(async (event) => {
-        const { count: likesCount } = await supabase
+      const eventIds = data.map(e => e.id);
+      
+      let userLikedSet = new Set();
+      if (user?.id) {
+        const { data: userLikes } = await supabase
           .from('event_likes')
-          .select('*', { count: 'exact', head: true })
-          .eq('event_id', event.id);
+          .select('event_id')
+          .eq('user_id', user.id)
+          .in('event_id', eventIds);
+          
+        if (userLikes) {
+          userLikedSet = new Set(userLikes.map(l => l.event_id));
+        }
+      }
 
-        const { data: userLike } = await supabase
-          .from('event_likes')
-          .select('id')
-          .eq('event_id', event.id)
-          .eq('user_id', user?.id)
-          .maybeSingle();
-
-        return {
-          ...event,
-          likes_count: likesCount || 0,
-          is_liked: !!userLike
-        };
+      const eventsWithLikes = data.map(event => ({
+        ...event,
+        likes_count: event.likes?.[0]?.count || 0,
+        is_liked: userLikedSet.has(event.id)
       }));
 
       setEvents(eventsWithLikes);
@@ -406,7 +442,18 @@ export default function UserProfile() {
              <ArrowLeft size={20} color={textPrimary} />
            </TouchableOpacity>
            <Text style={[styles.stickyTitle, { color: textPrimary }]}>{profile.full_name}</Text>
-           <View style={{ width: 40 }} />
+           <View style={{ flexDirection: 'row', gap: 10 }}>
+             {user?.id !== profile.id && (
+               <TouchableOpacity 
+                 onPress={handleFollowAction} 
+                 style={[styles.stickyActionBtn, { backgroundColor: isFollowing ? 'transparent' : accent, borderWidth: isFollowing ? 1 : 0, borderColor: textSecondary }]}
+               >
+                 <Text style={{ color: isFollowing ? textPrimary : '#fff', fontSize: 12, fontWeight: '800' }}>
+                   {isFollowing ? 'Seguindo' : 'Seguir'}
+                 </Text>
+               </TouchableOpacity>
+             )}
+           </View>
         </View>
       </Animated.View>
 
@@ -446,18 +493,19 @@ export default function UserProfile() {
             onPress={() => profile.avatar_url && setIsViewerVisible(true)}
             style={[styles.avatarWrapper, { shadowColor: profile.primary_color || accent }]}
           >
-            <LinearGradient colors={[profile.primary_color || accent, '#ff1493']} style={styles.avatarGradient}>
+            <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ rotate: spin }], borderRadius: 65 }]}>
+               <LinearGradient colors={[profile.primary_color || accent, '#ff1493', '#7b2fff', profile.primary_color || accent]} style={{ flex: 1, borderRadius: 65 }} />
+            </Animated.View>
+            <View style={[styles.avatarGradient, { margin: 3, backgroundColor: backgroundPrimary }]}>
               {profile.avatar_url ? (
-                <Animated.Image 
+                <Image 
                   source={{ uri: profile.avatar_url }} 
                   style={styles.avatarImg as any} 
-                  // @ts-ignore
-                  sharedTransitionTag={`avatar-${id}`}
                 />
               ) : (
                 <View style={styles.avatarPlaceholder}><Text style={styles.avatarInitials}>{initials}</Text></View>
               )}
-            </LinearGradient>
+            </View>
             {profile.is_private && (
               <View style={[styles.privateBadge, { backgroundColor: '#FF3B30' }]}><Lock size={14} color="#fff" /></View>
             )}
@@ -479,37 +527,25 @@ export default function UserProfile() {
             </View>
           )}
 
-          {/* LINKS SOCIAIS CARD */}
+          {/* LINKS SOCIAIS (Pill Shape) */}
           {(profile?.instagram_url || profile?.website_url) && (!profile.is_private || isFollowing || user?.id === profile.id) ? (
-            <View style={[styles.socialSectionCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-              <View style={styles.socialHeader}>
-                <View style={[styles.socialIconBg, { backgroundColor: accent + '15' }]}>
-                  <Sparkles size={16} color={accent} fill={accent} />
-                </View>
-                <Text style={[styles.socialTitleText, { color: textPrimary }]}>Links Sociais</Text>
-              </View>
-              
-              <View style={styles.socialButtonsRow}>
-                {profile.instagram_url ? (
-                  <TouchableOpacity 
-                    style={[styles.socialButton, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.015)' }]}
-                    onPress={() => openInstagram(profile.instagram_url)}
-                  >
-                    <Text style={[styles.socialButtonLabel, { color: textSecondary }]}>INSTAGRAM</Text>
-                    <Text style={[styles.socialButtonValue, { color: accent }]}>@{profile.instagram_url.replace('@', '')}</Text>
-                  </TouchableOpacity>
-                ) : null}
-                
-                {profile.website_url ? (
-                  <TouchableOpacity 
-                    style={[styles.socialButton, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.015)' }]}
-                    onPress={() => openWebsite(profile.website_url)}
-                  >
-                    <Text style={[styles.socialButtonLabel, { color: textSecondary }]}>SITE / LINK</Text>
-                    <Text style={[styles.socialButtonValue, { color: accent }]} numberOfLines={1}>{profile.website_url.replace('https://', '').replace('http://', '')}</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
+            <View style={styles.socialButtonsRow}>
+              {profile.instagram_url && (
+                <TouchableOpacity 
+                  style={[styles.socialPill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+                  onPress={() => openInstagram(profile.instagram_url)}
+                >
+                  <Text style={[styles.socialPillText, { color: textPrimary }]}>📷 @{profile.instagram_url.replace('@', '')}</Text>
+                </TouchableOpacity>
+              )}
+              {profile.website_url && (
+                <TouchableOpacity 
+                  style={[styles.socialPill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+                  onPress={() => openWebsite(profile.website_url)}
+                >
+                  <Text style={[styles.socialPillText, { color: textPrimary }]} numberOfLines={1}>🔗 {profile.website_url.replace('https://', '').replace('http://', '')}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : null}
 
@@ -545,7 +581,7 @@ export default function UserProfile() {
 
           <View style={styles.mainActions}>
             {user?.id === profile.id ? (
-              <TouchableOpacity onPress={() => router.push('/profile/edit')} style={[styles.followBtn, { backgroundColor: backgroundSecondary, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} disabled={actionLoading}>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/profile/edit')} style={[styles.followBtn, { backgroundColor: backgroundSecondary, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} disabled={actionLoading}>
                 <Text style={[styles.followBtnText, { color: textPrimary }]}>Editar Perfil</Text>
               </TouchableOpacity>
             ) : (
@@ -642,90 +678,62 @@ export default function UserProfile() {
                 <Animated.View style={[styles.tabIndicator, { backgroundColor: backgroundSecondary, transform: [{ translateX: tabIndicatorPos }] }]} />
                 <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('posts'); }}><Grid3X3 size={18} color={activeTab === 'posts' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'posts' ? textPrimary : textSecondary }]}>Mural</Text></TouchableOpacity>
                 <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('events'); }}><Calendar size={18} color={activeTab === 'events' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'events' ? textPrimary : textSecondary }]}>Experiências</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('achievements'); }}><Award size={18} color={activeTab === 'achievements' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'achievements' ? textPrimary : textSecondary }]}>Conquistas</Text></TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.listContainer}>
               {activeTab === 'posts' && (
-                <View style={{ paddingHorizontal: 4 }}>
+                <View style={styles.postsGrid}>
                   {memories.length > 0 ? (
-                    memories.map((memory, idx) => {
-                      const date = new Date(memory.event_date);
-                      const month = date.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase();
-                      const year = date.getFullYear();
-                      const showYear = idx === 0 || new Date(memories[idx - 1]?.event_date).getFullYear() !== year;
-
-                      return (
-                        <View key={memory.id}>
-                          {showYear && (
-                            <View style={styles.memoryYearDivider}>
-                              <View style={[styles.memoryYearLine, { backgroundColor: accent + '40' }]} />
-                              <Text style={[styles.memoryYearText, { color: accent }]}>{year}</Text>
-                              <View style={[styles.memoryYearLine, { backgroundColor: accent + '40' }]} />
-                            </View>
-                          )}
-                          <TouchableOpacity
-                            style={[
-                              styles.premiumMemoryCard,
-                              {
-                                borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)'
-                              }
-                            ]}
-                            activeOpacity={0.95}
-                            onPress={() => {
-                              setSelectedMemoryIdx(idx);
-                              setIsMemoryViewerVisible(true);
-                            }}
-                          >
-                            <Image source={{ uri: memory.image_url }} style={styles.premiumMemoryImage} />
-                            
-                            <LinearGradient
-                              colors={['transparent', 'rgba(0, 0, 0, 0.1)', 'rgba(0, 0, 0, 0.85)']}
-                              style={styles.premiumMemoryGradient}
-                            >
-                              <View style={styles.premiumMemoryFooter}>
-                                <View style={styles.premiumMemoryMeta}>
-                                  <Text style={styles.premiumMemoryTitle} numberOfLines={1}>
-                                    📸 {memory.title}
-                                  </Text>
-                                  <Text style={styles.premiumMemorySub} numberOfLines={1}>
-                                    {date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                                    {memory.location ? ` • ${memory.location}` : ''}
-                                  </Text>
-                                </View>
-                                
-                                {memory.event_id && (
-                                  <TouchableOpacity
-                                    style={styles.premiumMemoryEventBtn}
-                                    activeOpacity={0.8}
-                                    onPress={() => router.push(`/event/${memory.event_id}`)}
-                                  >
-                                    <BlurView intensity={35} tint="light" style={styles.premiumMemoryBtnBlur}>
-                                      <Text style={styles.premiumMemoryBtnText}>Ver Evento</Text>
-                                    </BlurView>
-                                  </TouchableOpacity>
-                                )}
-                              </View>
-                            </LinearGradient>
-                          </TouchableOpacity>
+                    memories.map((memory, idx) => (
+                      <TouchableOpacity
+                        key={memory.id}
+                        style={styles.postThumbnail}
+                        activeOpacity={0.9}
+                        onPress={() => {
+                          setSelectedMemoryIdx(idx);
+                          setIsMemoryViewerVisible(true);
+                        }}
+                      >
+                        <Image source={{ uri: memory.image_url }} style={styles.thumbnailImg} />
+                        <View style={styles.gridIconOverlay}>
+                          <Grid3X3 size={12} color="#FFF" />
                         </View>
-                      );
-                    })
+                      </TouchableOpacity>
+                    ))
                   ) : (
                     <View style={styles.emptyContent}>
                       <Heart size={48} color={textSecondary} strokeWidth={1} />
-                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem Memórias Ainda</Text>
-                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Quando este usuário participar de eventos, as memórias aparecerão aqui.</Text>
+                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem Memórias</Text>
+                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma memória compartilhada ainda.</Text>
                     </View>
                   )}
                 </View>
               )}
 
               {activeTab === 'events' && (
-                <View style={styles.eventsList}>
+                <View style={styles.postsGrid}>
                   {events.length > 0 ? (
-                    events.map(event => <EventCard key={event.id} event={event} />)
+                    events.slice(0, visibleEvents).map((event) => {
+                      const imageUri = event.image_urls?.[0] || event.image_url;
+                      return (
+                        <TouchableOpacity
+                          key={event.id}
+                          style={styles.postThumbnail}
+                          activeOpacity={0.9}
+                          onPress={() => router.push(`/event/${event.id}`)}
+                        >
+                          {imageUri ? (
+                            <Image source={{ uri: imageUri }} style={styles.thumbnailImg} />
+                          ) : (
+                            <View style={[styles.thumbnailImg, { backgroundColor: '#444' }]} />
+                          )}
+                          <View style={styles.gridIconOverlay}>
+                            <Calendar size={12} color="#FFF" />
+                          </View>
+                        </TouchableOpacity>
+                      )
+                    })
                   ) : (
                     <View style={styles.emptyContent}>
                       <Calendar size={48} color={textSecondary} strokeWidth={1} />
@@ -733,82 +741,14 @@ export default function UserProfile() {
                       <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma experiência criada por este usuário.</Text>
                     </View>
                   )}
-                </View>
-              )}
-
-              {activeTab === 'achievements' && (
-                <View style={styles.achievementsContainer}>
-                   {/* LEVEL CARD */}
-                   <LinearGradient
-                    colors={isDark ? ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)'] : ['#fff', '#f0f0f0']}
-                    style={[styles.levelCard, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
-                  >
-                    <View style={styles.levelHeader}>
-                      <View style={[styles.levelIconContainer, { backgroundColor: accent + '20' }]}>
-                        <TrendingUp size={24} color={accent} />
-                      </View>
-                      <View style={styles.levelMainInfo}>
-                        <Text style={[styles.levelLabel, { color: textSecondary }]}>Nível de Influência</Text>
-                        <Text style={[styles.levelValue, { color: textPrimary }]}>
-                          {profileStats?.level <= 5 ? 'Explorador' : profileStats?.level <= 15 ? 'Aventureiro' : 'Lenda'} Lvl {profileStats?.level || 1}
-                        </Text>
-                      </View>
-                      <View style={styles.xpBadge}>
-                        <Text style={styles.xpBadgeText}>{profileStats?.xp || 0} XP</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.progressWrapper}>
-                      <View style={[styles.levelProgressContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-                        <LinearGradient 
-                          colors={[accent, '#7b2fff']} 
-                          start={{ x: 0, y: 0 }} 
-                          end={{ x: 1, y: 0 }} 
-                          style={[styles.levelProgressBar, { width: `${Math.min(((profileStats?.xp || 0) % 100), 100)}%` }]}
-                        />
-                      </View>
-                      <Text style={[styles.progressText, { color: textSecondary }]}>{profileStats?.xp % 100 || 0}/100 para o próximo nível</Text>
-                    </View>
-                  </LinearGradient>
-
-                  {/* REPUTATION GRID */}
-                  <View style={styles.reputationGrid}>
-                    <View style={[styles.repCard, { backgroundColor: backgroundSecondary }]}>
-                      <View style={[styles.repIcon, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
-                        <TrendingUp size={20} color="#FFD700" />
-                      </View>
-                      <Text style={[styles.repValue, { color: textPrimary }]}>{profileStats?.coins || 0}</Text>
-                      <Text style={[styles.repLabel, { color: textSecondary }]}>UNNA Coins</Text>
-                    </View>
-                    
-                    <View style={[styles.repCard, { backgroundColor: backgroundSecondary }]}>
-                      <View style={[styles.repIcon, { backgroundColor: (profile?.flaker_count || 0) > 0 ? 'rgba(255, 59, 48, 0.15)' : 'rgba(52, 199, 89, 0.15)' }]}>
-                        {(profile?.flaker_count || 0) > 0 ? <Clock size={20} color="#FF3B30" /> : <Star size={20} color="#34C759" fill="#34C759" />}
-                      </View>
-                      <Text style={[styles.repValue, { color: textPrimary }]}>
-                        {(profile?.flaker_count || 0) > 0 ? `${profile?.flaker_count} Furos` : 'Fiel ao Rolê'}
-                      </Text>
-                      <Text style={[styles.repLabel, { color: textSecondary }]}>Fura-ô-metro</Text>
-                    </View>
-                  </View>
-
-                  {/* BADGES */}
-                  <View style={styles.badgesSection}>
-                    <Text style={[styles.sectionTitle, { color: textPrimary }]}>Conquistas</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgesGrid}>
-                      {badges.map((badge: Badge) => (
-                        <View key={badge.id} style={styles.badgeItem}>
-                          <LinearGradient colors={[badge.color, badge.color + '80']} style={styles.badgeCircle}>
-                             {badge.icon === 'Sparkles' && <Sparkles size={24} color="#fff" fill="#fff" />}
-                             {badge.icon === 'Users' && <Users size={24} color="#fff" />}
-                             {badge.icon === 'Award' && <Award size={24} color="#fff" />}
-                             {badge.icon === 'Star' && <Star size={24} color="#fff" />}
-                          </LinearGradient>
-                          <Text style={[styles.badgeName, { color: textPrimary }]}>{badge.label}</Text>
-                        </View>
-                      ))}
-                    </ScrollView>
-                  </View>
+                  {events.length > visibleEvents && activeTab === 'events' && (
+                    <TouchableOpacity 
+                      style={[styles.followBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', marginHorizontal: 16, marginTop: 20, width: '90%', alignSelf: 'center' }]} 
+                      onPress={() => setVisibleEvents(prev => prev + 15)}
+                    >
+                      <Text style={[styles.followBtnText, { color: textPrimary }]}>Carregar mais</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>
@@ -919,31 +859,46 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
   },
-  statsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 20, marginHorizontal: 20, marginBottom: 32 },
+  stickyActionBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
+  statsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 16, marginHorizontal: 20, marginBottom: 32, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', backgroundColor: 'rgba(150,150,150,0.1)' },
   statItem: { alignItems: 'center', flex: 1 },
-  statValue: { fontSize: ms(22), fontWeight: '900' },
-  statLabel: { fontSize: ms(12), fontWeight: '700', textTransform: 'uppercase', marginTop: 4, letterSpacing: 1 },
-  statDivider: { width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.1)' },
+  statValue: { fontSize: ms(20), fontWeight: '900' },
+  statLabel: { fontSize: ms(11), fontWeight: '800', textTransform: 'uppercase', marginTop: 4, letterSpacing: 1 },
+  statDivider: { width: 1, height: 24, backgroundColor: 'rgba(150,150,150,0.2)' },
   tabsWrapper: { paddingHorizontal: 16, marginBottom: 20 },
   tabsTrack: { flexDirection: 'row', borderRadius: 30, height: 56, padding: 4, position: 'relative' },
-  tabIndicator: { position: 'absolute', top: 4, bottom: 4, left: 4, width: (Dimensions.get('window').width - 32) / 3 - 4, borderRadius: 26, elevation: 2 },
+  tabIndicator: { position: 'absolute', top: 4, bottom: 4, left: 4, width: (Dimensions.get('window').width - 32) / 2 - 4, borderRadius: 26, elevation: 2 },
   tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   tabBtnText: { fontSize: ms(14), fontWeight: '800' },
   listContainer: { paddingHorizontal: 0 },
   postsGrid: { 
     flexDirection: 'row', 
     flexWrap: 'wrap', 
-    padding: 2,
-    gap: 2
+    paddingHorizontal: 16,
+    gap: 8,
+    width: '100%'
   },
+  socialButtonsRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 24 },
+  socialPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  socialPillText: { fontSize: ms(13), fontWeight: '700' },
   postThumbnail: { 
-    width: (SCREEN_WIDTH / 3) - 2.7, 
-    height: (SCREEN_WIDTH / 3) - 2.7,
-    backgroundColor: '#333'
+    width: (SCREEN_WIDTH - 32 - 16) / 3, 
+    height: (SCREEN_WIDTH - 32 - 16) / 3,
+    backgroundColor: '#333',
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   thumbnailImg: { 
     width: '100%', 
     height: '100%' 
+  },
+  gridIconOverlay: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 6,
+    borderRadius: 10,
   },
   eventsList: { 
     paddingHorizontal: 20,
@@ -1275,25 +1230,5 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.2,
   },
-  socialButtonsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  socialButton: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 16,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(150, 150, 150, 0.08)',
-  },
-  socialButtonLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  socialButtonValue: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
+
 });

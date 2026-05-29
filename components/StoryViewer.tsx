@@ -455,6 +455,10 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
   const targetProfileId = profile?.id || story.user_id;
   const isOwner = user?.id === story.user_id;
 
+  // Filtrar histórias apenas do usuário atual para a barra de progresso (estilo Instagram)
+  const currentUserStories = stories.filter(s => s.user_id === story.user_id);
+  const currentUserStoryIndex = currentUserStories.findIndex(s => s.id === story.id);
+
   return (
     <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
       <StatusBar hidden />
@@ -517,8 +521,8 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
           <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={st.topGradient} />
           
           <View style={st.progressContainer}>
-            {stories.map((_, i) => (
-              <ProgressBar key={i} index={i} currentIndex={idx} progress={progress} />
+            {currentUserStories.map((_, i) => (
+              <ProgressBar key={i} index={i} currentIndex={currentUserStoryIndex} progress={progress} />
             ))}
           </View>
 

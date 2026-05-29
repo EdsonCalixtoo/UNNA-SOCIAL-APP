@@ -91,15 +91,28 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
   const videoPlayer = useVideoPlayer(mediaType === 'video' ? { uri: mediaUri } : null, player => {
     player.loop = true;
     player.muted = false;
-    player.play();
   });
+
+  useEffect(() => {
+    if (videoPlayer) {
+      if (visible) {
+        videoPlayer.play();
+      } else {
+        videoPlayer.pause();
+      }
+    }
+  }, [visible, videoPlayer]);
 
   useEffect(() => {
     if (audioPlayer && audioUrl) {
       audioPlayer.loop = true;
-      audioPlayer.play();
+      if (visible) {
+        audioPlayer.play();
+      } else {
+        audioPlayer.pause();
+      }
     }
-  }, [audioPlayer, audioUrl]);
+  }, [visible, audioPlayer, audioUrl]);
 
   function playSound(url: string) {
     setAudioUrl(url);
@@ -154,6 +167,9 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
   };
 
   const handleCapture = async () => {
+    if (audioPlayer) audioPlayer.pause();
+    if (videoPlayer) videoPlayer.pause();
+
     if (mediaType === 'video') {
       // Vídeos não podem ser capturados pelo ViewShot (gerariam imagem preta).
       // Retornamos o vídeo original.
@@ -167,8 +183,6 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
       // Pequeno delay para garantir que a UI assentou
       await new Promise(r => setTimeout(r, 600));
       const uri = await viewShotRef.current.capture();
-      if (audioPlayer) audioPlayer.pause();
-      if (videoPlayer) videoPlayer.pause();
       onSave(uri);
     } catch (error) {
       console.error('Erro ao capturar imagem:', error);
