@@ -67,6 +67,9 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
   const [text, setText] = useState('');
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const [editingComment, setEditingComment] = useState<Comment | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionResults, setMentionResults] = useState<any[]>([]);
+  const [cursorPosition, setCursorPosition] = useState<{ start: number, end: number }>({ start: 0, end: 0 });
   const inputRef = useRef<TextInput>(null);
   const flatListRef = useRef<FlatList>(null);
 
@@ -99,6 +102,58 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
       supabase.removeChannel(channel);
     };
   }, [visible, eventId]);
+
+  useEffect(() => {
+    if (mentionQuery === null) {
+      setMentionResults([]);
+      return;
+    }
+    
+    const timeoutId = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .or(`username.ilike.%${mentionQuery}%,full_name.ilike.%${mentionQuery}%`)
+          .limit(10);
+        
+        if (!error && data) {
+          // Remover o próprio usuário da lista
+          setMentionResults(data.filter(p => p.id !== user?.id));
+        }
+      } catch (err) {
+        console.error('Error searching profiles:', err);
+      }
+    }, 300);
+    
+    return () => clearTimeout(timeoutId);
+  }, [mentionQuery, user?.id]);
+
+  const checkMentionTrigger = (currentText: string, cursorIndex: number) => {
+    const textBeforeCursor = currentText.substring(0, cursorIndex);
+    const match = textBeforeCursor.match(/@([\w.-]*)$/);
+    if (match) {
+      setMentionQuery(match[1]);
+    } else {
+      setMentionQuery(null);
+      setMentionResults([]);
+    }
+  };
+
+  const handleMentionSelect = (profileUser: any) => {
+    const textBeforeCursor = text.substring(0, cursorPosition.start);
+    const textAfterCursor = text.substring(cursorPosition.start);
+    
+    const match = textBeforeCursor.match(/@([\w.-]*)$/);
+    if (match) {
+      const newTextBefore = textBeforeCursor.substring(0, textBeforeCursor.length - match[0].length);
+      const newText = `${newTextBefore}@${profileUser.username} ${textAfterCursor}`;
+      setText(newText);
+      setMentionQuery(null);
+      setMentionResults([]);
+      // Atualizar a posição do cursor (opcional)
+    }
+  };
 
   const loadComments = async () => {
     if (!eventId) return;
@@ -177,6 +232,32 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
               }
             });
           }
+
+          // Notificar perfis mencionados
+          const mentionedUsernames = Array.from(new Set(Array.from(content.matchAll(/@([\w.-]+)/g)).map(m => m[1])));
+          if (mentionedUsernames.length > 0) {
+            const { data: mentionedUsers } = await supabase
+              .from('profiles')
+              .select('id, username')
+              .in('username', mentionedUsernames);
+            
+            if (mentionedUsers && mentionedUsers.length > 0) {
+              const mentionMessage = `${profile?.full_name || profile?.username || 'Alguém'} mencionou você em um comentário.`;
+              for (const u of mentionedUsers) {
+                if (u.id !== user.id && u.id !== targetUserId) {
+                  await supabase.functions.invoke('send-notification', {
+                    body: {
+                      userId: u.id,
+                      title: 'Nova Menção',
+                      message: mentionMessage,
+                      type: 'mention',
+                      data: { event_id: eventId },
+                    }
+                  });
+                }
+              }
+            }
+          }
         } catch (notifErr) {
           console.error('Error sending notification:', notifErr);
         }
@@ -202,6 +283,25 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
     } catch (err) {
       console.error('Error deleting comment:', err);
     }
+  };
+
+  const renderCommentContent = (content: string, isReply: boolean) => {
+    // Quebra o texto mantendo os @mentions
+    const parts = content.split(/(@[\w.-]+)/g);
+    return (
+      <Text style={[styles.commentText, { color: textPrimary, fontSize: isReply ? ms(13) : ms(14) }]}>
+        {parts.map((part, i) => {
+          if (part.startsWith('@') && part.length > 1) {
+            return (
+              <Text key={i} style={{ color: accent, fontWeight: '700' }}>
+                {part}
+              </Text>
+            );
+          }
+          return <Text key={i}>{part}</Text>;
+        })}
+      </Text>
+    );
   };
 
   const renderComment = ({ item, index }: { item: Comment; index: number }) => {
@@ -244,7 +344,7 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
                 {formatRelativeTime(item.created_at)}
               </Text>
             </View>
-            <Text style={[styles.commentText, { color: textPrimary, fontSize: isReply ? ms(13) : ms(14) }]}>{item.content}</Text>
+            {renderCommentContent(item.content, isReply)}
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(16), marginTop: vs(2), marginLeft: s(12) }}>
@@ -378,6 +478,36 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
                 </TouchableOpacity>
               </Animated.View>
             )}
+
+            {/* MENTIONS SUGGESTIONS */}
+            {mentionResults.length > 0 && (
+              <Animated.View entering={FadeIn} style={[styles.mentionsContainer, { backgroundColor: backgroundSecondary, borderTopColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)' }]}>
+                <FlatList
+                  data={mentionResults}
+                  keyExtractor={item => item.id}
+                  keyboardShouldPersistTaps="handled"
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: s(16), paddingVertical: vs(10), gap: s(12) }}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity style={[styles.mentionItem, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]} onPress={() => handleMentionSelect(item)}>
+                      {item.avatar_url ? (
+                        <Image source={{ uri: item.avatar_url }} style={styles.mentionAvatar} />
+                      ) : (
+                        <View style={[styles.mentionAvatar, { backgroundColor: accent, justifyContent: 'center', alignItems: 'center' }]}>
+                          <Text style={{ color: '#fff', fontSize: ms(12), fontWeight: '700' }}>{item.username.charAt(0).toUpperCase()}</Text>
+                        </View>
+                      )}
+                      <View>
+                        <Text style={[styles.mentionName, { color: textPrimary }]} numberOfLines={1}>{item.full_name || item.username}</Text>
+                        <Text style={[styles.mentionUsername, { color: textSecondary }]} numberOfLines={1}>@{item.username}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                />
+              </Animated.View>
+            )}
+
             <View style={[styles.inputRow, { borderTopColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)' }]}>
               {/* Avatar do usuário logado */}
               {user && (
@@ -402,7 +532,15 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
                   placeholder="Adicionar comentário..."
                   placeholderTextColor={isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)'}
                   value={text}
-                  onChangeText={setText}
+                  onChangeText={(newText) => {
+                    setText(newText);
+                    checkMentionTrigger(newText, cursorPosition.start);
+                  }}
+                  onSelectionChange={(e) => {
+                    const pos = e.nativeEvent.selection;
+                    setCursorPosition(pos);
+                    checkMentionTrigger(text, pos.start);
+                  }}
                   multiline
                   maxLength={500}
                   returnKeyType="send"
@@ -606,5 +744,31 @@ const styles = StyleSheet.create({
     borderRadius: ms(20),
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  mentionsContainer: {
+    maxHeight: vs(120),
+    borderTopWidth: 1,
+    width: '100%',
+  },
+  mentionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(8),
+    paddingHorizontal: s(12),
+    paddingVertical: vs(8),
+    borderRadius: ms(12),
+    maxWidth: s(200),
+  },
+  mentionAvatar: {
+    width: s(28),
+    height: s(28),
+    borderRadius: ms(14),
+  },
+  mentionName: {
+    fontSize: ms(12),
+    fontWeight: '700',
+  },
+  mentionUsername: {
+    fontSize: ms(11),
   },
 });

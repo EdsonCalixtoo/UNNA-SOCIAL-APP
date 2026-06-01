@@ -748,19 +748,6 @@ export default function Profile() {
               </View>
             )}
 
-            {activeTab === 'events' && (
-              <View style={styles.eventsList}>
-                {events.length > 0 ? (
-                  events.map(event => <EventCard key={event.id} event={event} />)
-                ) : (
-                  <View style={styles.emptyContent}>
-                    <Calendar size={48} color={textSecondary} strokeWidth={1} />
-                    <Text style={[styles.emptyTitle, { color: textPrimary }]}>Nenhum evento ainda</Text>
-                    <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Participe de novas experiências e faça parte da comunidade.</Text>
-                  </View>
-                )}
-              </View>
-            )}
 
             {activeTab === 'achievements' && (
               <View style={styles.achievementsContainer}>

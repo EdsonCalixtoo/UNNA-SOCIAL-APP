@@ -8,12 +8,12 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const TICKETMASTER_API_KEY = process.env.TICKETMASTER_API_KEY;
 
 // Nome de usuário que será o "dono" dos eventos
-const TARGET_USERNAME = 'unnasocialappoficial'; 
+const TARGET_USERNAME = 'unnasocialappoficial';
 
 // ==========================================
 // 🎯 FILTROS DE BUSCA (Altere como quiser!)
 // ==========================================
-const CIDADE = 'Campinas';   // Ex: 'São Paulo', 'Campinas' (vazio '' para o Brasil todo)
+const CIDADE = '';   // Ex: 'São Paulo', 'Campinas' (vazio '' para o Brasil todo)
 const PALAVRA_CHAVE = '';    // Ex: 'Rock', 'Festival' (vazio para qualquer um)
 const QUANTIDADE = 15;       // Eventos por categoria
 // ==========================================
@@ -57,13 +57,18 @@ async function importEvents() {
 
     // 4. Buscar Eventos da Ticketmaster: Mix de Música, Esportes e Arte
     console.log("📡 Buscando eventos na Ticketmaster...");
-    const segmentos = ['Music', 'Sports', 'Arts & Theatre'];
+    const segmentos = [''];
     let allEvents = [];
 
     for (const seg of segmentos) {
-      console.log(`Buscando a categoria: ${seg}...`);
+      if (seg === '') {
+        console.log(`Buscando todas as categorias (tudo misturado)...`);
+      } else {
+        console.log(`Buscando a categoria: ${seg}...`);
+      }
       
-      let apiUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TICKETMASTER_API_KEY}&countryCode=BR&classificationName=${encodeURIComponent(seg)}&size=${QUANTIDADE}`;
+      let apiUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TICKETMASTER_API_KEY}&countryCode=BR&size=${QUANTIDADE}`;
+      if (seg) apiUrl += `&classificationName=${encodeURIComponent(seg)}`;
       if (CIDADE) apiUrl += `&city=${encodeURIComponent(CIDADE)}`;
       if (PALAVRA_CHAVE) apiUrl += `&keyword=${encodeURIComponent(PALAVRA_CHAVE)}`;
 

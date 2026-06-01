@@ -100,8 +100,10 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
     eventMonth = months[d.getMonth()];
   }
 
-  // Check if LIVE (started up to 4 hours ago) or SOON (starts within 2 hours) or FINISHED
-  let eventStatus = 'none'; // 'live', 'soon', 'finished', 'none'
+  // Check if LIVE (started up to 4 hours ago) or SOON (starts within 2 hours) or UPCOMING or FINISHED
+  let eventStatus = 'none'; // 'live', 'soon', 'finished', 'upcoming', 'none'
+  let timeUntilStart = '';
+  
   if (event.event_date && event.event_time) {
     const [y, m, d] = event.event_date.split('-');
     const [h, min] = event.event_time.split(':');
@@ -109,11 +111,16 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
     const now = new Date();
     const diffMs = eventDateTime.getTime() - now.getTime();
     const diffHours = diffMs / (1000 * 60 * 60);
+    const diffDays = diffHours / 24;
     
     if (diffHours <= 0 && diffHours >= -4) {
       eventStatus = 'live';
     } else if (diffHours > 0 && diffHours <= 2) {
       eventStatus = 'soon';
+      timeUntilStart = diffHours < 1 ? `${Math.ceil(diffHours * 60)} min` : `${Math.floor(diffHours)}h`;
+    } else if (diffHours > 2) {
+      eventStatus = 'upcoming';
+      timeUntilStart = diffDays >= 1 ? `${Math.floor(diffDays)}d` : `${Math.floor(diffHours)}h`;
     } else if (diffHours < -4) {
       eventStatus = 'finished';
     }
@@ -122,7 +129,8 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
   const getBorderColor = () => {
     if (eventStatus === 'live') return '#00E676'; // Green
     if (eventStatus === 'soon') return '#FFD700'; // Yellow
-    if (eventStatus === 'finished') return isDark ? '#555555' : '#CCCCCC'; // Gray
+    if (eventStatus === 'upcoming') return '#9D4EDD'; // Purple
+    if (eventStatus === 'finished') return '#FF3B30'; // Red for finished
     return isDark ? '#333' : '#E5E5E5';
   };
 
@@ -207,15 +215,18 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
               </View>
             )}
 
-            {/* Live/Soon/Finished Badge */}
+            {/* Live/Soon/Upcoming/Finished Badge */}
             {eventStatus !== 'none' && (
               <View style={[styles.liveBadge, { 
-                backgroundColor: eventStatus === 'live' ? 'rgba(0,230,118,0.8)' : eventStatus === 'soon' ? 'rgba(255,215,0,0.8)' : 'rgba(100,100,100,0.8)', 
-                borderColor: eventStatus === 'live' ? '#00E676' : eventStatus === 'soon' ? '#FFD700' : '#888' 
+                backgroundColor: eventStatus === 'live' ? 'rgba(0,230,118,0.9)' : eventStatus === 'soon' ? 'rgba(255,215,0,0.9)' : eventStatus === 'upcoming' ? 'rgba(157,78,221,0.9)' : 'rgba(255,59,48,0.9)', 
+                borderColor: eventStatus === 'live' ? '#00E676' : eventStatus === 'soon' ? '#FFD700' : eventStatus === 'upcoming' ? '#9D4EDD' : '#FF3B30' 
               }]}>
-                {eventStatus !== 'finished' && <View style={[styles.liveDot, { backgroundColor: eventStatus === 'soon' ? '#333' : '#FFF' }]} />}
+                {(eventStatus === 'live' || eventStatus === 'soon' || eventStatus === 'upcoming') && <View style={[styles.liveDot, { backgroundColor: eventStatus === 'soon' ? '#333' : '#FFF' }]} />}
                 <Text style={[styles.liveText, { color: eventStatus === 'soon' ? '#333' : '#FFF' }]}>
-                  {eventStatus === 'live' ? 'AO VIVO' : eventStatus === 'soon' ? 'EM BREVE' : 'FINALIZADO'}
+                  {eventStatus === 'live' ? 'AO VIVO' : 
+                   eventStatus === 'soon' ? `COMEÇA EM ${timeUntilStart.toUpperCase()}` : 
+                   eventStatus === 'upcoming' ? `FALTAM ${timeUntilStart.toUpperCase()}` : 
+                   'FINALIZADO'}
                 </Text>
               </View>
             )}

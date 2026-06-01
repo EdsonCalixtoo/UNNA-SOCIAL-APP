@@ -15,6 +15,7 @@ import { MapPin, Calendar, Clock, Users, Navigation2, ChevronRight, X } from 'lu
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ms, vs, s } from '@/utils/responsive';
+import { eventService } from '@/services/eventService';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.52; // Aumentei um pouco a altura total para o card subir mais
@@ -68,8 +69,11 @@ const EventBottomSheet = ({ event, isVisible, onClose, onViewEvent, onNavigate, 
   }));
 
   if (!event) return null;
-
-  const statusColor = event.status === 'ao_vivo' ? '#34C759' : '#FF9500';
+  
+  // Calcula o status em tempo real usando a service
+  const realStatus = eventService.getEventStatus(event);
+  const isLive = realStatus === 'happening';
+  const statusColor = isLive ? '#34C759' : '#FF9500';
 
   return (
     <GestureDetector gesture={gesture}>
@@ -92,7 +96,7 @@ const EventBottomSheet = ({ event, isVisible, onClose, onViewEvent, onNavigate, 
                 <Image source={{ uri: event.image_url }} style={styles.image} />
                 <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={styles.imageGradient} />
                 <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-                  <Text style={styles.statusText}>{event.status === 'ao_vivo' ? 'AO VIVO' : 'EM BREVE'}</Text>
+                  <Text style={styles.statusText}>{isLive ? 'AO VIVO' : 'EM BREVE'}</Text>
                 </View>
               </View>
               

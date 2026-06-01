@@ -391,7 +391,8 @@ export default function EventDetails() {
   });
 
   const formatDate = (d: string) => {
-    const date = new Date(d);
+    // Force midday to avoid timezone shift backwards
+    const date = new Date(d + 'T12:00:00');
     const months = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
     const days = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
     return `${days[date.getDay()]}, ${date.getDate()} de ${months[date.getMonth()]}`;
