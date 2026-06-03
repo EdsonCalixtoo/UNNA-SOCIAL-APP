@@ -9,7 +9,7 @@ import EventCard from '@/components/EventCard';
 import { EventCardSkeleton } from '@/components/Skeleton';
 import { EventParticipantsModal } from '@/components/EventParticipantsModal';
 import CommentsModal from '@/components/CommentsModal';
-import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle, MapPin } from 'lucide-react-native';
+import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle, MapPin, Trophy } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -101,7 +101,7 @@ interface ExtendedPost {
 
 export default function Feed() {
   const { user } = useAuth();
-  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent, isWorldCupMode, toggleWorldCupMode } = useTheme();
   const params = useLocalSearchParams();
   const [posts, setPosts] = useState<ExtendedPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -727,6 +727,12 @@ export default function Feed() {
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
+            style={[styles.iconButton, { backgroundColor: isWorldCupMode ? '#00B32C' : (isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)'), borderColor: isWorldCupMode ? '#FFD700' : (isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)') }]}
+            onPress={toggleWorldCupMode}
+          >
+            <Trophy size={18} color={isWorldCupMode ? '#fff' : accent} />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}
             onPress={() => router.push('/messages')}
           >
@@ -767,6 +773,15 @@ export default function Feed() {
         ListHeaderComponent={
           <View>
             <StoriesBar />
+            {isWorldCupMode && (
+              <View style={{ paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#FFD700', marginHorizontal: 12, borderRadius: 16, marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View>
+                  <Text style={{ fontWeight: '900', color: '#00B32C', fontSize: 18, textTransform: 'uppercase' }}>Rumo ao Hexa 🇧🇷</Text>
+                  <Text style={{ color: '#000', fontWeight: '600', fontSize: 12, marginTop: 4 }}>Bares, Arenas e Transmissões</Text>
+                </View>
+                <Trophy size={32} color="#00B32C" />
+              </View>
+            )}
             {/* Categories horizontal list removed per user request */}
           </View>
         }

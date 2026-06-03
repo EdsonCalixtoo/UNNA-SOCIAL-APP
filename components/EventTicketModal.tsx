@@ -5,6 +5,7 @@ import { X, Download, Share2, Calendar, MapPin, Ticket } from 'lucide-react-nati
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ms, s, vs } from '@/utils/responsive';
+import { Trophy, CheckCircle2 } from 'lucide-react-native';
 // Importação condicional para não quebrar se não estiver instalado ainda
 let QRCode: any;
 try {
@@ -23,7 +24,8 @@ interface EventTicketModalProps {
 }
 
 export const EventTicketModal = ({ visible, onClose, event, user }: EventTicketModalProps) => {
-  const { isDark, accent, backgroundPrimary, textPrimary, textSecondary } = useTheme();
+  const { isDark, accent, backgroundPrimary, textPrimary, textSecondary, isWorldCupMode } = useTheme();
+  const [predictionMade, setPredictionMade] = React.useState(false);
 
   if (!event || !user) return null;
 
@@ -124,6 +126,35 @@ export const EventTicketModal = ({ visible, onClose, event, user }: EventTicketM
               <Text style={[styles.ticketId, { color: textSecondary }]}>{ticketId}</Text>
               <Text style={[styles.userName, { color: textPrimary }]}>{user.full_name || user.username}</Text>
             </View>
+
+            {isWorldCupMode && (
+              <View style={[styles.bolaoContainer, { backgroundColor: isDark ? 'rgba(0,179,44,0.1)' : 'rgba(0,179,44,0.05)', borderColor: '#00B32C' }]}>
+                <View style={styles.bolaoHeader}>
+                  <Trophy size={20} color="#00B32C" />
+                  <Text style={[styles.bolaoTitle, { color: isDark ? '#fff' : '#000' }]}>Bolão VIP do Camarote</Text>
+                </View>
+                {predictionMade ? (
+                  <View style={styles.bolaoSuccess}>
+                    <CheckCircle2 size={32} color="#00B32C" />
+                    <Text style={[styles.bolaoDesc, { color: textSecondary, textAlign: 'center', marginTop: 8 }]}>Aposta Registrada: Brasil 2 x 0 Sérvia. Boa sorte!</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={[styles.bolaoDesc, { color: textSecondary }]}>Adivinhe o placar do jogo de hoje e ganhe 100 UNИA Coins para gastar no bar deste evento!</Text>
+                    <View style={styles.placarRow}>
+                      <Text style={[styles.teamName, { color: textPrimary }]}>BRA</Text>
+                      <View style={styles.scoreBox}><Text style={styles.scoreText}>2</Text></View>
+                      <Text style={{ marginHorizontal: 8, color: textSecondary }}>X</Text>
+                      <View style={styles.scoreBox}><Text style={styles.scoreText}>0</Text></View>
+                      <Text style={[styles.teamName, { color: textPrimary }]}>SRB</Text>
+                    </View>
+                    <TouchableOpacity style={styles.betBtn} onPress={() => setPredictionMade(true)}>
+                      <Text style={styles.betBtnText}>Confirmar Palpite</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
           </View>
 
           {/* Ações */}
@@ -307,4 +338,67 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  bolaoContainer: {
+    marginTop: 20,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+  },
+  bolaoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  bolaoTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  bolaoDesc: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  placarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  teamName: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  scoreBox: {
+    width: 40,
+    height: 48,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  scoreText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#00B32C',
+  },
+  betBtn: {
+    backgroundColor: '#00B32C',
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  betBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  bolaoSuccess: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  }
 });
