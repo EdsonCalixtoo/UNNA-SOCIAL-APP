@@ -12,8 +12,6 @@ import {
   FlatList,
   Linking,
 } from 'react-native';
-import ViewShot from 'react-native-view-shot';
-import * as Sharing from 'expo-sharing';
 import * as Clipboard from 'expo-clipboard';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,8 +28,11 @@ import {
   Clock,
   Users,
   Check,
+  Instagram,
 } from 'lucide-react-native';
 import { Image } from 'expo-image';
+import * as Sharing from 'expo-sharing';
+import { ShareCardGenerator, ShareCardGeneratorRef } from './ShareCardGenerator';
 
 interface EventShareModalProps {
   visible: boolean;
@@ -63,7 +64,9 @@ export function EventShareModal({
   const [userContacts, setUserContacts] = useState<any[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [sharedIds, setSharedIds] = useState<string[]>([]);
-  const viewShotRef = React.useRef<ViewShot>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const cardGeneratorRef = React.useRef<ShareCardGeneratorRef>(null);
+
 
   React.useEffect(() => {
     if (visible && user) {
@@ -256,19 +259,25 @@ export function EventShareModal({
   };
   
   const handleShareImage = async () => {
+    if (isCapturing) return;
+    setIsCapturing(true);
     try {
-      if (viewShotRef.current && viewShotRef.current.capture) {
-        const uri = await viewShotRef.current.capture();
+      const uri = await cardGeneratorRef.current?.capture();
+      if (uri) {
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(uri, {
-            dialogTitle: 'Compartilhar Ticket do Evento',
-            mimeType: 'image/png',
-            UTI: 'public.png',
+            dialogTitle: 'Compartilhar Convite',
+            mimeType: 'image/png'
           });
+        } else {
+          Alert.alert('Erro', 'O compartilhamento não está disponível no seu dispositivo.');
         }
       }
     } catch (error) {
-      Alert.alert('Erro', 'Não foi possível compartilhar a imagem');
+      console.error(error);
+      Alert.alert('Erro', 'Não foi possível gerar a imagem.');
+    } finally {
+      setIsCapturing(false);
     }
   };
 
@@ -281,31 +290,84 @@ export function EventShareModal({
   };
 
   const handleWhatsAppShare = async () => {
-    const shareMessage = `🚀 *${event.title}*\n\n📅 Data: ${formatDate(event.event_date)}\n⏰ Horário: ${formatTime(event.event_time)}\n📍 Local: ${event.location_name}\n\nGaranta sua vaga e confira os detalhes no app UNИA!\n👉 https://unna.app/event/${event.id}`;
-    const url = `whatsapp://send?text=${encodeURIComponent(shareMessage)}`;
-    
+    if (isCapturing) return;
+    setIsCapturing(true);
     try {
-      const canOpen = await Linking.canOpenURL(url);
-      if (canOpen) {
-        await Linking.openURL(url);
+      const shareMessage = `🚀 *${event.title}*\n\n📅 Data: ${formatDate(event.event_date)}\n⏰ Horário: ${formatTime(event.event_time)}\n📍 Local: ${event.location_name}\n\nGaranta sua vaga e confira os detalhes no app UNИA!\n👉 https://unna.app/event/${event.id}`;
+      
+      // 1. Copiar texto mágico para a área de transferência
+      await Clipboard.setStringAsync(shareMessage);
+      
+      // 2. Gerar a imagem
+      const uri = await cardGeneratorRef.current?.capture();
+      
+      if (uri && await Sharing.isAvailableAsync()) {
+        // 3. Avisar o usuário e abrir a imagem
+        Alert.alert(
+          'Texto Copiado! 📝',
+          'O link do evento já está no seu teclado. Quando a foto abrir no WhatsApp, basta COLAR o texto na legenda da foto!',
+          [
+            {
+              text: 'Entendi, abrir foto',
+              onPress: async () => {
+                await Sharing.shareAsync(uri, {
+                  dialogTitle: 'Compartilhar no WhatsApp',
+                  mimeType: 'image/png',
+                  UTI: 'public.png',
+                });
+              }
+            }
+          ]
+        );
       } else {
-        // Fallback to normal share if WhatsApp is not installed
-        handleShare();
+        const url = `whatsapp://send?text=${encodeURIComponent(shareMessage)}`;
+        await Linking.openURL(url);
       }
     } catch (err) {
+      console.error(err);
       handleShare();
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  const handleInstagramShare = async () => {
+    if (isCapturing) return;
+    setIsCapturing(true);
+    try {
+      const uri = await cardGeneratorRef.current?.capture();
+      if (uri) {
+        // Para Instagram Stories (Deep link protocol)
+        const instagramUrl = `instagram-stories://share?backgroundImage=${encodeURIComponent(uri)}`;
+        const canOpen = await Linking.canOpenURL(instagramUrl);
+        if (canOpen) {
+          await Linking.openURL(instagramUrl);
+        } else {
+          // Fallback para share genérico
+          await Sharing.shareAsync(uri, {
+            mimeType: 'image/png'
+          });
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Erro', 'Não foi possível compartilhar no Instagram.');
+    } finally {
+      setIsCapturing(false);
     }
   };
 
   const shareOptions = [
     { id: 'whatsapp', title: 'WhatsApp', icon: MessageCircle, color: '#25D366', onPress: handleWhatsAppShare },
-    { id: 'image', title: 'Salvar/Enviar Ticket', icon: Calendar, color: '#ff1493', onPress: handleShareImage },
+    { id: 'instagram', title: 'Instagram', icon: Instagram, color: '#E1306C', onPress: handleInstagramShare },
+    { id: 'image', title: 'Card PNG', icon: Calendar, color: '#ff1493', onPress: handleShareImage },
     { id: 'copy', title: 'Copiar Link', icon: Copy, color: '#00d9ff', onPress: handleCopyLink },
     { id: 'more', title: 'Mais', icon: Share2, color: '#FF9500', onPress: handleShare },
   ];
 
   return (
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
+      <ShareCardGenerator ref={cardGeneratorRef} event={event as any} />
       <View style={styles.modalContainer}>
         <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
         <View style={[styles.modalContent, { backgroundColor: backgroundPrimary }]}>
@@ -317,7 +379,7 @@ export function EventShareModal({
           </View>
 
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
+            <View>
               <View style={styles.premiumTicketCard}>
                 {/* Background Image / Blur */}
                 {event.image_url ? (
@@ -385,7 +447,7 @@ export function EventShareModal({
                   <Text style={styles.ticketFooterText}>https://unna.app/event/{event.id.split('-')[0]}</Text>
                 </View>
               </View>
-            </ViewShot>
+            </View>
 
             <View style={styles.internalShareContainer}>
               <Text style={[styles.optionsTitle, { color: textPrimary }]}>Compartilhar nos Grupos ({groupContacts.length})</Text>

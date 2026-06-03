@@ -17,6 +17,7 @@ import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { Audio } from 'expo-av';
 import { InAppNotificationProvider } from '@/contexts/InAppNotificationContext';
 import { UIProvider } from '@/contexts/UIContext';
+import { UpdateAlert } from '@/components/UpdateAlert';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as SystemUI from 'expo-system-ui';
@@ -115,7 +116,7 @@ function MainAppContent() {
       <Stack 
         screenOptions={{ 
           headerShown: false,
-          animation: 'none',
+          animation: 'slide_from_right',
         }}
       >
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -155,6 +156,7 @@ export default function RootLayout() {
                       <ThemeProvider>
                         <MainAppContent />
                         <ErrorDisplay />
+                        <UpdateAlert />
                       </ThemeProvider>
                     </PushNotificationProvider>
                   </InAppNotificationProvider>

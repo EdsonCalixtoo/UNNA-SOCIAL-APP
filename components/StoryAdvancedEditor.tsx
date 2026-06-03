@@ -17,7 +17,7 @@ import {
 import { BlurView } from 'expo-blur';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer } from 'expo-audio';
-import ViewShot from 'react-native-view-shot';
+
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -83,7 +83,7 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
   const rotation = useSharedValue(0);
   const savedRotation = useSharedValue(0);
 
-  const viewShotRef = useRef<ViewShot>(null);
+
   
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const audioPlayer = useAudioPlayer(audioUrl);
@@ -177,16 +177,13 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
       return;
     }
 
-    if (!viewShotRef.current || !viewShotRef.current.capture) return;
     setIsProcessing(true);
     try {
-      // Pequeno delay para garantir que a UI assentou
       await new Promise(r => setTimeout(r, 600));
-      const uri = await viewShotRef.current.capture();
-      onSave(uri);
+      onSave(mediaUri);
     } catch (error) {
-      console.error('Erro ao capturar imagem:', error);
-      onSave(mediaUri); // Fallback para a original em caso de erro
+      console.error('Erro ao processar imagem:', error);
+      onSave(mediaUri);
     } finally {
       setIsProcessing(false);
     }
@@ -202,7 +199,7 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
 
         </View>
 
-        <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 0.8 }} style={styles.canvas}>
+        <View style={styles.canvas}>
           <GestureDetector gesture={composedGesture}>
              <View style={styles.gestureContainer}>
                 <Animated.View style={[styles.mediaWrapper, animatedStyle as any]}>
@@ -245,7 +242,7 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
                 </DraggableSticker>
              ))}
           </View>
-        </ViewShot>
+        </View>
 
         <View style={styles.footer}>
            <TouchableOpacity style={styles.mainActionBtn} onPress={handleCapture}>

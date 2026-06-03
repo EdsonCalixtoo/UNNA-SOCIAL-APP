@@ -251,7 +251,7 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
                       title: 'Nova Menção',
                       message: mentionMessage,
                       type: 'mention',
-                      data: { event_id: eventId },
+                      data: { event_id: eventId, openComments: 'true' },
                     }
                   });
                 }

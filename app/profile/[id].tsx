@@ -878,9 +878,9 @@ const styles = StyleSheet.create({
     gap: 8,
     width: '100%'
   },
-  socialButtonsRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 24 },
-  socialPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-  socialPillText: { fontSize: ms(13), fontWeight: '700' },
+  socialButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 24, paddingHorizontal: 20 },
+  socialPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, maxWidth: '100%' },
+  socialPillText: { fontSize: ms(13), fontWeight: '700', flexShrink: 1 },
   postThumbnail: { 
     width: (SCREEN_WIDTH - 32 - 16) / 3, 
     height: (SCREEN_WIDTH - 32 - 16) / 3,

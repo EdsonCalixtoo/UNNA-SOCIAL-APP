@@ -15,7 +15,7 @@ const TARGET_USERNAME = 'unnasocialappoficial';
 // ==========================================
 const CIDADE = '';   // Ex: 'São Paulo', 'Campinas' (vazio '' para o Brasil todo)
 const PALAVRA_CHAVE = '';    // Ex: 'Rock', 'Festival' (vazio para qualquer um)
-const QUANTIDADE = 15;       // Eventos por categoria
+const QUANTIDADE = 20;       // Eventos por categoria
 // ==========================================
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {

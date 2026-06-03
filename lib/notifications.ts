@@ -42,7 +42,7 @@ const formatNotificationMessage = (msg: string) => {
   return msg;
 };
 
-export const notifyMessageRecipient = async (recipientId: string, actorId: string, content: string, conversationId: string) => {
+export const notifyMessageRecipient = async (recipientId: string, actorId: string, content: string, conversationId: string, messageId?: string) => {
   if (actorId === recipientId) return;
 
   try {
@@ -58,7 +58,7 @@ export const notifyMessageRecipient = async (recipientId: string, actorId: strin
         title: actor?.username || 'Nova mensagem',
         message: formatNotificationMessage(content),
         type: 'new_message',
-        data: { conversation_id: conversationId, actor_id: actorId }
+        data: { conversation_id: conversationId, actor_id: actorId, message_id: messageId }
       }
     });
   } catch (error) {

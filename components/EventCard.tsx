@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Platform } from 'react-native';
 import { MoreVertical, Heart, MessageCircle, MapPin, Sparkles, Users } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { ConfettiView } from '@/components/ConfettiView';
+import EventFomoRSVP from '@/components/EventFomoRSVP';
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
 import MediaCarousel from './MediaCarousel';
@@ -181,6 +183,8 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
       {/* ── Body ── */}
       <View style={styles.body}>
         <TouchableOpacity activeOpacity={0.9} onPress={handlePress}>
+
+
           {/* Title & Content */}
           {event.title && (
              <Text style={[styles.contentTitle, { color: textPrimary }]} numberOfLines={1}>{event.title}</Text>
@@ -230,10 +234,25 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
                 </Text>
               </View>
             )}
+
+            {/* Category Badge na Imagem */}
+            {event.categories?.name && (
+              <View style={[styles.categoryBadgeImg, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.8)' }]}>
+                {event.categories.icon && <Text style={styles.categoryBadgeIcon}>{event.categories.icon}</Text>}
+                <Text style={[styles.categoryBadgeText, { color: isDark ? '#FFF' : '#111' }]}>
+                  {event.categories.name.toUpperCase()}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
       </View>
+
+      {/* FOMO RSVP Effect */}
+      {event.participants_count !== undefined && event.participants_count > 0 && (
+        <EventFomoRSVP eventId={event.id} totalParticipants={event.participants_count} />
+      )}
 
       {/* ── Footer Pills ── */}
       <View style={styles.footer}>
@@ -421,5 +440,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: ms(13),
     color: '#FFFFFF',
+  },
+  categoryBadgeImg: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  categoryBadgeIcon: {
+    fontSize: ms(12),
+    marginRight: 4,
+  },
+  categoryBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: ms(10),
+    letterSpacing: 0.5,
   },
 });

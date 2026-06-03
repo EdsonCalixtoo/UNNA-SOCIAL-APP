@@ -4,12 +4,16 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Post, Category, Subcategory } from '@/types/database';
 import StoriesBar from '@/components/StoriesBar';
+import MoodFilterBar, { MoodType } from '@/components/MoodFilterBar';
 import PostCard from '@/components/PostCard';
 import EventCard from '@/components/EventCard';
+import PostEventRatingModal from '@/components/PostEventRatingModal';
+import BlindTicketCard from '@/components/BlindTicketCard';
+import VipListBanner from '@/components/VipListBanner';
 import { EventCardSkeleton } from '@/components/Skeleton';
 import { EventParticipantsModal } from '@/components/EventParticipantsModal';
 import CommentsModal from '@/components/CommentsModal';
-import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle, MapPin } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, MoreHorizontal, User, Link as LinkIcon, Navigation, Navigation2, LogOut, FileEdit, Filter, Compass, Bell, ArrowRight, Video as VideoIcon, CheckCircle2, ChevronRight, AlertCircle, Search, Calendar, ChevronDown, Flag, MapPin, X, Plus, Users, Edit3, Trash2, ShieldAlert } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -113,6 +117,8 @@ export default function Feed() {
   const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
+  const [moodFilter, setMoodFilter] = useState<MoodType>('all');
+  const [showRatingModal, setShowRatingModal] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
@@ -448,6 +454,16 @@ export default function Feed() {
         );
       }
 
+      if (moodFilter === 'suar') {
+        filteredData = filteredData.filter(p => p.events?.categories?.name?.toLowerCase().includes('festa') || p.events?.categories?.name?.toLowerCase().includes('balada') || p.events?.categories?.name?.toLowerCase().includes('eletrônica'));
+      } else if (moodFilter === 'comer') {
+        filteredData = filteredData.filter(p => p.events?.categories?.name?.toLowerCase().includes('gastronomia') || p.events?.categories?.name?.toLowerCase().includes('bar'));
+      } else if (moodFilter === 'vip') {
+        filteredData = filteredData.filter(p => p.events?.price && p.events.price > 100);
+      } else if (moodFilter === 'shows') {
+        filteredData = filteredData.filter(p => p.events?.categories?.name?.toLowerCase().includes('show') || p.events?.categories?.name?.toLowerCase().includes('ao vivo'));
+      }
+
       if (dateFilter !== 'all') {
         const now = new Date();
         filteredData = filteredData.filter(post => {
@@ -478,24 +494,33 @@ export default function Feed() {
       }
 
       if (currentLoc) {
-        const distanceFiltered = filteredData.filter(post => {
+        filteredData = filteredData.map(post => {
           const eventLat = post.events?.latitude;
           const eventLon = post.events?.longitude;
           if (eventLat && eventLon) {
-             const dist = mapService.getDistanceInKm(currentLoc.latitude, currentLoc.longitude, parseFloat(String(eventLat)), parseFloat(String(eventLon)));
-             if (searchRadius === 0) return true; // 0 significa "Qualquer distância"
-             return dist <= searchRadius;
+             const dist = mapService.getDistanceInKm(
+               currentLoc!.latitude, currentLoc!.longitude, 
+               parseFloat(String(eventLat)), parseFloat(String(eventLon))
+             );
+             return { ...post, _distanceKm: dist };
           }
-          return true; // Mantém posts sem localização específica
+          return { ...post, _distanceKm: 9999 };
+        });
+
+        const distanceFiltered = filteredData.filter(post => {
+           if (searchRadius === 0) return true;
+           return (post as any)._distanceKm <= searchRadius;
         });
         
         // Fallback: se o filtro por KM esvaziou o feed de eventos locais, 
         // e não há posts normais para mostrar, ignoramos a distância para a tela não ficar em branco
         if (distanceFiltered.length === 0 && filteredData.length > 0) {
-          // Mantém o filteredData original (ignorando os KMs)
+          // Mantém o filteredData original
         } else {
           filteredData = distanceFiltered;
         }
+      } else {
+         filteredData = filteredData.map(post => ({ ...post, _distanceKm: 9999 }));
       }
 
       const postsWithLikes = await Promise.all(
@@ -566,11 +591,46 @@ export default function Feed() {
         const aMatches = a.events?.category_id && selectedCategories.includes(a.events.category_id);
         const bMatches = b.events?.category_id && selectedCategories.includes(b.events.category_id);
         
-        if (aMatches && !bMatches) return -1;
-        if (!aMatches && bMatches) return 1;
-        
-        // Se ambos casam ou ambos não casam, mantém a ordem cronológica (mais novos primeiro)
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        const calculateScore = (post: any, isMatch: boolean) => {
+           let score = 0;
+           
+           // Fator 1: Categoria preferida bateu? Desconto de 50 pontos
+           if (isMatch) score -= 50;
+
+           // Fator 2: Dias até o evento (15 pontos por dia)
+           if (post.events?.event_date) {
+             const eventDate = new Date(post.events.event_date + 'T12:00:00'); // T12:00:00 para evitar erro de fuso horário
+             const now = new Date();
+             const diffTime = eventDate.getTime() - now.getTime();
+             let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+             
+             // Se o evento já passou (dias negativos), jogamos pro fim da lista
+             if (diffDays < -1) diffDays = 1000;
+             else if (diffDays < 0) diffDays = 0; // Se foi ontem/hoje cedo, trata como 0
+             
+             score += (diffDays * 15);
+           } else {
+             // Posts normais (sem evento) ganham score baseado na idade de criação (5 pontos por dia de vida)
+             const createdDate = new Date(post.created_at);
+             const now = new Date();
+             const diffTime = now.getTime() - createdDate.getTime();
+             const diffDays = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+             score += (diffDays * 5) + 30; // +30 base para eventos futuros terem vantagem sobre posts antigos
+           }
+
+           // Fator 3: Distância em KM (1 ponto por KM)
+           if (post._distanceKm !== undefined && post._distanceKm !== 9999) {
+             score += post._distanceKm;
+           }
+
+           return score;
+        };
+
+        const scoreA = calculateScore(a, aMatches);
+        const scoreB = calculateScore(b, bMatches);
+
+        // Ordem Ascendente: Menor Score = Melhor (aparece primeiro)
+        return scoreA - scoreB;
       }));
     } catch (error) {
       console.error('Error loading posts:', error);
@@ -766,8 +826,15 @@ export default function Feed() {
         keyExtractor={(item) => item.id}
         ListHeaderComponent={
           <View>
+            {/* INJEÇÃO DA LISTA VIP (FASE 6) */}
+            <View style={{ marginTop: 10 }}>
+              <VipListBanner />
+            </View>
+
             <StoriesBar />
-            {/* Categories horizontal list removed per user request */}
+            <MoodFilterBar currentMood={moodFilter} onSelectMood={(m) => { setMoodFilter(m); setTimeout(() => loadPosts(), 100); }} />
+            {/* INJEÇÃO DO BLIND TICKET MOCKADO */}
+            <BlindTicketCard />
           </View>
         }
         renderItem={renderItem}
@@ -1047,6 +1114,73 @@ export default function Feed() {
         visible={!!commentsEventId}
         eventId={commentsEventId || ''}
         onClose={() => setCommentsEventId(null)}
+      />
+
+      {/* TEST BUTTON FOR ADMINS ONLY (Rating Modal) */}
+      {user?.email?.includes('unna') && (
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            bottom: 120,
+            right: 20,
+            backgroundColor: '#FFD700',
+            width: 50,
+            height: 50,
+            borderRadius: 25,
+            justifyContent: 'center',
+            alignItems: 'center',
+            elevation: 5,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.3,
+            shadowRadius: 4,
+          }}
+          onPress={() => setShowRatingModal(true)}
+        >
+          <Text style={{ fontSize: 24 }}>⭐</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* BOTAO ANJO (SEGURANCA PESSOAL) */}
+      <TouchableOpacity
+        style={{
+          position: 'absolute',
+          bottom: 120,
+          left: 20,
+          backgroundColor: '#FF3B30',
+          width: 50,
+          height: 50,
+          borderRadius: 25,
+          justifyContent: 'center',
+          alignItems: 'center',
+          elevation: 5,
+          shadowColor: '#FF3B30',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.4,
+          shadowRadius: 8,
+        }}
+        onPress={() => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          Alert.alert(
+            'Protocolo Anjo 👼',
+            'Sua localização em tempo real será enviada para seus contatos de emergência. Confirmar?',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Sim, Socorro', style: 'destructive', onPress: () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                Alert.alert('Protocolo Ativado', 'Mensagem enviada com sucesso para seus contatos de segurança.');
+              }}
+            ]
+          );
+        }}
+      >
+        <ShieldAlert size={24} color="#FFF" />
+      </TouchableOpacity>
+
+      <PostEventRatingModal
+        visible={showRatingModal}
+        onClose={() => setShowRatingModal(false)}
+        eventName="Baile do UNNA (Ontem)"
       />
     </View>
     </PageTransition>

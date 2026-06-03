@@ -61,6 +61,12 @@ serve(async (req) => {
     });
 
     const result = await response.json();
+    console.log("EXPO PUSH API RESPONSE:", JSON.stringify(result));
+    console.log("Push Token used:", profile.push_token);
+
+    if (data && data.message_id) {
+      await supabase.from("messages").update({ delivered: true }).eq("id", data.message_id);
+    }
 
     return new Response(JSON.stringify({ success: true, inApp: true, push: true, result }), {
       headers: { "Content-Type": "application/json" },

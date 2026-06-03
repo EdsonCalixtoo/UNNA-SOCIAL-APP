@@ -43,6 +43,12 @@ import PageTransition from '@/components/PageTransition';
 import FullscreenMediaViewer from '@/components/FullscreenMediaViewer';
 import PremiumConfirmationModal from '@/components/PremiumConfirmationModal';
 import AdminPanelModal from '@/components/AdminPanelModal';
+import MyTicketModal from '@/components/MyTicketModal';
+import ImageViewerModal from '@/components/ImageViewerModal';
+import EditProfileModal from '@/components/EditProfileModal';
+import SettingsModal from '@/components/SettingsModal';
+import FollowListModal from '@/components/FollowListModal';
+import UnnaWrappedModal from '@/components/UnnaWrappedModal';
 import * as Haptics from 'expo-haptics';
 import { ShieldCheck } from 'lucide-react-native';
 import { hapticFeedback } from '@/utils/haptics';
@@ -91,6 +97,8 @@ export default function Profile() {
   
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
+  const [showMyTicket, setShowMyTicket] = useState(false);
+  const [showWrapped, setShowWrapped] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
   const [memories, setMemories] = useState<any[]>([]);
@@ -583,6 +591,15 @@ export default function Profile() {
               <Text style={[styles.nameText, { color: textPrimary }]}>{profile?.full_name}</Text>
               <Text style={[styles.usernameText, { color: textSecondary }]}>@{profile?.username}</Text>
               
+              {/* BOTAO UNNA WRAPPED (FASE 9) */}
+              <TouchableOpacity 
+                style={{ backgroundColor: '#ff1493', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, marginTop: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                onPress={() => setShowWrapped(true)}
+              >
+                <Sparkles size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>Meu UNИA 2025</Text>
+              </TouchableOpacity>
+              
               {profile?.bio && (
                 <Text style={[styles.bioText, { color: textPrimary }]}>{profile.bio}</Text>
               )}
@@ -592,6 +609,66 @@ export default function Profile() {
                   <Text style={[styles.birthdayText, { color: textPrimary }]}>🎂 {formatBirthDate(profile.birth_date)}</Text>
                 </View>
               )}
+
+              {/* UNNA COINS (FASE 6 - CASHBACK) */}
+              <View style={{ width: '100%', marginTop: 20 }}>
+                <LinearGradient
+                  colors={['rgba(0,230,118,0.15)', 'rgba(0,230,118,0.05)']}
+                  style={{ padding: 20, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,230,118,0.3)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                >
+                  <View>
+                    <Text style={{ color: '#00E676', fontSize: 14, fontWeight: '800', marginBottom: 4 }}>SALDO UNNA COINS</Text>
+                    <Text style={{ color: textPrimary, fontSize: 28, fontWeight: '900' }}>
+                      1.450 <Text style={{ fontSize: 16, color: textSecondary }}>🪙</Text>
+                    </Text>
+                    <Text style={{ color: textSecondary, fontSize: 12, marginTop: 4 }}>Equivale a R$ 14,50 de cashback</Text>
+                  </View>
+                  <TouchableOpacity style={{ backgroundColor: '#00E676', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}>
+                    <Text style={{ color: '#000', fontWeight: '800', fontSize: 13 }}>Usar</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+
+              {/* GAMIFICAÇÃO E EMBLEMAS (FASE 5) */}
+              <View style={{ width: '100%', marginTop: 20, marginBottom: 10 }}>
+                <Text style={{ color: textPrimary, fontSize: 16, fontWeight: '800', marginBottom: 12, marginLeft: 4 }}>Conquistas 🎖️</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+                  <View style={{ backgroundColor: 'rgba(255,215,0,0.1)', padding: 12, borderRadius: 16, alignItems: 'center', minWidth: 90, borderWidth: 1, borderColor: 'rgba(255,215,0,0.3)' }}>
+                    <Text style={{ fontSize: 24, marginBottom: 4 }}>👑</Text>
+                    <Text style={{ color: '#FFD700', fontSize: 11, fontWeight: '800', textAlign: 'center' }}>Rei do{'\n'}Camarote</Text>
+                  </View>
+                  <View style={{ backgroundColor: 'rgba(0,230,118,0.1)', padding: 12, borderRadius: 16, alignItems: 'center', minWidth: 90, borderWidth: 1, borderColor: 'rgba(0,230,118,0.3)' }}>
+                    <Text style={{ fontSize: 24, marginBottom: 4 }}>🦅</Text>
+                    <Text style={{ color: '#00E676', fontSize: 11, fontWeight: '800', textAlign: 'center' }}>Early{'\n'}Bird</Text>
+                  </View>
+                  <View style={{ backgroundColor: 'rgba(255,20,147,0.1)', padding: 12, borderRadius: 16, alignItems: 'center', minWidth: 90, borderWidth: 1, borderColor: 'rgba(255,20,147,0.3)' }}>
+                    <Text style={{ fontSize: 24, marginBottom: 4 }}>🔥</Text>
+                    <Text style={{ color: '#FF1493', fontSize: 11, fontWeight: '800', textAlign: 'center' }}>Top{'\n'}Presence</Text>
+                  </View>
+                  <View style={{ backgroundColor: 'rgba(128,128,128,0.1)', padding: 12, borderRadius: 16, alignItems: 'center', minWidth: 90, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)', opacity: 0.5 }}>
+                    <Text style={{ fontSize: 24, marginBottom: 4 }}>🔒</Text>
+                    <Text style={{ color: textSecondary, fontSize: 11, fontWeight: '800', textAlign: 'center' }}>Bloqueado</Text>
+                  </View>
+                </ScrollView>
+              </View>
+
+              {/* BOTÃO MEUS INGRESSOS (FASE 7) */}
+              <TouchableOpacity 
+                style={{
+                  width: '100%',
+                  backgroundColor: 'rgba(0,217,255,0.1)',
+                  borderColor: 'rgba(0,217,255,0.3)',
+                  borderWidth: 1,
+                  paddingVertical: 16,
+                  borderRadius: 16,
+                  alignItems: 'center',
+                  marginTop: 10,
+                  marginBottom: 10
+                }}
+                onPress={() => setShowMyTicket(true)}
+              >
+                <Text style={{ color: '#00d9ff', fontSize: 16, fontWeight: '800' }}>🎫 Ver Meus Ingressos</Text>
+              </TouchableOpacity>
 
               {/* LINKS SOCIAIS CARD */}
               {(profile?.instagram_url || profile?.website_url) ? (
@@ -920,6 +997,16 @@ export default function Profile() {
           visible={adminModalVisible}
           onClose={() => setAdminModalVisible(false)}
         />
+
+        <MyTicketModal
+          visible={showMyTicket}
+          onClose={() => setShowMyTicket(false)}
+        />
+
+        <UnnaWrappedModal
+          visible={showWrapped}
+          onClose={() => setShowWrapped(false)}
+        />
       </View>
     </PageTransition>
   );
@@ -982,7 +1069,6 @@ const styles = StyleSheet.create({
   postThumbnail: { width: (SCREEN_WIDTH - 32 - 16) / 3, height: (SCREEN_WIDTH - 32 - 16) / 3 * 1.3, backgroundColor: '#333', borderRadius: 16, overflow: 'hidden', position: 'relative' },
   thumbnailImg: { width: '100%', height: '100%' },
   gridIconOverlay: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)', padding: 6, borderRadius: 10 },
-  thumbnailImg: { width: '100%', height: '100%' },
   thumbnailPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', padding: 10 },
   thumbnailText: { fontSize: ms(10), textAlign: 'center', fontWeight: '500' },
   eventsList: { gap: 16 },

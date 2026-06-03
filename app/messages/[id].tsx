@@ -42,6 +42,7 @@ interface Message {
   created_at: string;
   read: boolean;
   read_at?: string;
+  delivered?: boolean;
   is_edited?: boolean;
   sender?: {
     full_name: string;
@@ -168,6 +169,11 @@ export default function ChatScreen() {
                 return merged;
               });
               scrollToBottom();
+            } else if (payload.eventType === 'UPDATE') {
+              const updatedMsg = payload.new as Message | null;
+              if (updatedMsg) {
+                setMessages(prev => prev.map(m => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m));
+              }
             } else if (payload.eventType === 'DELETE') {
               const deletedId = payload.old?.id;
               if (deletedId) {
@@ -974,7 +980,8 @@ export default function ChatScreen() {
           otherUser.id,
           user.id,
           messagePreview,
-          currentConvId
+          currentConvId,
+          insertedData.id
         );
       }
 
@@ -1190,7 +1197,8 @@ export default function ChatScreen() {
             userId as string,
             user?.id as string,
             type === 'video' ? '🎥 Vídeo' : '📷 Foto',
-            currentConvId
+            currentConvId,
+            insertedData.id
           );
         }
       }
@@ -1351,7 +1359,8 @@ export default function ChatScreen() {
             userId as string,
             user.id,
             '🎤 Mensagem de áudio',
-            currentConvId
+            currentConvId,
+            insertedData.id
           );
         }
       }
@@ -1839,6 +1848,8 @@ export default function ChatScreen() {
                         <View style={styles.readStatus}>
                           {message.read ? (
                             <CheckCheck size={14} color="#004cd9" strokeWidth={2.5} />
+                          ) : message.delivered ? (
+                            <CheckCheck size={14} color="rgba(0, 0, 0, 0.45)" strokeWidth={2.5} />
                           ) : (
                             <Check size={14} color="rgba(0, 0, 0, 0.45)" strokeWidth={2.5} />
                           )}

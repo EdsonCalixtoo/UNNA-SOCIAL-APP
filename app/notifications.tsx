@@ -227,7 +227,11 @@ export default function NotificationsScreen() {
     const { data, type } = notification;
     
     if (data?.event_id) {
-      router.push(`/event/${data.event_id}`);
+      if (type === 'mention') {
+        router.push(`/event/${data.event_id}?openComments=true`);
+      } else {
+        router.push(`/event/${data.event_id}`);
+      }
     } else if (data?.conversation_id) {
       router.push(`/messages/${data.conversation_id}`);
     } else if (type === 'follow' || data?.follower_id) {

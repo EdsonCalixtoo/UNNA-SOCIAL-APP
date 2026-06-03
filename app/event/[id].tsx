@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { 
   Calendar, Clock, MapPin, ArrowLeft,
   MessageCircle, Edit3, Share2, Navigation2,
-  ChevronRight, Users, Trash2, Flag, Ticket, Scan
+  ChevronRight, Users, Trash2, Flag, Ticket, Scan, Image as ImageIcon, Flame, Music, ScanFace, Map as MapIcon, Car, Mic2, Shirt
 } from 'lucide-react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +24,16 @@ import { EventPresenceList } from '@/components/EventPresenceList';
 import { EventStoriesBar } from '@/components/EventStoriesBar';
 import { QRScannerModal } from '@/components/QRScannerModal';
 import { ActionFeedback } from '@/components/ActionFeedback';
+import CommentsModal from '@/components/CommentsModal';
+import PartyModeModal from '@/components/PartyModeModal';
+import EventBarMenuModal from '@/components/EventBarMenuModal';
+import EventMatchModal from '@/components/EventMatchModal';
+import SplitBillModal from '@/components/SplitBillModal';
+import FaceFinderModal from '@/components/FaceFinderModal';
+import EventMapModal from '@/components/EventMapModal';
+import RideShareModal from '@/components/RideShareModal';
+import SetlistPollModal from '@/components/SetlistPollModal';
+import LooksMarketModal from '@/components/LooksMarketModal';
 import { offlineService } from '@/services/offlineService';
 import Animated, { 
   useSharedValue, useAnimatedStyle, useAnimatedScrollHandler,
@@ -74,7 +84,7 @@ const MemoizedInfoGrid = memo(({ date, time, endTime, accent, textPrimary, backg
 ));
 
 export default function EventDetails() {
-  const { id } = useLocalSearchParams();
+  const { id, openComments } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent: defaultAccent, isDark } = useTheme();
@@ -95,14 +105,37 @@ export default function EventDetails() {
 
   const accent = eventAccent; // Override local accent with dynamic one
   const [loading, setLoading] = useState(true);
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+
+  const isPastEvent = useMemo(() => {
+    if (!event?.event_date) return false;
+    const eventDateStr = event.event_time ? `${event.event_date}T${event.event_time}` : `${event.event_date}T00:00:00`;
+    return new Date(eventDateStr) < new Date();
+  }, [event]);
   const [rsvpStatus, setRsvpStatus] = useState<'going' | null>(null);
   const [showScannerModal, setShowScannerModal] = useState(false);
+  const [showPartyMode, setShowPartyMode] = useState(false);
+  const [showBarMenu, setShowBarMenu] = useState(false);
+  const [showMatchMode, setShowMatchMode] = useState(false);
+  const [showSplitBill, setShowSplitBill] = useState(false);
+  const [showFaceFinder, setShowFaceFinder] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [showRides, setShowRides] = useState(false);
+  const [showSetlist, setShowSetlist] = useState(false);
+  const [showLooks, setShowLooks] = useState(false);
   const [feedback, setFeedback] = useState({ visible: false, type: 'success' as any, title: '', message: '' });
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
   const [ticketModalVisible, setTicketModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [commentsVisible, setCommentsVisible] = useState(false);
+
+  useEffect(() => {
+    if (openComments === 'true') {
+      setCommentsVisible(true);
+    }
+  }, [openComments]);
 
   const translateY = useSharedValue(SNAP_MIDDLE); // Começa no meio, com o botão visível
   const scrollY = useSharedValue(0);
@@ -412,6 +445,7 @@ export default function EventDetails() {
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
         <EventShareModal visible={shareModalVisible} onClose={() => setShareModalVisible(false)} event={event} />
         <EventParticipantsModal visible={participantsModalVisible} onClose={() => setParticipantsModalVisible(false)} eventId={id as string} />
+        <CommentsModal visible={commentsVisible} eventId={id as string} eventTitle={event.title} onClose={() => setCommentsVisible(false)} />
         <ActionFeedback 
           {...feedback} 
           onClose={() => setFeedback({ ...feedback, visible: false })} 
@@ -759,6 +793,121 @@ export default function EventDetails() {
                     </MemoizedCard>
                   )}
 
+                  {/* BOTAO MODO BALADA */}
+                  {!isPublication && (
+                    <TouchableOpacity 
+                      activeOpacity={0.9} 
+                      style={[styles.card, { backgroundColor: '#000', borderColor: '#ff1493', borderWidth: 1 }]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                        setShowPartyMode(true);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#ff1493', justifyContent: 'center', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 20 }}>🪩</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#00E676', fontSize: 16, fontWeight: '900', letterSpacing: 1 }}>MODO BALADA</Text>
+                          <Text style={{ color: '#aaa', fontSize: 13, fontWeight: '600', marginTop: 2 }}>Ativar painel de sobrevivência</Text>
+                        </View>
+                        <ChevronRight size={20} color="#ff1493" />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* BOTAO FILA DO BAR */}
+                  {!isPublication && (
+                    <TouchableOpacity 
+                      activeOpacity={0.9} 
+                      style={[styles.card, { backgroundColor: backgroundSecondary, borderColor: 'rgba(255,149,0,0.3)', borderWidth: 1 }]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setShowBarMenu(true);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,149,0,0.1)', justifyContent: 'center', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 20 }}>🍻</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: textPrimary, fontSize: 16, fontWeight: '800' }}>CARDÁPIO DO BAR</Text>
+                          <Text style={{ color: textSecondary, fontSize: 13, marginTop: 2 }}>Compre fichas pelo app</Text>
+                        </View>
+                        <ChevronRight size={20} color="#FF9500" />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* BOTAO DIVIDIR CAMAROTE (FASE 7) */}
+                  {!isPublication && (
+                    <TouchableOpacity 
+                      activeOpacity={0.9} 
+                      style={[styles.card, { backgroundColor: backgroundSecondary, borderColor: 'rgba(255,215,0,0.3)', borderWidth: 1 }]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setShowSplitBill(true);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,215,0,0.1)', justifyContent: 'center', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 20 }}>🥂</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: textPrimary, fontSize: 16, fontWeight: '800' }}>RACHAR CAMAROTE</Text>
+                          <Text style={{ color: textSecondary, fontSize: 13, marginTop: 2 }}>Divida a conta com os amigos</Text>
+                        </View>
+                        <ChevronRight size={20} color="#FFD700" />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* BOTAO MAPA E CARONA (FASE 9) */}
+                  {!isPublication && (
+                    <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                      <TouchableOpacity 
+                        activeOpacity={0.9} 
+                        style={[styles.card, { flex: 1, backgroundColor: backgroundSecondary, borderColor: 'rgba(0,217,255,0.3)', borderWidth: 1, padding: 16, marginBottom: 0 }]}
+                        onPress={() => setShowMap(true)}
+                      >
+                        <MapIcon size={24} color="#00d9ff" style={{ marginBottom: 8 }} />
+                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '800' }}>Mapa do Local</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        activeOpacity={0.9} 
+                        style={[styles.card, { flex: 1, backgroundColor: backgroundSecondary, borderColor: 'rgba(52,199,89,0.3)', borderWidth: 1, padding: 16, marginBottom: 0 }]}
+                        onPress={() => setShowRides(true)}
+                      >
+                        <Car size={24} color="#34C759" style={{ marginBottom: 8 }} />
+                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '800' }}>Caronas</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* BOTOES DA FASE 10 (BONUS) */}
+                  {!isPublication && (
+                    <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                      <TouchableOpacity 
+                        activeOpacity={0.9} 
+                        style={[styles.card, { flex: 1, backgroundColor: backgroundSecondary, borderColor: 'rgba(0,217,255,0.3)', borderWidth: 1, padding: 16, marginBottom: 0 }]}
+                        onPress={() => setShowSetlist(true)}
+                      >
+                        <Mic2 size={24} color="#00d9ff" style={{ marginBottom: 8 }} />
+                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '800' }}>Setlist</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        activeOpacity={0.9} 
+                        style={[styles.card, { flex: 1, backgroundColor: backgroundSecondary, borderColor: 'rgba(255,20,147,0.3)', borderWidth: 1, padding: 16, marginBottom: 0 }]}
+                        onPress={() => setShowLooks(true)}
+                      >
+                        <Shirt size={24} color="#ff1493" style={{ marginBottom: 8 }} />
+                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '800' }}>Brechó</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
                   {!isPublication && (
                     <EventPresenceList eventId={id as string} />
                   )}
@@ -770,6 +919,31 @@ export default function EventDetails() {
                     />
                   )}
 
+                  {/* SEÇÃO SPOTIFY (FASE 8) */}
+                  {!isPublication && (
+                    <View style={styles.section}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                        <Music size={24} color="#1DB954" style={{ marginRight: 8 }} />
+                        <Text style={[styles.secTitle, { color: textPrimary, marginBottom: 0 }]}>
+                          Vibe do Evento
+                        </Text>
+                      </View>
+                      <View style={{ backgroundColor: isDark ? 'rgba(29, 185, 84, 0.1)' : 'rgba(29, 185, 84, 0.05)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(29, 185, 84, 0.2)' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                          <Image source={{ uri: 'https://images.unsplash.com/photo-1614680376573-df3480f0c6ff?w=500&q=80' }} style={{ width: 60, height: 60, borderRadius: 8, marginRight: 12 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: textPrimary, fontSize: 16, fontWeight: '800' }}>Playlist Oficial</Text>
+                            <Text style={{ color: textSecondary, fontSize: 13, marginTop: 2 }}>Ouça o que vai tocar</Text>
+                          </View>
+                          <TouchableOpacity style={{ backgroundColor: '#1DB954', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
+                            <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>Play</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={{ color: textSecondary, fontSize: 12 }}>Principais artistas: Alok, Vintage Culture, Illusionsize</Text>
+                      </View>
+                    </View>
+                  )}
+
                   <View style={styles.section}>
                     <Text style={[styles.secTitle, { color: textPrimary }]}>
                       {isPublication ? 'Descrição' : 'Sobre o Evento'}
@@ -778,6 +952,46 @@ export default function EventDetails() {
                       {event.description}
                     </Text>
                   </View>
+
+                  {/* ALBUM COLABORATIVO (APENAS PARA EVENTOS PASSADOS) */}
+                  {isPastEvent && !isPublication && (
+                    <View style={styles.section}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                        <Text style={[styles.secTitle, { color: textPrimary, marginBottom: 0 }]}>
+                          Álbum Colaborativo 🎞️
+                        </Text>
+                        <TouchableOpacity style={{ backgroundColor: accent + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                          <Text style={{ color: accent, fontWeight: '800', fontSize: 12 }}>+ Adicionar</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* BOTAO ACHAR FOTOS IA (FASE 8) */}
+                      <TouchableOpacity 
+                        style={{ backgroundColor: 'rgba(0,217,255,0.1)', borderWidth: 1, borderColor: 'rgba(0,217,255,0.3)', borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16, gap: 12 }}
+                        onPress={() => setShowFaceFinder(true)}
+                      >
+                        <ScanFace size={24} color="#00d9ff" />
+                        <Text style={{ color: '#00d9ff', fontSize: 16, fontWeight: '800' }}>Achar minha foto com IA</Text>
+                      </TouchableOpacity>
+                      
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {/* Imagens Simuladas */}
+                        {[
+                          'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=500&q=80',
+                          'https://images.unsplash.com/photo-1504196606672-aef5c9cefc92?w=500&q=80',
+                          'https://images.unsplash.com/photo-1470229722913-7c090be5faa3?w=500&q=80',
+                          'https://images.unsplash.com/photo-1540039155732-684735035726?w=500&q=80',
+                        ].map((img, i) => (
+                          <TouchableOpacity key={i} style={{ width: (SCREEN_WIDTH - 64) / 2, height: 120, borderRadius: 16, overflow: 'hidden' }}>
+                            <Image source={{ uri: img }} style={{ width: '100%', height: '100%' }} />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <Text style={{ color: textSecondary, fontSize: 13, marginTop: 12, textAlign: 'center' }}>
+                        Essas fotos foram compartilhadas pela comunidade que esteve presente.
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </Animated.ScrollView>
           </Animated.View>
@@ -794,22 +1008,85 @@ export default function EventDetails() {
               </>
             ) : (
               <>
-                <TouchableOpacity onPress={handleRSVP} style={[styles.mainBtn, { backgroundColor: rsvpStatus === 'going' ? '#34C759' : accent }]}>
+                <TouchableOpacity onPress={handleRSVP} style={[styles.mainBtn, { backgroundColor: rsvpStatus === 'going' ? '#34C759' : accent, position: 'relative' }]}>
                   {event.type === 'event' ? <Users size={20} color="#fff" /> : <MessageCircle size={20} color="#fff" />}
                   <Text style={styles.btnText}>
                     {rsvpStatus === 'going' 
                       ? (event.type === 'event' ? 'Confirmado' : 'Tenho Interesse') 
-                      : (event.type === 'event' ? 'Confirmar Presença' : 'Tenho Interesse')}
+                      : (event.type === 'event' ? 'Comprar Ingresso' : 'Tenho Interesse')}
                   </Text>
+                  
+                  {/* CASHBACK BADGE (FASE 6) */}
+                  {event.type === 'event' && rsvpStatus !== 'going' && (
+                    <View style={{ position: 'absolute', top: -10, right: -10, backgroundColor: '#00E676', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 2, borderColor: backgroundPrimary }}>
+                      <Text style={{ color: '#000', fontSize: 10, fontWeight: '900' }}>+5% CASHBACK 🪙</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
                 
-                {/* Ticket modal button removed per user request */}
+                {/* MATCH DE EVENTOS (FASE 6) */}
+                <TouchableOpacity 
+                  style={[styles.chatBtn, { backgroundColor: 'rgba(255,20,147,0.1)', borderColor: 'rgba(255,20,147,0.3)', borderWidth: 1 }]} 
+                  onPress={() => setShowMatchMode(true)}
+                >
+                  <Flame size={24} color="#FF1493" />
+                </TouchableOpacity>
 
                 <TouchableOpacity style={styles.chatBtn} onPress={() => router.push(`/event/${id}/chat`)}><MessageCircle size={24} color={accent} /></TouchableOpacity>
               </>
             )}
           </Animated.View>
         </View>
+
+        <PartyModeModal
+          visible={showPartyMode}
+          onClose={() => setShowPartyMode(false)}
+          eventName={event?.title || 'Evento'}
+          latitude={event?.latitude}
+          longitude={event?.longitude}
+          locationName={event?.location_name}
+        />
+
+        <EventBarMenuModal
+          visible={showBarMenu}
+          onClose={() => setShowBarMenu(false)}
+        />
+
+        <EventMatchModal
+          visible={showMatchMode}
+          onClose={() => setShowMatchMode(false)}
+          eventName={event?.title || 'Evento'}
+        />
+
+        <SplitBillModal
+          visible={showSplitBill}
+          onClose={() => setShowSplitBill(false)}
+        />
+
+        <FaceFinderModal
+          visible={showFaceFinder}
+          onClose={() => setShowFaceFinder(false)}
+        />
+
+        <EventMapModal
+          visible={showMap}
+          onClose={() => setShowMap(false)}
+        />
+
+        <RideShareModal
+          visible={showRides}
+          onClose={() => setShowRides(false)}
+        />
+
+        <SetlistPollModal
+          visible={showSetlist}
+          onClose={() => setShowSetlist(false)}
+        />
+
+        <LooksMarketModal
+          visible={showLooks}
+          onClose={() => setShowLooks(false)}
+        />
 
       </View>
     </GestureHandlerRootView>
