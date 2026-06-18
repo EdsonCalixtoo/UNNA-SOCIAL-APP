@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import Animated, { 
@@ -63,7 +64,6 @@ const ConfettiPiece = ({ index, onComplete }: { index: number, onComplete: () =>
 
 export const ConfettiView = ({ visible, onComplete }: { visible: boolean, onComplete: () => void }) => {
   if (!visible) return null;
-
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {[...Array(CONFETTI_COUNT)].map((_, i) => (

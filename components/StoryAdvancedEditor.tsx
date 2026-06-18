@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -61,6 +62,7 @@ const MOCK_SONGS = [
 ];
 
 export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onClose, onSave, mode = 'story' }: StoryAdvancedEditorProps) {
+  const { t } = useLanguage();
   const { profile } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   
@@ -264,8 +266,8 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
           <Modal transparent animationType="fade">
             <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill}>
                <View style={styles.textEditHeader}>
-                  <TouchableOpacity onPress={() => setEditingTextId(null)}><Text style={styles.headerAction}>Cancelar</Text></TouchableOpacity>
-                  <TouchableOpacity onPress={saveText}><Text style={styles.headerActionBold}>Concluir</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => setEditingTextId(null)}><Text style={styles.headerAction}>{t('auto.s847607d7', 'Cancelar')}</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={saveText}><Text style={styles.headerActionBold}>{t('auto.s9a816aba', 'Concluir')}</Text></TouchableOpacity>
                </View>
                <TextInput autoFocus multiline style={[styles.mainInput, { color: currentColor }]} value={currentText} onChangeText={setCurrentText} selectionColor={currentColor} />
                <View style={styles.colorRow}>
@@ -277,7 +279,7 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
 
         <Modal visible={showMusicModal} animationType="slide" transparent>
            <BlurView intensity={95} tint="dark" style={styles.modalOverlay}>
-              <View style={styles.modalHeader}><Text style={styles.modalTitle}>Música</Text><TouchableOpacity onPress={() => setShowMusicModal(false)}><X size={24} color="#fff" /></TouchableOpacity></View>
+              <View style={styles.modalHeader}><Text style={styles.modalTitle}>{t('auto.s275a856f', 'Música')}</Text><TouchableOpacity onPress={() => setShowMusicModal(false)}><X size={24} color="#fff" /></TouchableOpacity></View>
               <FlatList data={MOCK_SONGS} renderItem={({ item }) => (
                 <TouchableOpacity style={styles.songItem} onPress={() => { setSelectedSong(item); playSound(item.url); setShowMusicModal(false); }}>
                   <View style={styles.songArtwork} /><View><Text style={styles.songTitle}>{item.title}</Text><Text style={styles.songArtist}>{item.artist}</Text></View>
@@ -288,9 +290,9 @@ export default function StoryAdvancedEditor({ visible, mediaUri, mediaType, onCl
 
         <Modal visible={showLocationInput} animationType="slide" transparent>
            <BlurView intensity={95} tint="dark" style={styles.modalOverlay}>
-              <View style={styles.modalHeader}><Text style={styles.modalTitle}>Localização</Text><TouchableOpacity onPress={() => setShowLocationInput(false)}><X size={24} color="#fff" /></TouchableOpacity></View>
-              <TextInput style={styles.locationInput} value={location} onChangeText={setLocation} autoFocus placeholder="ONDE VOCÊ ESTÁ?" placeholderTextColor="#999" />
-              <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowLocationInput(false)}><Text style={styles.confirmText}>CONCLUIR</Text></TouchableOpacity>
+              <View style={styles.modalHeader}><Text style={styles.modalTitle}>{t('auto.sddfcda63', 'Localização')}</Text><TouchableOpacity onPress={() => setShowLocationInput(false)}><X size={24} color="#fff" /></TouchableOpacity></View>
+              <TextInput style={styles.locationInput} value={location} onChangeText={setLocation} autoFocus placeholder={t('auto.scb3feaff', 'ONDE VOCÊ ESTÁ?')} placeholderTextColor="#999" />
+              <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowLocationInput(false)}><Text style={styles.confirmText}>{t('auto.s7ffc0ef9', 'CONCLUIR')}</Text></TouchableOpacity>
            </BlurView>
         </Modal>
       </GestureHandlerRootView>

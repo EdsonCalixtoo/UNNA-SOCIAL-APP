@@ -1,13 +1,14 @@
+
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { 
   View, 
   StyleSheet, 
   Dimensions, 
   FlatList, 
-  Image, 
   TouchableOpacity, 
   Platform 
 } from 'react-native';
+import { Image } from 'expo-image';
 import { ResizeMode } from 'expo-av';
 import { Volume2, VolumeX } from 'lucide-react-native';
 import { s, vs, ms } from '@/utils/responsive';
@@ -30,6 +31,7 @@ interface MediaCarouselProps {
   onFullScreenChange?: (visible: boolean) => void;
   eventId?: string;
   onPress?: () => void;
+  onDoublePress?: () => void;
 }
 
 export default function MediaCarousel({ 
@@ -41,7 +43,8 @@ export default function MediaCarousel({
   isVisible = true,
   onFullScreenChange,
   eventId,
-  onPress
+  onPress,
+  onDoublePress
 }: MediaCarouselProps) {
   const { accent } = useTheme();
   const isFocused = useIsFocused();
@@ -67,17 +70,50 @@ export default function MediaCarousel({
     index,
   }), []);
 
+  const lastTapRef = useRef<{ [key: number]: number }>({});
+
   const renderItem = ({ item, index }: { item: string, index: number }) => {
     const type = mediaTypes ? mediaTypes[index] : (item.toLowerCase().endsWith('.mp4') ? 'video' : 'image');
     const isVideo = type === 'video';
 
     const handleMediaPress = () => {
-      if (onPress) {
-        onPress();
+      const now = Date.now();
+      const lastTap = lastTapRef.current[index] || 0;
+      const DOUBLE_PRESS_DELAY = 300;
+
+      if (now - lastTap < DOUBLE_PRESS_DELAY) {
+        // Double tap detected
+        if (onDoublePress) {
+          onDoublePress();
+        } else if (onPress) {
+          onPress();
+        }
+        lastTapRef.current[index] = 0; // reset
+        return;
+      }
+      
+      lastTapRef.current[index] = now;
+
+      if (onDoublePress) {
+        setTimeout(() => {
+          if (lastTapRef.current[index] === now) { // no second tap occurred
+            if (onPress) {
+              onPress();
+            } else {
+              setFullScreenIndex(index);
+              setFullScreenVisible(true);
+              onFullScreenChange?.(true);
+            }
+          }
+        }, DOUBLE_PRESS_DELAY);
       } else {
-        setFullScreenIndex(index);
-        setFullScreenVisible(true);
-        onFullScreenChange?.(true);
+        if (onPress) {
+          onPress();
+        } else {
+          setFullScreenIndex(index);
+          setFullScreenVisible(true);
+          onFullScreenChange?.(true);
+        }
       }
     };
 
@@ -118,8 +154,9 @@ export default function MediaCarousel({
           >
             <Image 
               source={{ uri: item }} 
-              style={styles.media as any} 
-              resizeMode="cover" 
+              style={styles.media} 
+              contentFit="cover" 
+              transition={200}
             />
           </TouchableOpacity>
         )}

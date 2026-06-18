@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState } from 'react';
 import {
   View,
@@ -78,6 +79,7 @@ export default function StoryCaptionEditor({
   onClose,
   onSave,
 }: StoryCaptionEditorProps) {
+  const { t } = useLanguage();
   const [text, setText] = useState('');
   const [textColor, setTextColor] = useState('#FFFFFF');
   const [backgroundColor, setBackgroundColor] = useState<string | undefined>();
@@ -135,7 +137,7 @@ export default function StoryCaptionEditor({
           <TouchableOpacity onPress={onClose}>
             <X size={28} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Adicionar Legenda</Text>
+          <Text style={styles.headerTitle}>{t('auto.s3c3b0c22', 'Adicionar Legenda')}</Text>
           <TouchableOpacity onPress={handleSave}>
             <Check size={28} color="#fff" />
           </TouchableOpacity>
@@ -187,11 +189,11 @@ export default function StoryCaptionEditor({
           {/* TAB: TEXTO */}
           {activeTab === 'text' && (
             <View style={styles.tabContent}>
-              <Text style={styles.sectionTitle}>✍️ Texto</Text>
+              <Text style={styles.sectionTitle}>{t('auto.sb8f6d5ab', '✍️ Texto')}</Text>
 
               <TextInput
                 style={styles.textInput}
-                placeholder="Digite sua legenda..."
+                placeholder={t('auto.s4fb86f1c', 'Digite sua legenda...')}
                 placeholderTextColor="#666"
                 value={text}
                 onChangeText={setText}
@@ -246,7 +248,7 @@ export default function StoryCaptionEditor({
           {/* TAB: ESTILO */}
           {activeTab === 'style' && (
             <View style={styles.tabContent}>
-              <Text style={styles.sectionTitle}>🎨 Cor do Texto</Text>
+              <Text style={styles.sectionTitle}>{t('auto.s203d0a0c', '🎨 Cor do Texto')}</Text>
               <View style={styles.colorGrid}>
                 {PRESET_COLORS.map((color) => (
                   <TouchableOpacity
@@ -265,7 +267,7 @@ export default function StoryCaptionEditor({
                 ))}
               </View>
 
-              <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🎨 Cor de Fundo</Text>
+              <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('auto.s57cd4d0f', '🎨 Cor de Fundo')}</Text>
               <View style={styles.colorGrid}>
                 <TouchableOpacity
                   style={[
@@ -275,7 +277,7 @@ export default function StoryCaptionEditor({
                   ]}
                   onPress={() => setBackgroundColor(undefined)}
                 >
-                  <Text style={styles.noneText}>Nenhum</Text>
+                  <Text style={styles.noneText}>{t('auto.s83521dd9', 'Nenhum')}</Text>
                 </TouchableOpacity>
 
                 {PRESET_COLORS.map((color) => (
@@ -295,7 +297,7 @@ export default function StoryCaptionEditor({
                 ))}
               </View>
 
-              <Text style={[styles.sectionTitle, { marginTop: 24 }]}>📝 Estilo da Fonte</Text>
+              <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('auto.sa7448c3a', '📝 Estilo da Fonte')}</Text>
               <View style={styles.fontStyleGrid}>
                 {FONT_STYLES.map((style) => (
                   <TouchableOpacity
@@ -341,7 +343,7 @@ export default function StoryCaptionEditor({
           {/* TAB: EFEITOS */}
           {activeTab === 'effects' && (
             <View style={styles.tabContent}>
-              <Text style={styles.sectionTitle}>✨ Efeito de Texto</Text>
+              <Text style={styles.sectionTitle}>{t('auto.saa3ff9ba', '✨ Efeito de Texto')}</Text>
 
               {TEXT_EFFECTS.map((effect) => (
                 <TouchableOpacity
@@ -364,12 +366,12 @@ export default function StoryCaptionEditor({
 
               <View style={styles.infoBox}>
                 <Text style={styles.infoText}>
-                  💡 <Text style={{ fontWeight: 'bold' }}>Dicas de efeitos:</Text>
+                  💡 <Text style={{ fontWeight: 'bold' }}>{t('auto.s3409ab57', 'Dicas de efeitos:')}</Text>
                 </Text>
-                <Text style={styles.infoText}>• Normal: Texto simples e direto</Text>
-                <Text style={styles.infoText}>• Deco: Adiciona decorações ao redor</Text>
-                <Text style={styles.infoText}>• Squeeze: Comprime o texto</Text>
-                <Text style={styles.infoText}>• Typewriter: Efeito de digitação</Text>
+                <Text style={styles.infoText}>{t('auto.see9d4216', '• Normal: Texto simples e direto')}</Text>
+                <Text style={styles.infoText}>{t('auto.se3bfc6d2', '• Deco: Adiciona decorações ao redor')}</Text>
+                <Text style={styles.infoText}>{t('auto.s306b1662', '• Squeeze: Comprime o texto')}</Text>
+                <Text style={styles.infoText}>{t('auto.s7f4ade49', '• Typewriter: Efeito de digitação')}</Text>
               </View>
             </View>
           )}

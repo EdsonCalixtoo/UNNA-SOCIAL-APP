@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect, useRef } from 'react';
 import { 
   View, 
@@ -28,6 +29,7 @@ interface FollowingData {
 }
 
 export default function Following() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
@@ -126,7 +128,7 @@ export default function Following() {
           <ArrowLeft size={22} color={textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>
-          <Text style={[styles.headerTitle, { color: textPrimary }]}>Seguindo</Text>
+          <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.s2ff5d35c', 'Seguindo')}</Text>
           <Text style={[styles.headerSubtitle, { color: textSecondary }]}>@{profileName}</Text>
         </View>
       </View>
@@ -136,7 +138,7 @@ export default function Following() {
         <View style={[styles.searchBar, { backgroundColor: backgroundSecondary }]}>
           <Search size={18} color={textSecondary} />
           <TextInput
-            placeholder="Buscar quem você segue..."
+            placeholder={t('auto.s945f6319', 'Buscar quem você segue...')}
             placeholderTextColor={isDark ? '#444' : '#bbb'}
             style={[styles.searchInput, { color: textPrimary }]}
             value={searchQuery}
@@ -161,7 +163,7 @@ export default function Following() {
             <View style={[styles.emptyIconBg, { backgroundColor: backgroundSecondary }]}>
               <Users size={48} color={textSecondary} strokeWidth={1.5} />
             </View>
-            <Text style={[styles.emptyStateTitle, { color: textPrimary }]}>Não segue ninguém ainda</Text>
+            <Text style={[styles.emptyStateTitle, { color: textPrimary }]}>{t('auto.s9c502dc2', 'Não segue ninguém ainda')}</Text>
             <Text style={[styles.emptyStateSub, { color: textSecondary }]}>
               {searchQuery.length > 0 ? 'Nenhum resultado para sua busca.' : 'Explore o UNNA e encontre pessoas incríveis para seguir!'}
             </Text>

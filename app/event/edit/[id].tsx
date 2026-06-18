@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
@@ -71,6 +72,7 @@ const STEPS = [
 ];
 
 export default function EditEvent() {
+  const { t } = useLanguage();
   const { id } = useLocalSearchParams();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const { user } = useAuth();
@@ -322,7 +324,7 @@ export default function EditEvent() {
                 ))}
                 {mediaFiles.length < 5 && (
                   <TouchableOpacity style={styles.mediaPickerSmall} onPress={() => setShowCamera(true)}>
-                    <Camera size={30} color={accent} /><Text style={{ color: textPrimary, marginTop: 8 }}>Adicionar</Text>
+                    <Camera size={30} color={accent} /><Text style={{ color: textPrimary, marginTop: 8 }}>{t('auto.sdbaee1c1', 'Adicionar')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -332,18 +334,18 @@ export default function EditEvent() {
           {currentStep === 1 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: accent }]}>NOME DO EVENTO</Text>
+                <Text style={[styles.label, { color: accent }]}>{t('auto.s66239982', 'NOME DO EVENTO')}</Text>
                 <TextInput style={[styles.hugeInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary, borderWidth: 1 }]} value={title} onChangeText={setTitle} />
               </View>
               <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: accent }]}>CATEGORIA</Text>
+                <Text style={[styles.label, { color: accent }]}>{t('auto.sf130611b', 'CATEGORIA')}</Text>
                 <TouchableOpacity style={[styles.selectorButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderWidth: 1 }]} onPress={() => setShowCatModal(true)}>
                   <Text style={{ color: textPrimary, fontSize: 16, fontWeight: '600' }}>{categories.find(c => c.id === selectedCategory)?.name || 'Escolher...'}</Text>
                   <ChevronRight size={20} color={textSecondary} />
                 </TouchableOpacity>
               </View>
               <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: accent }]}>DESCRIÇÃO</Text>
+                <Text style={[styles.label, { color: accent }]}>{t('auto.s7b08e5f1', 'DESCRIÇÃO')}</Text>
                 <TextInput style={[styles.textArea, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary, borderWidth: 1 }]} value={description} onChangeText={setDescription} multiline />
               </View>
             </Animated.View>
@@ -352,9 +354,9 @@ export default function EditEvent() {
           {currentStep === 2 && (
             <Animated.View entering={FadeInRight} style={[styles.stepContainer, { zIndex: 10 }]}>
               <View style={[styles.inputGroup, { zIndex: 100 }]}>
-                <Text style={[styles.label, { color: accent }]}>LOCALIZAÇÃO</Text>
+                <Text style={[styles.label, { color: accent }]}>{t('auto.s43f1d53c', 'LOCALIZAÇÃO')}</Text>
                 <GooglePlacesAutocomplete
-                  placeholder="Onde será o encontro?"
+                  placeholder={t('auto.s0b1a8a1d', 'Onde será o encontro?')}
                   onPress={(data, details = null) => {
                     setLocationName(data.structured_formatting?.main_text || data.description || '');
                     if (details?.geometry?.location) {
@@ -454,10 +456,10 @@ export default function EditEvent() {
               </View>
 
               <View style={[styles.inputGroup, { marginTop: 16, zIndex: 1 }]}>
-                <Text style={[styles.label, { color: accent }]}>NÚMERO E COMPLEMENTO</Text>
+                <Text style={[styles.label, { color: accent }]}>{t('auto.saac6fc04', 'NÚMERO E COMPLEMENTO')}</Text>
                 <TextInput 
                   style={[styles.hugeInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: textPrimary, fontSize: 16, height: 60, borderWidth: 1 }]}
-                  placeholder="Ex: 123, Apto 42"
+                  placeholder={t('auto.sbeb74a83', 'Ex: 123, Apto 42')}
                   placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
                   value={locationNumber}
                   onChangeText={setLocationNumber}
@@ -469,7 +471,7 @@ export default function EditEvent() {
                       <Check size={20} color="#00d9ff" strokeWidth={3} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#00d9ff', fontSize: 11, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>ENDEREÇO FINAL</Text>
+                      <Text style={{ color: '#00d9ff', fontSize: 11, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>{t('auto.s3c8299a0', 'ENDEREÇO FINAL')}</Text>
                       <Text style={{ color: textPrimary, fontSize: 15, fontWeight: '600', lineHeight: 22 }}>
                         {locationName}{locationNumber ? `, ${locationNumber}` : ''}
                       </Text>
@@ -482,14 +484,14 @@ export default function EditEvent() {
                 <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderWidth: 1 }]} onPress={() => setShowDatePicker(true)}>
                   <Calendar size={20} color="#ff1493" />
                   <View>
-                    <Text style={{ fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>DATA</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>{t('auto.se44f9e34', 'DATA')}</Text>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: textPrimary, marginTop: 2 }}>{new Date(eventDate).toLocaleDateString('pt-BR')}</Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderWidth: 1 }]} onPress={() => setShowTimePicker(true)}>
                   <Clock size={20} color={accent} />
                   <View>
-                    <Text style={{ fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>HORA</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>{t('auto.sf5c5b428', 'HORA')}</Text>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: textPrimary, marginTop: 2 }}>{eventTime}</Text>
                   </View>
                 </TouchableOpacity>
@@ -501,24 +503,24 @@ export default function EditEvent() {
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderWidth: 1 }]}>
                 <View>
-                  <Text style={{ color: textPrimary, fontSize: 18, fontWeight: '800' }}>Evento Pago?</Text>
-                  <Text style={{ color: textSecondary, fontSize: 14, marginTop: 2 }}>Ative para cobrar ingressos</Text>
+                  <Text style={{ color: textPrimary, fontSize: 18, fontWeight: '800' }}>{t('auto.sa98ee7e2', 'Evento Pago?')}</Text>
+                  <Text style={{ color: textSecondary, fontSize: 14, marginTop: 2 }}>{t('auto.s47954f49', 'Ative para cobrar ingressos')}</Text>
                 </View>
                 <Switch value={isPaid} onValueChange={setIsPaid} trackColor={{ true: accent }} />
               </View>
               {isPaid && (
                 <Animated.View entering={FadeInRight} style={[styles.priceBox, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)', borderWidth: 1 }]}>
-                  <Text style={{ color: accent, fontSize: 24, fontWeight: '900', marginRight: 12 }}>R$</Text>
+                  <Text style={{ color: accent, fontSize: 24, fontWeight: '900', marginRight: 12 }}>{t('auto.s2b416a58', 'R$')}</Text>
                   <TextInput style={{ color: textPrimary, fontSize: 32, flex: 1, fontWeight: '900' }} keyboardType="numeric" value={price} onChangeText={setPrice} />
                 </Animated.View>
               )}
               <View style={{ width: '100%', marginTop: 20 }}>
-                <Text style={[styles.label, { color: accent, marginBottom: 8 }]}>LINK PARA COMPRA DE INGRESSOS (OPCIONAL)</Text>
+                <Text style={[styles.label, { color: accent, marginBottom: 8 }]}>{t('auto.sc34dc273', 'LINK PARA COMPRA DE INGRESSOS (OPCIONAL)')}</Text>
                 <View style={[styles.selectorButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderWidth: 1, flexDirection: 'row', alignItems: 'center', height: 56, paddingHorizontal: 16 }]}>
                   <Ticket size={20} color="#ff1493" />
                   <TextInput 
                     style={{ flex: 1, color: textPrimary, fontSize: 14, marginLeft: 8 }} 
-                    placeholder="https://exemplo.com/ingressos" 
+                    placeholder={t('auto.se446c0ba', 'https://exemplo.com/ingressos')} 
                     placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
                     value={ticketUrl} 
                     onChangeText={setTicketUrl}
@@ -534,7 +536,7 @@ export default function EditEvent() {
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <TouchableOpacity style={styles.publishButton} onPress={handleUpdate} disabled={loading}>
                 <LinearGradient colors={['#00d9ff', '#ff1493']} style={styles.publishGradient}>
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishText}>SALVAR ALTERAÇÕES</Text>}
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishText}>{t('auto.sa7174aeb', 'SALVAR ALTERAÇÕES')}</Text>}
                 </LinearGradient>
               </TouchableOpacity>
             </Animated.View>
@@ -579,7 +581,7 @@ export default function EditEvent() {
       <Modal visible={showCatModal} transparent animationType="slide">
         <View style={[styles.modalOverlay, { backgroundColor: backgroundPrimary }]}>
           <View style={[styles.modalHeader, { paddingTop: insets.top + 20 }]}>
-            <Text style={[styles.modalTitle, { color: textPrimary }]}>Categorias</Text>
+            <Text style={[styles.modalTitle, { color: textPrimary }]}>{t('auto.saa966585', 'Categorias')}</Text>
             <TouchableOpacity onPress={() => setShowCatModal(false)}><X size={24} color={textPrimary} /></TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.modalScroll}>
@@ -599,11 +601,11 @@ export default function EditEvent() {
             <View style={[styles.pickerSheet, { backgroundColor: backgroundSecondary }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <Text style={{ color: textSecondary, fontSize: 16, fontWeight: '600' }}>Cancelar</Text>
+                  <Text style={{ color: textSecondary, fontSize: 16, fontWeight: '600' }}>{t('auto.s847607d7', 'Cancelar')}</Text>
                 </TouchableOpacity>
-                <Text style={{ color: textPrimary, fontSize: 18, fontWeight: '800' }}>Selecionar Data</Text>
+                <Text style={{ color: textPrimary, fontSize: 18, fontWeight: '800' }}>{t('auto.sd6fe442d', 'Selecionar Data')}</Text>
                 <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <Text style={{ color: accent, fontSize: 16, fontWeight: '700' }}>Confirmar</Text>
+                  <Text style={{ color: accent, fontSize: 16, fontWeight: '700' }}>{t('auto.s8487931b', 'Confirmar')}</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker
@@ -643,11 +645,11 @@ export default function EditEvent() {
             <View style={[styles.pickerSheet, { backgroundColor: backgroundSecondary }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                  <Text style={{ color: textSecondary, fontSize: 16, fontWeight: '600' }}>Cancelar</Text>
+                  <Text style={{ color: textSecondary, fontSize: 16, fontWeight: '600' }}>{t('auto.s847607d7', 'Cancelar')}</Text>
                 </TouchableOpacity>
-                <Text style={{ color: textPrimary, fontSize: 18, fontWeight: '800' }}>Horário de Início</Text>
+                <Text style={{ color: textPrimary, fontSize: 18, fontWeight: '800' }}>{t('auto.s14ba2f4e', 'Horário de Início')}</Text>
                 <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                  <Text style={{ color: accent, fontSize: 16, fontWeight: '700' }}>Confirmar</Text>
+                  <Text style={{ color: accent, fontSize: 16, fontWeight: '700' }}>{t('auto.s8487931b', 'Confirmar')}</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker

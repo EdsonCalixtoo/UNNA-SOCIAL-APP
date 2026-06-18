@@ -11,22 +11,10 @@ export default function AuthIndex() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading) {
-      if (session && profile) {
-        if (!profile.onboarding_completed) {
-          router.replace('/(auth)/onboarding');
-        } else if (profile.account_type === 'business') {
-          router.replace('/(business-tabs)' as any);
-        } else {
-          router.replace('/(tabs)');
-        }
-      } else if (session) {
-        // Wait for profile to load
-      } else {
-        router.replace('/(auth)/login');
-      }
+    if (!loading && !session) {
+      router.replace('/(auth)/login');
     }
-  }, [session, loading, profile]);
+  }, [session, loading]);
 
   return (
     <LinearGradient
@@ -34,7 +22,7 @@ export default function AuthIndex() {
       style={styles.container}
     >
       <View style={styles.logoContainer}>
-        <Text style={styles.logoText}>U<Text style={styles.logoPink}>N</Text><Text style={styles.logoSpecial}>N</Text>A</Text>
+        <Text style={styles.logoText}>U<Text style={styles.logoSpecial}>N</Text><Text style={styles.logoPink}>N</Text>A</Text>
       </View>
       <ActivityIndicator size="large" color="#00d9ff" style={styles.loader} />
       <Text style={styles.loadingText}>{t('common.loading')}</Text>

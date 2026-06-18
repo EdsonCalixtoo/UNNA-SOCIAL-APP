@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -36,6 +37,7 @@ interface UniversalImageEditorProps {
 }
 
 export default function UniversalImageEditor({ visible, imageUri, onClose, onSave, mode = 'event' }: UniversalImageEditorProps) {
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const [isProcessing, setIsProcessing] = useState(false);
   const [originalSize, setOriginalSize] = useState({ width: 0, height: 0 });
@@ -172,8 +174,8 @@ export default function UniversalImageEditor({ visible, imageUri, onClose, onSav
         <StatusBar barStyle="light-content" />
         
         <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity onPress={onClose}><Text style={styles.btnText}>Cancelar</Text></TouchableOpacity>
-          <Text style={styles.title}>Mover e Escalar</Text>
+          <TouchableOpacity onPress={onClose}><Text style={styles.btnText}>{t('auto.s847607d7', 'Cancelar')}</Text></TouchableOpacity>
+          <Text style={styles.title}>{t('auto.s5754f7a7', 'Mover e Escalar')}</Text>
           <View style={{ width: 60 }} />
         </View>
 
@@ -208,7 +210,7 @@ export default function UniversalImageEditor({ visible, imageUri, onClose, onSav
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
           <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isProcessing}>
-            {isProcessing ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>Escolher</Text>}
+            {isProcessing ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>{t('auto.saac7bb4b', 'Escolher')}</Text>}
           </TouchableOpacity>
         </View>
       </GestureHandlerRootView>

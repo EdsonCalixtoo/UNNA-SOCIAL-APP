@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Tabs } from 'expo-router';
 import { Briefcase, Calendar, UserCircle2, Megaphone, Compass } from 'lucide-react-native';

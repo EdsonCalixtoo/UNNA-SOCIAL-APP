@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState } from 'react';
 import {
   View,
@@ -37,6 +38,7 @@ export function MapFiltersModal({
   onApplyFilters,
   categories = DEFAULT_CATEGORIES,
 }: MapFiltersModalProps) {
+  const { t } = useLanguage();
   const [filters, setFilters] = useState<FilterState>({
     liveOnly: false,
     categories: [],
@@ -76,7 +78,7 @@ export function MapFiltersModal({
         <View style={styles.container}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Filtros</Text>
+            <Text style={styles.title}>{t('auto.s57aacc00', 'Filtros')}</Text>
             <TouchableOpacity
               onPress={onClose}
               style={styles.closeButton}
@@ -89,10 +91,10 @@ export function MapFiltersModal({
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             {/* Live Only Toggle */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Status</Text>
+              <Text style={styles.sectionTitle}>{t('auto.sec53a8c4', 'Status')}</Text>
               <View style={styles.filterItem}>
                 <View>
-                  <Text style={styles.filterLabel}>Apenas Eventos ao Vivo</Text>
+                  <Text style={styles.filterLabel}>{t('auto.sf440051e', 'Apenas Eventos ao Vivo')}</Text>
                   <Text style={styles.filterDescription}>
                     Mostra apenas eventos acontecendo agora
                   </Text>
@@ -110,7 +112,7 @@ export function MapFiltersModal({
 
             {/* Categories */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Categorias</Text>
+              <Text style={styles.sectionTitle}>{t('auto.saa966585', 'Categorias')}</Text>
               <View style={styles.categoriesGrid}>
                 {categories.map((category) => {
                   const isSelected = filters.categories.includes(category.id);
@@ -163,7 +165,7 @@ export function MapFiltersModal({
                 onPress={handleClearFilters}
                 activeOpacity={0.8}
               >
-                <Text style={styles.clearButtonText}>Limpar Filtros</Text>
+                <Text style={styles.clearButtonText}>{t('auto.sced62bfa', 'Limpar Filtros')}</Text>
               </TouchableOpacity>
             )}
 
@@ -178,7 +180,7 @@ export function MapFiltersModal({
                 onPress={handleApplyFilters}
                 activeOpacity={0.8}
               >
-                <Text style={styles.applyButtonText}>Aplicar Filtros</Text>
+                <Text style={styles.applyButtonText}>{t('auto.s3a8b0169', 'Aplicar Filtros')}</Text>
               </TouchableOpacity>
             </LinearGradient>
           </View>

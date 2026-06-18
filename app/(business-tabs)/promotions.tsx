@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,6 +20,7 @@ interface Reward {
 }
 
 export default function PromotionsTab() {
+  const { t } = useLanguage();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -98,7 +100,7 @@ export default function PromotionsTab() {
       {/* HEADER */}
       <View style={[styles.header, { paddingTop: insets.top + vs(10), backgroundColor: backgroundSecondary, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
         <Gift size={24} color={accent} style={{ marginRight: 8 }} />
-        <Text style={[styles.headerTitle, { color: textPrimary }]}>Promoções (UNNA Coins)</Text>
+        <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.s70ccda06', 'Promoções (UNNA Coins)')}</Text>
       </View>
 
       {loading ? (
@@ -109,15 +111,15 @@ export default function PromotionsTab() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <TouchableOpacity style={[styles.addButton, { borderColor: accent }]} onPress={() => setModalVisible(true)}>
             <Plus size={24} color={accent} />
-            <Text style={[styles.addText, { color: accent }]}>Criar Nova Promoção</Text>
+            <Text style={[styles.addText, { color: accent }]}>{t('auto.sabbf73ea', 'Criar Nova Promoção')}</Text>
           </TouchableOpacity>
 
-          <Text style={[styles.sectionTitle, { color: textSecondary }]}>Suas Promoções Ativas</Text>
+          <Text style={[styles.sectionTitle, { color: textSecondary }]}>{t('auto.s24e69816', 'Suas Promoções Ativas')}</Text>
           
           {promotions.length === 0 ? (
              <View style={styles.emptyState}>
                <Gift size={48} color={textSecondary} opacity={0.3} />
-               <Text style={[styles.emptyText, { color: textSecondary }]}>Você ainda não criou nenhuma promoção para seus clientes gastarem UNNA Coins.</Text>
+               <Text style={[styles.emptyText, { color: textSecondary }]}>{t('auto.s6499fd93', 'Você ainda não criou nenhuma promoção para seus clientes gastarem UNNA Coins.')}</Text>
              </View>
           ) : (
             promotions.map(promo => (
@@ -142,13 +144,13 @@ export default function PromotionsTab() {
           <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[styles.modalContent, { backgroundColor: backgroundSecondary }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textPrimary }]}>Nova Promoção</Text>
+              <Text style={[styles.modalTitle, { color: textPrimary }]}>{t('auto.s50b2c03f', 'Nova Promoção')}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <X size={24} color={textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={[styles.inputLabel, { color: textPrimary }]}>Ícone (Emoji)</Text>
+            <Text style={[styles.inputLabel, { color: textPrimary }]}>{t('auto.s15e2f80d', 'Ícone (Emoji)')}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}
               value={icon}
@@ -156,31 +158,31 @@ export default function PromotionsTab() {
               maxLength={2}
             />
             
-            <Text style={[styles.inputLabel, { color: textPrimary, marginTop: 16 }]}>Título</Text>
+            <Text style={[styles.inputLabel, { color: textPrimary, marginTop: 16 }]}>{t('auto.s09b79d37', 'Título')}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}
-              placeholder="Ex: 1 Drink Grátis"
+              placeholder={t('auto.saf784f74', 'Ex: 1 Drink Grátis')}
               placeholderTextColor={textSecondary}
               value={title}
               onChangeText={setTitle}
             />
 
-            <Text style={[styles.inputLabel, { color: textPrimary, marginTop: 16 }]}>Descrição</Text>
+            <Text style={[styles.inputLabel, { color: textPrimary, marginTop: 16 }]}>{t('auto.sc1c2501b', 'Descrição')}</Text>
             <TextInput
               style={[styles.input, styles.textArea, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}
-              placeholder="O que o cliente ganha ao resgatar?"
+              placeholder={t('auto.sd0b229e0', 'O que o cliente ganha ao resgatar?')}
               placeholderTextColor={textSecondary}
               value={description}
               onChangeText={setDescription}
               multiline
             />
 
-            <Text style={[styles.inputLabel, { color: textPrimary, marginTop: 16 }]}>Custo (em UNNA Coins)</Text>
+            <Text style={[styles.inputLabel, { color: textPrimary, marginTop: 16 }]}>{t('auto.scec5ab61', 'Custo (em UNNA Coins)')}</Text>
             <View style={styles.costInputWrap}>
               <Tag size={20} color={accent} style={styles.costIcon} />
               <TextInput
                 style={[styles.input, styles.costInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}
-                placeholder="Ex: 500"
+                placeholder={t('auto.s55c7f512', 'Ex: 500')}
                 placeholderTextColor={textSecondary}
                 value={cost}
                 onChangeText={setCost}
@@ -193,7 +195,7 @@ export default function PromotionsTab() {
               onPress={handleCreate}
               disabled={submitting}
             >
-              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Criar Promoção</Text>}
+              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{t('auto.sed2fc034', 'Criar Promoção')}</Text>}
             </TouchableOpacity>
           </View>
         </View>

@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ms, vs, s } from '@/utils/responsive';
 import { eventService } from '@/services/eventService';
+import { useLanguage } from '@/lib/i18n';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.52; // Aumentei um pouco a altura total para o card subir mais
@@ -32,6 +33,7 @@ interface EventBottomSheetProps {
 
 const EventBottomSheet = ({ event, isVisible, onClose, onViewEvent, onNavigate, onJoin, distance }: EventBottomSheetProps) => {
   const { backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
+  const { t } = useLanguage();
   const translateY = useSharedValue(SHEET_HEIGHT);
 
   useEffect(() => {
@@ -96,7 +98,7 @@ const EventBottomSheet = ({ event, isVisible, onClose, onViewEvent, onNavigate, 
                 <Image source={{ uri: event.image_url }} style={styles.image} />
                 <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={styles.imageGradient} />
                 <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-                  <Text style={styles.statusText}>{isLive ? 'AO VIVO' : 'EM BREVE'}</Text>
+                  <Text style={styles.statusText}>{isLive ? t('map.liveOnly', 'AO VIVO') : t('home.upcoming', 'EM BREVE').toUpperCase()}</Text>
                 </View>
               </View>
               
@@ -131,7 +133,7 @@ const EventBottomSheet = ({ event, isVisible, onClose, onViewEvent, onNavigate, 
                 style={[styles.mainButton, { backgroundColor: accent }]}
                 onPress={() => onViewEvent(event.id)}
               >
-                <Text style={styles.mainButtonText}>Ver Evento Completo</Text>
+                <Text style={styles.mainButtonText}>{t('events.viewEvent', 'Ver Evento Completo')}</Text>
                 <ChevronRight size={18} color="#fff" />
               </TouchableOpacity>
               
@@ -141,7 +143,7 @@ const EventBottomSheet = ({ event, isVisible, onClose, onViewEvent, onNavigate, 
                   onPress={() => onNavigate(event)}
                 >
                   <Navigation2 size={20} color={textPrimary} />
-                  <Text style={[styles.iconButtonText, { color: textPrimary }]}>Navegar</Text>
+                  <Text style={[styles.iconButtonText, { color: textPrimary }]}>{t('map.navigate', 'Navegar')}</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
@@ -149,7 +151,7 @@ const EventBottomSheet = ({ event, isVisible, onClose, onViewEvent, onNavigate, 
                   onPress={onClose}
                 >
                   <X size={20} color={textPrimary} />
-                  <Text style={[styles.iconButtonText, { color: textPrimary }]}>Fechar</Text>
+                  <Text style={[styles.iconButtonText, { color: textPrimary }]}>{t('common.close', 'Fechar')}</Text>
                 </TouchableOpacity>
               </View>
             </View>

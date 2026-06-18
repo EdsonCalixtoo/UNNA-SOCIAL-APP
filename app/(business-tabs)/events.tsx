@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -12,6 +13,7 @@ import { Alert } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
 export default function BusinessEvents() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const { user } = useAuth();
@@ -75,7 +77,7 @@ export default function BusinessEvents() {
       {/* HEADER */}
       <View style={[styles.header, { paddingTop: insets.top + vs(10), backgroundColor: backgroundSecondary, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
         <View style={styles.headerLeft}>
-          <Text style={[styles.headerTitle, { color: textPrimary }]}>Meus Eventos</Text>
+          <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.s3a02fe23', 'Meus Eventos')}</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/business/create')} style={styles.headerBtn}>
           <CalendarPlus size={24} color={accent} />
@@ -108,8 +110,8 @@ export default function BusinessEvents() {
           ) : (
             <View style={styles.emptyState}>
               <Calendar size={48} color={textSecondary} style={{ marginBottom: 16 }} />
-              <Text style={[styles.emptyText, { color: textPrimary }]}>Nenhum evento criado.</Text>
-              <Text style={[styles.emptySubText, { color: textSecondary }]}>Clique no botão de + acima para criar o seu primeiro evento e começar a vender!</Text>
+              <Text style={[styles.emptyText, { color: textPrimary }]}>{t('auto.s544c5d0c', 'Nenhum evento criado.')}</Text>
+              <Text style={[styles.emptySubText, { color: textSecondary }]}>{t('auto.sa3db4ef8', 'Clique no botão de + acima para criar o seu primeiro evento e começar a vender!')}</Text>
             </View>
           )}
         </Animated.View>

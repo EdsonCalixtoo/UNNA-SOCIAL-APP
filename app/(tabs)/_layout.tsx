@@ -3,12 +3,13 @@ import { Tabs } from 'expo-router';
 import { Home, Radio, PlusCircle, LayoutGrid, UserCircle2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { View, Image, StyleSheet } from 'react-native';
+import { View, Image, StyleSheet, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedTabBar } from '@/components/AnimatedTabBar';
 import { reputationService } from '@/services/reputationService';
 import { InterestOnboardingModal } from '@/components/InterestOnboardingModal';
+import { useLanguage } from '@/lib/i18n';
 
 function ProfileIcon({ focused, avatarUrl }: { focused: boolean; avatarUrl?: string | null }) {
   const [error, setError] = useState(false);
@@ -40,6 +41,7 @@ function ProfileIcon({ focused, avatarUrl }: { focused: boolean; avatarUrl?: str
 export default function TabLayout() {
   const { accent, isDark } = useTheme();
   const { profile } = useAuth();
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (profile?.id) {
@@ -59,21 +61,21 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Feed',
+          title: t('nav.home', 'Início'),
           tabBarIcon: ({ color }) => <Home size={24} color={color} strokeWidth={2.5} />,
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
-          title: 'Ao Vivo',
+          title: t('nav.map', 'Ao Vivo'),
           tabBarIcon: ({ color }) => <Radio size={24} color={color} strokeWidth={2.5} />,
         }}
       />
       <Tabs.Screen
         name="create"
         options={{
-          title: 'Criar',
+          title: t('nav.create', 'Criar'),
           tabBarStyle: { display: 'none' },
           tabBarIcon: () => <PlusCircle size={28} color="#fff" strokeWidth={2.5} />,
         }}
@@ -81,14 +83,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="categories"
         options={{
-          title: 'Categorias',
+          title: t('nav.categories', 'Categorias'),
           tabBarIcon: ({ color }) => <LayoutGrid size={24} color={color} strokeWidth={2.5} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Perfil',
+          title: t('nav.profile', 'Perfil'),
           tabBarIcon: ({ focused }) => (
             <ProfileIcon focused={focused} avatarUrl={profile?.avatar_url} />
           ),

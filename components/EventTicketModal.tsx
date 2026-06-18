@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Dimensions, Platform, Share } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -24,7 +25,8 @@ interface EventTicketModalProps {
 }
 
 export const EventTicketModal = ({ visible, onClose, event, user }: EventTicketModalProps) => {
-  const { isDark, accent, backgroundPrimary, textPrimary, textSecondary, isWorldCupMode } = useTheme();
+  const { t } = useLanguage();
+  const { isDark, accent, backgroundPrimary, textPrimary, textSecondary } = useTheme();
   const [predictionMade, setPredictionMade] = React.useState(false);
 
   if (!event || !user) return null;
@@ -62,9 +64,9 @@ export const EventTicketModal = ({ visible, onClose, event, user }: EventTicketM
           >
             <View style={styles.headerTop}>
               <View style={styles.brandContainer}>
-                <Text style={styles.brandText}>UNИA</Text>
+                <Text style={styles.brandText}>{t('auto.s7c59a975', 'UNИA')}</Text>
                 <View style={styles.premiumBadge}>
-                  <Text style={styles.premiumText}>INGRESSO</Text>
+                  <Text style={styles.premiumText}>{t('auto.sd0bb8031', 'INGRESSO')}</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -81,7 +83,7 @@ export const EventTicketModal = ({ visible, onClose, event, user }: EventTicketM
               <View style={styles.infoItem}>
                 <Calendar size={16} color={accent} />
                 <View>
-                  <Text style={[styles.infoLabel, { color: textSecondary }]}>DATA</Text>
+                  <Text style={[styles.infoLabel, { color: textSecondary }]}>{t('auto.se44f9e34', 'DATA')}</Text>
                   <Text style={[styles.infoValue, { color: textPrimary }]}>
                     {new Date(event.event_date).toLocaleDateString('pt-BR')}
                   </Text>
@@ -90,7 +92,7 @@ export const EventTicketModal = ({ visible, onClose, event, user }: EventTicketM
               <View style={styles.infoItem}>
                 <Ticket size={16} color={accent} />
                 <View>
-                  <Text style={[styles.infoLabel, { color: textSecondary }]}>TIPO</Text>
+                  <Text style={[styles.infoLabel, { color: textSecondary }]}>{t('auto.s04313ee6', 'TIPO')}</Text>
                   <Text style={[styles.infoValue, { color: textPrimary }]}>
                     {event.is_paid ? 'PREMIUM' : 'FREE'}
                   </Text>
@@ -127,45 +129,17 @@ export const EventTicketModal = ({ visible, onClose, event, user }: EventTicketM
               <Text style={[styles.userName, { color: textPrimary }]}>{user.full_name || user.username}</Text>
             </View>
 
-            {isWorldCupMode && (
-              <View style={[styles.bolaoContainer, { backgroundColor: isDark ? 'rgba(0,179,44,0.1)' : 'rgba(0,179,44,0.05)', borderColor: '#00B32C' }]}>
-                <View style={styles.bolaoHeader}>
-                  <Trophy size={20} color="#00B32C" />
-                  <Text style={[styles.bolaoTitle, { color: isDark ? '#fff' : '#000' }]}>Bolão VIP do Camarote</Text>
-                </View>
-                {predictionMade ? (
-                  <View style={styles.bolaoSuccess}>
-                    <CheckCircle2 size={32} color="#00B32C" />
-                    <Text style={[styles.bolaoDesc, { color: textSecondary, textAlign: 'center', marginTop: 8 }]}>Aposta Registrada: Brasil 2 x 0 Sérvia. Boa sorte!</Text>
-                  </View>
-                ) : (
-                  <>
-                    <Text style={[styles.bolaoDesc, { color: textSecondary }]}>Adivinhe o placar do jogo de hoje e ganhe 100 UNИA Coins para gastar no bar deste evento!</Text>
-                    <View style={styles.placarRow}>
-                      <Text style={[styles.teamName, { color: textPrimary }]}>BRA</Text>
-                      <View style={styles.scoreBox}><Text style={styles.scoreText}>2</Text></View>
-                      <Text style={{ marginHorizontal: 8, color: textSecondary }}>X</Text>
-                      <View style={styles.scoreBox}><Text style={styles.scoreText}>0</Text></View>
-                      <Text style={[styles.teamName, { color: textPrimary }]}>SRB</Text>
-                    </View>
-                    <TouchableOpacity style={styles.betBtn} onPress={() => setPredictionMade(true)}>
-                      <Text style={styles.betBtnText}>Confirmar Palpite</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
-            )}
           </View>
 
           {/* Ações */}
           <View style={styles.footer}>
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f5f5f5' }]} onPress={handleShare}>
               <Share2 size={20} color={textPrimary} />
-              <Text style={[styles.actionText, { color: textPrimary }]}>Compartilhar</Text>
+              <Text style={[styles.actionText, { color: textPrimary }]}>{t('auto.sa3bd2b71', 'Compartilhar')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: accent }]} onPress={onClose}>
               <Download size={20} color="#fff" />
-              <Text style={[styles.actionText, { color: '#fff' }]}>Salvar</Text>
+              <Text style={[styles.actionText, { color: '#fff' }]}>{t('auto.seb7a0fed', 'Salvar')}</Text>
             </TouchableOpacity>
           </View>
         </View>

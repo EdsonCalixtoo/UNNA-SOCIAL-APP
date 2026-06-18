@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import {
   View,
@@ -84,11 +85,18 @@ const StoryImageRenderer = memo(({
   progress: SharedValue<number> 
 }) => {
   const [status, setStatus] = useState<StoryState>('LOADING');
+  const [isLoaded, setIsLoaded] = useState(false);
   const IMAGE_DURATION = 5000;
 
   useEffect(() => {
     if (!isActive) {
       setStatus('IDLE');
+      return;
+    }
+
+    if (isLoaded && (status === 'IDLE' || status === 'LOADING')) {
+      progress.value = 0;
+      setStatus('READY');
       return;
     }
 
@@ -107,13 +115,10 @@ const StoryImageRenderer = memo(({
         setStatus('PLAYING');
       }
     }
-  }, [isActive, isPaused, status]);
+  }, [isActive, isPaused, status, isLoaded]);
 
-  const handleDisplay = () => {
-    if (isActive) {
-      progress.value = 0;
-      setStatus('READY');
-    }
+  const handleLoad = () => {
+    setIsLoaded(true);
   };
 
   return (
@@ -123,7 +128,8 @@ const StoryImageRenderer = memo(({
         style={st.media}
         contentFit="contain"
         cachePolicy="memory-disk"
-        onDisplay={handleDisplay}
+        onLoad={handleLoad}
+        onDisplay={handleLoad}
       />
       {status === 'LOADING' && (
         <View style={st.loadingBox}>
@@ -265,6 +271,7 @@ interface Props {
 }
 
 export default function StoryViewer({ visible, stories, initialIndex = 0, onClose, onRefresh }: Props) {
+  const { t } = useLanguage();
   const router = useRouter();
   const { user } = useAuth();
   const listRef = useRef<FlatList>(null);
@@ -448,16 +455,16 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
 
   const story = stories[idx];
   // Tenta extrair perfil de múltiplas fontes possíveis (Edge Function vs Query Direta)
-  const rawProfile = story.profiles || (story as any).user || (story as any).profile;
+  const rawProfile = story?.profiles || (story as any)?.user || (story as any)?.profile;
   const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
   
   // Garantia: se não houver objeto de perfil, usamos o user_id da história para o redirecionamento
-  const targetProfileId = profile?.id || story.user_id;
-  const isOwner = user?.id === story.user_id;
+  const targetProfileId = profile?.id || story?.user_id;
+  const isOwner = user?.id === story?.user_id;
 
   // Filtrar histórias apenas do usuário atual para a barra de progresso (estilo Instagram)
-  const currentUserStories = stories.filter(s => s.user_id === story.user_id);
-  const currentUserStoryIndex = currentUserStories.findIndex(s => s.id === story.id);
+  const currentUserStories = stories.filter(s => s.user_id === story?.user_id);
+  const currentUserStoryIndex = currentUserStories.findIndex(s => s.id === story?.id);
 
   return (
     <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
@@ -465,7 +472,7 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
       <View style={st.root}>
         {/* Fundo para Blur */}
         <Image 
-          source={{ uri: story.thumbnail_url || story.media_url }} 
+          source={{ uri: story?.thumbnail_url || story?.media_url }} 
           style={StyleSheet.absoluteFill} 
           contentFit="cover" 
           blurRadius={50}
@@ -544,7 +551,7 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
               }
               <View>
                 <Text style={st.username}>{profile?.username}</Text>
-                <Text style={st.timeLabel}>{formatStoryTime(story.created_at)}</Text>
+                <Text style={st.timeLabel}>{formatStoryTime(story?.created_at)}</Text>
               </View>
             </TouchableOpacity>
             <View style={st.headerRight}>
@@ -571,7 +578,7 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
                     <BlurView intensity={30} tint="dark" style={st.inputWrap}>
                       <TextInput
                         style={st.input}
-                        placeholder="Responder..."
+                        placeholder={t('auto.s6233ecee', 'Responder...')}
                         placeholderTextColor="rgba(255,255,255,0.8)"
                         value={message}
                         onChangeText={setMessage}
@@ -596,7 +603,7 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, onClos
                   <View style={st.ownerRow}>
                     <TouchableOpacity style={st.shareBtn}>
                       <Share2 size={20} color="#000" />
-                      <Text style={st.shareTxt}>Compartilhar</Text>
+                      <Text style={st.shareTxt}>{t('auto.sa3bd2b71', 'Compartilhar')}</Text>
                     </TouchableOpacity>
                   </View>
                 )}

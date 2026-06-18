@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, TextInput, FlatList, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, TextInput, FlatList, RefreshControl, Alert, Animated as RNAnimated } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
-import { MessageCircle, Search, Plus, ArrowLeft, Users, MessageSquare } from 'lucide-react-native';
+import { MessageCircle, Search, Plus, ArrowLeft, Users, MessageSquare, X, Archive, Trash2, ArchiveRestore } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Swipeable } from 'react-native-gesture-handler';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/lib/i18n';
 
 interface ConversationWithDetails {
   id: string;
@@ -30,11 +34,15 @@ interface ConversationWithDetails {
 export default function ConversationsList() {
   const { user } = useAuth();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
+  const { t } = useLanguage();
   const router = useRouter();
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [archivedIds, setArchivedIds] = useState<string[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     loadConversations();
@@ -56,10 +64,20 @@ export default function ConversationsList() {
         }
       )
       .subscribe();
-
     return () => {
       supabase.removeChannel(messagesChannel);
     };
+  }, [user?.id]);
+  useEffect(() => {
+    const loadArchived = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(`@archived_conversations_${user?.id}`);
+        if (saved) setArchivedIds(JSON.parse(saved));
+      } catch (e) {
+        console.error('Error loading archived', e);
+      }
+    };
+    if (user?.id) loadArchived();
   }, [user?.id]);
 
   const reloadConversationsSilently = async () => {
@@ -87,6 +105,16 @@ export default function ConversationsList() {
   const fetchAndSetConversations = async () => {
     if (!user) return;
     try {
+      // 1. Simular confirmação de "Entregue" (2 traços cinzas) estilo WhatsApp:
+      // Ao abrir o app e carregar a lista, significa que as mensagens chegaram no celular do usuário.
+      await supabase
+        .from('messages')
+        .update({
+          delivered: true,
+          delivered_at: new Date().toISOString()
+        })
+        .neq('sender_id', user.id)
+        .eq('delivered', false);
     
     // Fetch conversations
     const { data: convs, error } = await supabase
@@ -216,7 +244,91 @@ export default function ConversationsList() {
     loadConversations();
   };
 
-  const filteredConversations = conversations.filter(c => 
+  const handleArchive = async (id: string) => {
+    try {
+      const isArchived = archivedIds.includes(id);
+      const updated = isArchived ? archivedIds.filter(a => a !== id) : [...archivedIds, id];
+      setArchivedIds(updated);
+      await AsyncStorage.setItem(`@archived_conversations_${user?.id}`, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error saving archive', e);
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    Alert.alert(
+      t('messages.deleteTitle', 'Excluir Conversa'),
+      t('messages.deleteMessage', 'Tem certeza que deseja apagar esta conversa permanentemente?'),
+      [
+        { text: t('common.cancel', 'Cancelar'), style: 'cancel' },
+        {
+          text: t('common.delete', 'Excluir'),
+          style: 'destructive',
+          onPress: async () => {
+            if (!user) return;
+            try {
+              await supabase.from('conversation_participants').delete().eq('conversation_id', id).eq('user_id', user.id);
+              setConversations(prev => prev.filter(c => c.id !== id));
+              if (archivedIds.includes(id)) {
+                const newArchived = archivedIds.filter(a => a !== id);
+                setArchivedIds(newArchived);
+                await AsyncStorage.setItem(`@archived_conversations_${user?.id}`, JSON.stringify(newArchived));
+              }
+            } catch (e) {
+              console.error('Error deleting chat', e);
+              Alert.alert('Erro', 'Não foi possível excluir a conversa.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const renderRightActions = (item: ConversationWithDetails, progress: any, dragX: any) => {
+    const isArchived = archivedIds.includes(item.id);
+    
+    // Animação para que os botões acompanhem o gesto de forma fluida
+    const trans = dragX.interpolate({
+      inputRange: [-160, 0],
+      outputRange: [0, 160],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <View style={{ flexDirection: 'row', width: 160 }}>
+        <RNAnimated.View style={{ flex: 1, transform: [{ translateX: trans }] }}>
+          <TouchableOpacity 
+            style={{ flex: 1, backgroundColor: isDark ? '#2c2c2e' : '#54656f', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => handleArchive(item.id)}
+            activeOpacity={0.8}
+          >
+            {isArchived ? <ArchiveRestore size={22} color="#fff" /> : <Archive size={22} color="#fff" />}
+            <Text style={{ color: '#fff', fontSize: 11, marginTop: 4, fontWeight: '600' }}>
+              {isArchived ? 'Desarquivar' : 'Arquivar'}
+            </Text>
+          </TouchableOpacity>
+        </RNAnimated.View>
+        <RNAnimated.View style={{ flex: 1, transform: [{ translateX: trans }] }}>
+          <TouchableOpacity 
+            style={{ flex: 1, backgroundColor: '#ff3b30', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => handleDelete(item.id)}
+            activeOpacity={0.8}
+          >
+            <Trash2 size={22} color="#fff" />
+            <Text style={{ color: '#fff', fontSize: 11, marginTop: 4, fontWeight: '600' }}>
+              {t('common.delete', 'Excluir')}
+            </Text>
+          </TouchableOpacity>
+        </RNAnimated.View>
+      </View>
+    );
+  };
+
+  const mainConversations = conversations.filter(c => !archivedIds.includes(c.id));
+  const archivedConversations = conversations.filter(c => archivedIds.includes(c.id));
+  const currentConversations = showArchived ? archivedConversations : mainConversations;
+
+  const filteredConversations = currentConversations.filter(c => 
     c.name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -230,100 +342,151 @@ export default function ConversationsList() {
 
   return (
     <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
-      <View style={[styles.header, { backgroundColor: backgroundSecondary, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderBottomWidth: 1 }]}>
-        <View style={{ paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20 }}>
+      <View style={[styles.header, { backgroundColor: isDark ? '#0b141a' : accent, borderBottomWidth: 0, paddingBottom: 10 }]}>
+        <View style={{ paddingTop: 60, paddingHorizontal: 16 }}>
           <View style={styles.headerTop}>
-            <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
-              <ArrowLeft size={24} color={textPrimary} />
-            </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: textPrimary }]}>Mensagens</Text>
-            <TouchableOpacity 
-              onPress={() => router.push('/messages/new-group')}
-              style={[styles.newGroupButton, { backgroundColor: accent }]}
-            >
-              <Users size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={[styles.searchContainer, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]}>
-            <Search size={20} color={textSecondary} />
-            <TextInput
-              style={[styles.searchInput, { color: textPrimary }]}
-              placeholder="Buscar conversas..."
-              placeholderTextColor={textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
+            {isSearching ? (
+              <View style={[styles.searchContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)' }]}>
+                <TouchableOpacity onPress={() => { setIsSearching(false); setSearchQuery(''); }}>
+                  <ArrowLeft size={22} color="#fff" />
+                </TouchableOpacity>
+                <TextInput
+                  style={[styles.searchInput, { color: '#fff' }]}
+                  placeholder={t('common.search', 'Pesquisar...')}
+                  placeholderTextColor="rgba(255,255,255,0.7)"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoFocus
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <X size={20} color="#fff" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <TouchableOpacity onPress={() => {
+                    if (showArchived) {
+                      setShowArchived(false);
+                    } else {
+                      router.back();
+                    }
+                  }} style={{ padding: 4, marginLeft: -4 }}>
+                    <ArrowLeft size={24} color="#fff" />
+                  </TouchableOpacity>
+                  <Text style={[styles.headerTitle, { color: '#fff' }]}>
+                    {showArchived ? 'Arquivadas' : t('messages.messages', 'WhatsApp')}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
+                  <TouchableOpacity onPress={() => setIsSearching(true)}>
+                    <Search size={22} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => {}}>
+                    <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>⋮</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </View>
 
-      <FlatList
+      <Animated.FlatList
         data={filteredConversations}
+        itemLayoutAnimation={LinearTransition}
         keyExtractor={(item) => item.id}
+        ListHeaderComponent={() => {
+          if (!showArchived && archivedConversations.length > 0 && !isSearching) {
+            return (
+              <TouchableOpacity
+                style={[styles.archivedHeaderButton, { borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}
+                onPress={() => setShowArchived(true)}
+              >
+                <View style={[styles.archivedIconContainer, { backgroundColor: isDark ? '#1a1a1a' : '#f0f2f5' }]}>
+                  <Archive size={22} color={textSecondary} />
+                </View>
+                <View style={[styles.archivedHeaderInfo, { borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+                  <Text style={[styles.archivedHeaderText, { color: textPrimary }]}>Arquivadas</Text>
+                  <Text style={[styles.archivedCountText, { color: accent }]}>{archivedConversations.length}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }
+          return null;
+        }}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.conversationItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
-            onPress={() => router.push(`/messages/${item.id}?userId=${item.other_user.id}`)}
+          <Swipeable 
+            renderRightActions={(progress, dragX) => renderRightActions(item, progress, dragX)}
+            overshootRight={false}
+            friction={1.2}
           >
-            <View style={styles.avatarContainer}>
-              {item.avatar_url ? (
-                <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? '#1a1a1a' : '#e1e1e1' }]}>
-                  <Text style={[styles.avatarText, { color: textSecondary }]}>
-                    {(item.name || 'U').charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-              {item.is_group && (
-                <View style={[styles.groupBadge, { borderColor: backgroundPrimary, backgroundColor: accent }]}>
-                  <Users size={10} color="#fff" />
-                </View>
-              )}
-              {!item.is_group && item.is_online && (
-                <View style={[styles.onlineDot, { backgroundColor: '#34C759', borderColor: backgroundPrimary }]} />
-              )}
-            </View>
-
-            <View style={styles.conversationInfo}>
-              <View style={styles.conversationHeader}>
-                <Text style={[styles.conversationName, { color: textPrimary, fontWeight: item.unread_count > 0 ? '800' : '700' }]} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                {item.last_message && (
-                  <Text style={[styles.lastMessageTime, { color: item.unread_count > 0 ? accent : textSecondary, fontWeight: item.unread_count > 0 ? '700' : '400' }]}>
-                    {new Date(item.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.lastMessageContainer}>
-                <Text style={[styles.lastMessage, { color: item.unread_count > 0 ? textPrimary : textSecondary, fontWeight: item.unread_count > 0 ? '700' : '400' }]} numberOfLines={1}>
-                  {item.last_message ? (
-                    (() => {
-                      const prefix = item.last_message.sender_id === user?.id ? 'Você: ' : '';
-                      try {
-                        const parsed = JSON.parse(item.last_message.content);
-                        if (parsed.type === 'audio') return `${prefix}🎙️ Áudio`;
-                        if (parsed.type === 'image') return `${prefix}📷 Imagem`;
-                        if (parsed.type === 'event_card') return `${prefix}📅 Convite de Evento`;
-                        if (parsed.type === 'reply') return `${prefix}${parsed.text || ''}`;
-                      } catch (e) {}
-                      return `${prefix}${item.last_message.content}`;
-                    })()
-                  ) : (
-                    'Inicie uma conversa'
-                  )}
-                </Text>
-                {item.unread_count > 0 && (
-                  <View style={[styles.unreadBadge, { backgroundColor: accent }]}>
-                    <Text style={styles.unreadBadgeText}>{item.unread_count}</Text>
+            <TouchableOpacity
+              style={[styles.conversationItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', backgroundColor: backgroundPrimary }]}
+              onPress={() => router.push(`/messages/${item.id}?userId=${item.other_user.id}`)}
+              activeOpacity={1}
+            >
+              <View style={styles.avatarContainer}>
+                {item.avatar_url ? (
+                  <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? '#1a1a1a' : '#e1e1e1' }]}>
+                    <Text style={[styles.avatarText, { color: textSecondary }]}>
+                      {(item.name || 'U').charAt(0).toUpperCase()}
+                    </Text>
                   </View>
                 )}
+                {item.is_group && (
+                  <View style={[styles.groupBadge, { borderColor: backgroundPrimary, backgroundColor: accent }]}>
+                    <Users size={10} color="#fff" />
+                  </View>
+                )}
+                {!item.is_group && item.is_online && (
+                  <View style={[styles.onlineDot, { backgroundColor: '#34C759', borderColor: backgroundPrimary }]} />
+                )}
               </View>
-            </View>
-          </TouchableOpacity>
+
+              <View style={[styles.conversationInfo, { borderBottomColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.1)' }]}>
+                <View style={styles.conversationHeader}>
+                  <Text style={[styles.conversationName, { color: textPrimary, fontWeight: item.unread_count > 0 ? '800' : '600' }]} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  {item.last_message && (
+                    <Text style={[styles.lastMessageTime, { color: item.unread_count > 0 ? accent : textSecondary, fontWeight: item.unread_count > 0 ? '700' : '400' }]}>
+                      {new Date(item.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.lastMessageContainer}>
+                  <Text style={[styles.lastMessage, { color: item.unread_count > 0 ? textPrimary : textSecondary, fontWeight: item.unread_count > 0 ? '600' : '400' }]} numberOfLines={1}>
+                    {item.last_message ? (
+                      (() => {
+                        const prefix = item.last_message.sender_id === user?.id ? 'Você: ' : '';
+                        try {
+                          const parsed = JSON.parse(item.last_message.content);
+                          if (parsed.type === 'audio') return `${prefix}🎙️ Áudio`;
+                          if (parsed.type === 'image') return `${prefix}📷 Imagem`;
+                          if (parsed.type === 'event_card') return `${prefix}📅 Convite de Evento`;
+                          if (parsed.type === 'reply') return `${prefix}${parsed.text || ''}`;
+                        } catch (e) {}
+                        return `${prefix}${item.last_message.content}`;
+                      })()
+                    ) : (
+                      t('messages.newMessage', 'Inicie uma conversa')
+                    )}
+                  </Text>
+                  {item.unread_count > 0 && (
+                    <View style={[styles.unreadBadge, { backgroundColor: accent }]}>
+                      <Text style={styles.unreadBadgeText}>{item.unread_count}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          </Swipeable>
         )}
         contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
@@ -333,10 +496,18 @@ export default function ConversationsList() {
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
             <MessageSquare size={48} color={isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"} />
-            <Text style={[styles.emptyText, { color: textSecondary }]}>Nenhuma conversa encontrada</Text>
+            <Text style={[styles.emptyText, { color: textSecondary }]}>{t('messages.noMessages', 'Nenhuma conversa encontrada')}</Text>
           </View>
         )}
       />
+
+      <TouchableOpacity 
+        onPress={() => router.push('/messages/new-group')}
+        style={styles.fab}
+        activeOpacity={0.8}
+      >
+        <MessageSquare size={24} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -392,17 +563,19 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   listContent: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 0,
     paddingTop: 10,
   },
   conversationItem: {
     flexDirection: 'row',
-    padding: 15,
-    borderBottomWidth: 1,
+    paddingLeft: 16,
+    height: 76,
+    alignItems: 'center',
+    width: '100%',
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: 15,
+    marginRight: 14,
   },
   avatar: {
     width: 60,
@@ -442,7 +615,10 @@ const styles = StyleSheet.create({
   },
   conversationInfo: {
     flex: 1,
+    height: '100%',
     justifyContent: 'center',
+    borderBottomWidth: 0.5,
+    paddingRight: 16,
   },
   conversationHeader: {
     flexDirection: 'row',
@@ -492,5 +668,53 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '900',
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#25D366',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  archivedHeaderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 16,
+    height: 60,
+    marginBottom: 8,
+  },
+  archivedIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  archivedHeaderInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: '100%',
+    borderBottomWidth: 0.5,
+    paddingRight: 24,
+  },
+  archivedHeaderText: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  archivedCountText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

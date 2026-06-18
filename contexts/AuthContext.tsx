@@ -11,8 +11,12 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signUp: (email: string, password: string, username: string, fullName: string, accountType?: string) => Promise<{ error: any; sessionCreated?: boolean }>;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
+  signUp: (method: 'email' | 'phone', identifier: string, password: string, username: string, fullName: string, accountType?: string, language?: string) => Promise<{ error: any; sessionCreated?: boolean }>;
+  verifyOtp: (identifier: string, token: string, method?: 'email' | 'phone') => Promise<{ error: any }>;
+  resendOtp: (identifier: string, method?: 'email' | 'phone') => Promise<{ error: any }>;
+  verifyResetOtp: (email: string, token: string) => Promise<{ error: any }>;
+  getUserEmailByUsername: (usernameOrEmail: string) => Promise<string | null>;
+  signIn: (identifier: string, password: string, method?: 'email' | 'phone') => Promise<{ error: any }>;
   signInWithGoogle: () => Promise<{ error: any }>;
   signInWithApple: () => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -140,25 +144,98 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, username: string, fullName: string, accountType: string = 'user') => {
+  const signUp = async (method: 'email' | 'phone', identifier: string, password: string, username: string, fullName: string, accountType: string = 'user', language?: string) => {
     try {
       if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { username, full_name: fullName, account_type: accountType } }
-      });
+      
+      const options = { 
+        data: { username, full_name: fullName, account_type: accountType },
+        emailRedirectTo: 'https://unnasocialapp.com/sucesso'
+      };
+
+      if (method === 'phone') {
+        (options.data as any).phone_number = identifier;
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.signUp(
+        method === 'email'
+          ? { email: identifier, password, options }
+          : { phone: identifier, password, options }
+      );
       if (authError) return { error: authError };
+      if (authData.user && language) {
+        await supabase.from('profiles').update({
+          preferred_language: language,
+        }).eq('id', authData.user.id);
+      }
       return { error: null, sessionCreated: !!authData.session };
     } catch (error: any) {
       return { error: { message: error?.message || 'Erro ao criar conta' } };
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const getUserEmailByUsername = async (usernameOrEmail: string): Promise<string | null> => {
+    // If it looks like an email, return as-is
+    if (usernameOrEmail.includes('@')) return usernameOrEmail;
+    try {
+      if (!supabase) return null;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('username', usernameOrEmail.toLowerCase().trim())
+        .maybeSingle();
+      if (error || !data) return null;
+      return data.email;
+    } catch {
+      return null;
+    }
+  };
+
+  const verifyOtp = async (identifier: string, token: string, method: 'email' | 'phone' = 'email') => {
     try {
       if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.verifyOtp(
+        method === 'email'
+          ? { email: identifier, token, type: 'signup' }
+          : { phone: identifier, token, type: 'sms' }
+      );
+      return { error };
+    } catch (error: any) {
+      return { error: { message: error?.message || 'Erro ao verificar código' } };
+    }
+  };
+
+  const resendOtp = async (identifier: string, method: 'email' | 'phone' = 'email') => {
+    try {
+      if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
+      const payload = method === 'email' 
+        ? { type: 'signup' as const, email: identifier } 
+        : { type: 'sms' as const, phone: identifier };
+      const { error } = await supabase.auth.resend(payload);
+      return { error };
+    } catch (error: any) {
+      return { error: { message: error?.message || 'Erro ao reenviar código' } };
+    }
+  };
+
+  const verifyResetOtp = async (email: string, token: string) => {
+    try {
+      if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
+      const { error } = await supabase.auth.verifyOtp({ email, token, type: 'recovery' });
+      return { error };
+    } catch (error: any) {
+      return { error: { message: error?.message || 'Erro ao verificar código' } };
+    }
+  };
+
+  const signIn = async (identifier: string, password: string, method: 'email' | 'phone' = 'email') => {
+    try {
+      if (!supabase) return { error: { message: 'Supabase não está configurado.' } };
+      const { error } = await supabase.auth.signInWithPassword(
+        method === 'email' 
+          ? { email: identifier, password }
+          : { phone: identifier, password }
+      );
       return { error };
     } catch (error: any) {
       return { error: { message: error?.message || 'Erro ao fazer login' } };
@@ -192,14 +269,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (result.type === 'success' && result.url) {
           console.log('URL de retorno recebida:', result.url);
           
-          // Extrair tokens da URL (formato fragmento # ou query ?)
-          const url = result.url.replace('#', '?');
-          const params = Linking.parse(url);
+          const urlStr = result.url;
           
-          const accessToken = params.queryParams?.access_token as string;
-          const refreshToken = params.queryParams?.refresh_token as string;
+          let code = null;
+          let accessToken = null;
+          let refreshToken = null;
 
-          if (accessToken && refreshToken) {
+          const codeMatch = urlStr.match(/[?&#]code=([^&#]+)/);
+          if (codeMatch) code = codeMatch[1];
+          
+          const accessMatch = urlStr.match(/[?&#]access_token=([^&#]+)/);
+          if (accessMatch) accessToken = accessMatch[1];
+          
+          const refreshMatch = urlStr.match(/[?&#]refresh_token=([^&#]+)/);
+          if (refreshMatch) refreshToken = refreshMatch[1];
+          
+          const errorMatch = urlStr.match(/[?&#]error=([^&#]+)/);
+          const errorDescMatch = urlStr.match(/[?&#]error_description=([^&#]+)/);
+
+          if (errorMatch) {
+             const errorDesc = errorDescMatch ? decodeURIComponent(errorDescMatch[1].replace(/\+/g, ' ')) : 'Erro desconhecido';
+             throw new Error(`Erro do provedor: ${errorDesc}`);
+          }
+
+          if (code) {
+            console.log('Código PKCE encontrado! Trocando por sessão...');
+            const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+            if (sessionError) throw sessionError;
+            console.log('Sessão definida com sucesso via PKCE!');
+          } else if (accessToken && refreshToken) {
             console.log('Tokens encontrados! Definindo sessão...');
             const { error: sessionError } = await supabase.auth.setSession({
               access_token: accessToken,
@@ -208,7 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (sessionError) throw sessionError;
             console.log('Sessão definida com sucesso!');
           } else {
-            console.warn('Nenhum token encontrado na URL de retorno.');
+            throw new Error(`Sem tokens na URL: ${urlStr.substring(0, 100)}...`);
           }
         } else if (result.type === 'cancel') {
           console.log('Usuário cancelou o login.');
@@ -253,6 +351,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
+      if (user?.id) {
+        // Remove o push_token do banco antes de deslogar
+        // Isso evita que o aparelho continue recebendo notificações desta conta
+        const { error } = await supabase
+          .from('profiles')
+          .update({ push_token: null })
+          .eq('id', user.id);
+          
+        if (error) {
+          console.warn('Erro ao remover push_token no logout:', error);
+        }
+      }
       await supabase.auth.signOut();
     } catch (e: any) {
       console.warn('Error during global signOut, signing out locally:', e);
@@ -268,11 +378,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         loading,
         signUp,
+        verifyOtp,
+        verifyResetOtp,
+        getUserEmailByUsername,
         signIn,
         signInWithGoogle,
         signInWithApple,
         signOut,
         refreshProfile,
+        resendOtp,
       }}
     >
       {children}

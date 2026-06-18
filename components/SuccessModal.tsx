@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useEffect, useRef } from 'react';
 import { Check, PartyPopper, Share2, Eye } from 'lucide-react-native';
@@ -20,6 +21,7 @@ export default function SuccessModal({
   title = 'Evento Criado!',
   message = 'Seu evento foi publicado e já está disponível no feed'
 }: SuccessModalProps) {
+  const { t } = useLanguage();
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -95,7 +97,7 @@ export default function SuccessModal({
                     end={{ x: 1, y: 1 }}
                   >
                     <Eye size={20} color="#fff" />
-                    <Text style={styles.primaryButtonText}>Ver Evento</Text>
+                    <Text style={styles.primaryButtonText}>{t('auto.sc2dc5a3c', 'Ver Evento')}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               )}
@@ -107,7 +109,7 @@ export default function SuccessModal({
                   activeOpacity={0.8}
                 >
                   <Share2 size={20} color="#00d9ff" />
-                  <Text style={styles.secondaryButtonText}>Compartilhar</Text>
+                  <Text style={styles.secondaryButtonText}>{t('auto.sa3bd2b71', 'Compartilhar')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -117,7 +119,7 @@ export default function SuccessModal({
               onPress={onClose}
               activeOpacity={0.7}
             >
-              <Text style={styles.closeButtonText}>Voltar ao Feed</Text>
+              <Text style={styles.closeButtonText}>{t('auto.sd65fb4aa', 'Voltar ao Feed')}</Text>
             </TouchableOpacity>
           </LinearGradient>
         </Animated.View>

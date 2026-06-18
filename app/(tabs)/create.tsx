@@ -69,6 +69,7 @@ import Animated, {
 
 import SuccessModal from '@/components/SuccessModal';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/lib/i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -82,6 +83,7 @@ const STEPS = [
 ];
 
 export default function CreateEvent() {
+  const { t, language } = useLanguage();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
@@ -222,8 +224,8 @@ export default function CreateEvent() {
   };
 
   const nextStep = () => {
-    if (currentStep === 1 && mediaFiles.length === 0) return Alert.alert('Atenção', 'Escolha pelo menos uma imagem ou vídeo.');
-    if (currentStep === 2 && (!title || !selectedCategory)) return Alert.alert('Atenção', 'Dê um título e escolha uma categoria.');
+    if (currentStep === 1 && mediaFiles.length === 0) return Alert.alert(t('createEvent.attention', 'Atenção'), t('createEvent.chooseMedia', 'Escolha pelo menos uma imagem ou vídeo.'));
+    if (currentStep === 2 && (!title || !selectedCategory)) return Alert.alert(t('createEvent.attention', 'Atenção'), t('createEvent.titleCategoryReq', 'Dê um título e escolha uma categoria.'));
     
     if (contentType === 'publication') {
       if (currentStep === 2) {
@@ -232,7 +234,7 @@ export default function CreateEvent() {
         return;
       }
     } else {
-      if (currentStep === 3 && !locationName) return Alert.alert('Atenção', 'Defina um local para o evento.');
+      if (currentStep === 3 && !locationName) return Alert.alert(t('createEvent.attention', 'Atenção'), t('createEvent.locationReq', 'Defina um local para o evento.'));
     }
     
     if (currentStep < STEPS.length - 1) {
@@ -257,7 +259,7 @@ export default function CreateEvent() {
   
   const handleCreate = async () => {
     if (!user) return;
-    if (mediaFiles.length === 0) return Alert.alert('Erro', 'Adicione pelo menos uma mídia.');
+    if (mediaFiles.length === 0) return Alert.alert(t('createEvent.error', 'Erro'), t('createEvent.addMediaReq', 'Adicione pelo menos uma mídia.'));
     
     let finalLat = lat;
     let finalLng = lng;
@@ -278,11 +280,11 @@ export default function CreateEvent() {
           setLng(finalLng);
         } else {
           setLoading(false);
-          return Alert.alert('Localização Não Encontrada', 'Não conseguimos obter as coordenadas desse endereço.');
+          return Alert.alert(t('createEvent.locationNotFound', 'Localização Não Encontrada'), t('createEvent.coordinatesError', 'Não conseguimos obter as coordenadas desse endereço.'));
         }
       } catch (error) {
         setLoading(false);
-        return Alert.alert('Erro de Localização', 'Problema ao validar o endereço.');
+        return Alert.alert(t('createEvent.locationError', 'Erro de Localização'), t('createEvent.validateAddressError', 'Problema ao validar o endereço.'));
       }
     }
 
@@ -374,8 +376,8 @@ export default function CreateEvent() {
         <ArrowLeft size={24} color={textPrimary} />
       </TouchableOpacity>
       <View style={styles.stepInfo}>
-        <Text style={[styles.stepTitle, { color: textPrimary }]}>{STEPS[currentStep].title}</Text>
-        <Text style={[styles.stepSubtitle, { color: textSecondary }]}>{STEPS[currentStep].subtitle}</Text>
+        <Text style={[styles.stepTitle, { color: textPrimary }]}>{t(`createEvent.step_${STEPS[currentStep].id}_title`, STEPS[currentStep].title)}</Text>
+        <Text style={[styles.stepSubtitle, { color: textSecondary }]}>{t(`createEvent.step_${STEPS[currentStep].id}_subtitle`, STEPS[currentStep].subtitle)}</Text>
       </View>
       <View style={[styles.progressBarBg, { backgroundColor: 'transparent', flexDirection: 'row', gap: 6, paddingHorizontal: 0, height: 4 }]}>
         {STEPS.map((_, i) => (
@@ -406,8 +408,8 @@ export default function CreateEvent() {
                   <View style={[styles.typeIconBg, { backgroundColor: contentType === 'event' ? accent : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)') }]}>
                     <Calendar size={28} color={contentType === 'event' ? '#fff' : textPrimary} />
                   </View>
-                  <Text style={[styles.typeTitle, { color: textPrimary }]}>Evento</Text>
-                  <Text style={[styles.typeDesc, { color: textSecondary }]}>Tem data, hora e local marcados. Ideal para festas, encontros e treinos.</Text>
+                  <Text style={[styles.typeTitle, { color: textPrimary }]}>{t('createEvent.event', t('createEvent.event', 'Evento'))}</Text>
+                  <Text style={[styles.typeDesc, { color: textSecondary }]}>{t('createEvent.eventDesc', t('createEvent.eventDesc', 'Tem data, hora e local marcados. Ideal para festas, encontros e treinos.'))}</Text>
                   <View style={[styles.radioCircle, contentType === 'event' && { borderColor: accent, backgroundColor: accent }]}>
                     {contentType === 'event' && <Check size={12} color="#fff" strokeWidth={4} />}
                   </View>
@@ -416,8 +418,8 @@ export default function CreateEvent() {
                   <View style={[styles.typeIconBg, { backgroundColor: contentType === 'publication' ? '#ff1493' : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)') }]}>
                     <Flag size={28} color={contentType === 'publication' ? '#fff' : textPrimary} />
                   </View>
-                  <Text style={[styles.typeTitle, { color: textPrimary }]}>Publicação</Text>
-                  <Text style={[styles.typeDesc, { color: textSecondary }]}>Sem data fixa. Ideal para doações, avisos, anúncios ou compartilhamento geral.</Text>
+                  <Text style={[styles.typeTitle, { color: textPrimary }]}>{t('createEvent.post', t('createEvent.post', 'Publicação'))}</Text>
+                  <Text style={[styles.typeDesc, { color: textSecondary }]}>{t('createEvent.postDesc', t('createEvent.postDesc', 'Sem data fixa. Ideal para doações, avisos, anúncios ou compartilhamento geral.'))}</Text>
                   <View style={[styles.radioCircle, contentType === 'publication' && { borderColor: '#ff1493', backgroundColor: '#ff1493' }]}>
                     {contentType === 'publication' && <Check size={12} color="#fff" strokeWidth={4} />}
                   </View>
@@ -427,7 +429,7 @@ export default function CreateEvent() {
           )}
           {currentStep === 1 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
-              <Text style={[styles.label, { color: textSecondary, marginBottom: 16, textAlign: 'center' }]}>Adicione até 5 fotos ou vídeos</Text>
+              <Text style={[styles.label, { color: textSecondary, marginBottom: 16, textAlign: 'center' }]}>{t('createEvent.addUpTo5', t('createEvent.addUpTo5', 'Adicione até 5 fotos ou vídeos'))}</Text>
               
               {/* Hero Dropzone */}
               {mediaFiles.length === 0 ? (
@@ -439,8 +441,8 @@ export default function CreateEvent() {
                   <View style={[styles.dropzoneIconBg, { backgroundColor: accent }]}>
                     <Camera size={36} color="#fff" />
                   </View>
-                  <Text style={[styles.dropzoneTitle, { color: textPrimary }]}>Capa do Conteúdo</Text>
-                  <Text style={[styles.dropzoneDesc, { color: textSecondary }]}>Toque para abrir a câmera ou galeria</Text>
+                  <Text style={[styles.dropzoneTitle, { color: textPrimary }]}>{t('createEvent.contentCover', t('createEvent.contentCover', 'Capa do Conteúdo'))}</Text>
+                  <Text style={[styles.dropzoneDesc, { color: textSecondary }]}>{t('createEvent.tapToOpenGallery', t('createEvent.tapToOpenGallery', 'Toque para abrir a câmera ou galeria'))}</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={{ gap: 16 }}>
@@ -451,7 +453,7 @@ export default function CreateEvent() {
                       <Image source={{ uri: mediaFiles[0].uri }} style={styles.heroMediaPreview} />
                     }
                     <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.heroOverlay}>
-                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Capa Principal</Text>
+                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>{t('createEvent.mainCover', t('createEvent.mainCover', 'Capa Principal'))}</Text>
                     </LinearGradient>
                     <TouchableOpacity style={styles.heroRemoveBtn} onPress={() => removeMedia(0)}><X size={20} color="#fff" /></TouchableOpacity>
                   </View>
@@ -480,11 +482,11 @@ export default function CreateEvent() {
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: accent }]}>
-                  {contentType === 'publication' ? 'TÍTULO DA PUBLICAÇÃO' : 'NOME DO EVENTO'}
+                  {contentType === 'publication' ? t('createEvent.pubTitle', 'TÍTULO DA PUBLICAÇÃO') : t('createEvent.eventName', 'NOME DO EVENTO')}
                 </Text>
                 <TextInput
                   style={[styles.hugeInput, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', color: textPrimary }]}
-                  placeholder={contentType === 'publication' ? 'Título da sua publicação...' : 'Seu evento aqui...'}
+                  placeholder={contentType === 'publication' ? t('createEvent.phPubTitle', 'Título da sua publicação...') : t('createEvent.phEventName', 'Seu evento aqui...')}
                   placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
                   value={title}
                   onChangeText={setTitle}
@@ -492,26 +494,26 @@ export default function CreateEvent() {
                 />
               </View>
               <View style={styles.categorySection}>
-                <Text style={[styles.label, { color: accent }]}>CATEGORIA</Text>
+                <Text style={[styles.label, { color: accent }]}>{t('createEvent.category', t('createEvent.category', 'CATEGORIA'))}</Text>
                 <TouchableOpacity style={[styles.selectorButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }, selectedCategory && { borderColor: accent, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }]} onPress={() => setShowCatModal(true)}>
-                  <View style={styles.selectorInfo}><Layers size={20} color={selectedCategory ? accent : textSecondary} /><Text style={[styles.selectorText, { color: textSecondary }, selectedCategory && { color: textPrimary }]}>{selectedCategory ? categories.find(c => c.id === selectedCategory)?.name : 'Escolher categoria...'}</Text></View><ChevronRight size={20} color={textSecondary} />
+                  <View style={styles.selectorInfo}><Layers size={20} color={selectedCategory ? accent : textSecondary} /><Text style={[styles.selectorText, { color: textSecondary }, selectedCategory && { color: textPrimary }]}>{selectedCategory ? t('dbCategories.' + categories.find(c => c.id === selectedCategory)?.name, categories.find(c => c.id === selectedCategory)?.name) : t('createEvent.chooseCat', 'Escolher categoria...')}</Text></View><ChevronRight size={20} color={textSecondary} />
                 </TouchableOpacity>
               </View>
               {selectedCategory && (
                 <View style={styles.categorySection}>
-                  <Text style={[styles.label, { color: accent }]}>SUBCATEGORIA</Text>
+                  <Text style={[styles.label, { color: accent }]}>{t('createEvent.subcategory', t('createEvent.subcategory', 'SUBCATEGORIA'))}</Text>
                   <TouchableOpacity style={[styles.selectorButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }, selectedSubcategory && { borderColor: accent, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }]} onPress={() => setShowSubcatModal(true)}>
-                    <View style={styles.selectorInfo}><Plus size={20} color={selectedSubcategory ? accent : textSecondary} /><Text style={[styles.selectorText, { color: textSecondary }, selectedSubcategory && { color: textPrimary }]}>{selectedSubcategory ? subcategories.find(s => s.id === selectedSubcategory)?.name : 'Escolher subcategoria...'}</Text></View><ChevronRight size={20} color={textSecondary} />
+                    <View style={styles.selectorInfo}><Plus size={20} color={selectedSubcategory ? accent : textSecondary} /><Text style={[styles.selectorText, { color: textSecondary }, selectedSubcategory && { color: textPrimary }]}>{selectedSubcategory ? t('dbCategories.' + subcategories.find(s => s.id === selectedSubcategory)?.name, subcategories.find(s => s.id === selectedSubcategory)?.name) : t('createEvent.chooseSubcat', 'Escolher subcategoria...')}</Text></View><ChevronRight size={20} color={textSecondary} />
                   </TouchableOpacity>
                 </View>
               )}
               <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: accent }]}>
-                  {contentType === 'publication' ? 'DESCRIÇÃO DA PUBLICAÇÃO' : 'DESCRIÇÃO'}
+                  {contentType === 'publication' ? t('createEvent.pubDesc', 'DESCRIÇÃO DA PUBLICAÇÃO') : t('createEvent.desc', 'DESCRIÇÃO')}
                 </Text>
                 <TextInput
                   style={[styles.textArea, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', color: textPrimary }]}
-                  placeholder={contentType === 'publication' ? 'Descreva sua publicação...' : 'Conte os detalhes...'}
+                  placeholder={contentType === 'publication' ? t('createEvent.phPubDesc', 'Descreva sua publicação...') : t('createEvent.phDesc', 'Conte os detalhes...')}
                   placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
                   value={description}
                   onChangeText={setDescription}
@@ -524,8 +526,8 @@ export default function CreateEvent() {
                 <View style={[styles.inputGroup, { marginTop: 8 }]}>
                   <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', marginBottom: pubLocationEnabled ? 12 : 0 }]}>
                     <View style={{ flex: 1, marginRight: 10 }}>
-                      <Text style={[styles.premiumTitle, { color: textPrimary }]}>Adicionar localização?</Text>
-                      <Text style={[styles.premiumSub, { color: textSecondary }]}>Opcional — não aparece no mapa</Text>
+                      <Text style={[styles.premiumTitle, { color: textPrimary }]}>{t('auto.sea44deea', 'Adicionar localização?')}</Text>
+                      <Text style={[styles.premiumSub, { color: textSecondary }]}>{t('createEvent.optionalNoMap', t('createEvent.optionalNoMap', 'Opcional — não aparece no mapa'))}</Text>
                     </View>
                     <Switch
                       value={pubLocationEnabled}
@@ -543,7 +545,7 @@ export default function CreateEvent() {
                         <MapPin size={20} color="#ff1493" />
                         <TextInput
                           style={{ flex: 1, color: textPrimary, fontSize: 15, marginLeft: 10 }}
-                          placeholder="Ex: São Paulo, SP"
+                          placeholder={t('createEvent.placeholderCity', 'Ex: São Paulo, SP')}
                           placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
                           value={locationName}
                           onChangeText={setLocationName}
@@ -558,9 +560,9 @@ export default function CreateEvent() {
           {currentStep === 3 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={[styles.inputGroup, { zIndex: 100 }]}>
-                <Text style={[styles.label, { color: accent }]}>LOCALIZAÇÃO</Text>
+                <Text style={[styles.label, { color: accent }]}>{t('createEvent.location', t('createEvent.location', 'LOCALIZAÇÃO'))}</Text>
                 <GooglePlacesAutocomplete
-                  placeholder="Onde será o encontro?"
+                  placeholder={t('auto.s0b1a8a1d', 'Onde será o encontro?')}
                   onPress={(data, details = null) => {
                     setLocationName(data.structured_formatting?.main_text || data.description || '');
                     if (details?.geometry?.location) { setLat(details.geometry.location.lat); setLng(details.geometry.location.lng); }
@@ -626,8 +628,8 @@ export default function CreateEvent() {
                 />
               </View>
               <View style={[styles.inputGroup, { marginTop: 16 }]}>
-                <Text style={[styles.label, { color: accent }]}>NÚMERO E COMPLEMENTO</Text>
-                <TextInput style={[styles.hugeInput, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', color: textPrimary, fontSize: 24, height: 60 }]} placeholder="Ex: 123, Apto 42" placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} value={locationNumber} onChangeText={setLocationNumber} />
+                <Text style={[styles.label, { color: accent }]}>{t('createEvent.numberComplement', t('createEvent.numberComplement', 'NÚMERO E COMPLEMENTO'))}</Text>
+                <TextInput style={[styles.hugeInput, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', color: textPrimary, fontSize: 24, height: 60 }]} placeholder={t('createEvent.placeholderComplement', 'Ex: 123, Apto 42')} placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} value={locationNumber} onChangeText={setLocationNumber} />
               </View>
               {contentType === 'event' && (
                 <View style={{ marginTop: 24, gap: 12 }}>
@@ -637,8 +639,8 @@ export default function CreateEvent() {
                   >
                     <Calendar size={22} color="#ff1493" />
                     <View>
-                      <Text style={[styles.glassLabel, { color: textSecondary }]}>DATA DO EVENTO</Text>
-                      <Text style={[styles.glassValue, { color: textPrimary, fontSize: 18 }]}>{new Date(Platform.OS === 'ios' ? eventDate + 'T00:00:00' : eventDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</Text>
+                      <Text style={[styles.glassLabel, { color: textSecondary }]}>{t('createEvent.eventDate', t('createEvent.eventDate', 'DATA DO EVENTO'))}</Text>
+                      <Text style={[styles.glassValue, { color: textPrimary, fontSize: 18 }]}>{new Date(Platform.OS === 'ios' ? eventDate + 'T00:00:00' : eventDate).toLocaleDateString(language?.includes('pt') ? 'pt-BR' : language?.includes('en') ? 'en-US' : 'es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}</Text>
                     </View>
                   </TouchableOpacity>
 
@@ -649,7 +651,7 @@ export default function CreateEvent() {
                     >
                       <Clock size={20} color={accent} />
                       <View>
-                        <Text style={[styles.glassLabel, { color: textSecondary }]}>INÍCIO</Text>
+                        <Text style={[styles.glassLabel, { color: textSecondary }]}>{t('createEvent.start', t('createEvent.start', 'INÍCIO'))}</Text>
                         <Text style={[styles.glassValue, { color: textPrimary }]}>{eventTime}</Text>
                       </View>
                     </TouchableOpacity>
@@ -660,7 +662,7 @@ export default function CreateEvent() {
                     >
                       <Clock size={20} color="#ff3b30" />
                       <View>
-                        <Text style={[styles.glassLabel, { color: textSecondary }]}>FIM</Text>
+                        <Text style={[styles.glassLabel, { color: textSecondary }]}>{t('createEvent.end', t('createEvent.end', 'FIM'))}</Text>
                         <Text style={[styles.glassValue, { color: textPrimary }]}>{eventEndTime}</Text>
                       </View>
                     </TouchableOpacity>
@@ -669,8 +671,8 @@ export default function CreateEvent() {
                   {/* Seção de Recorrência */}
                   <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', marginTop: 12 }]}>
                     <View style={{ flex: 1, marginRight: 10 }}>
-                      <Text style={[styles.premiumTitle, { color: textPrimary }]}>Repetir Evento?</Text>
-                      <Text style={[styles.premiumSub, { color: textSecondary }]}>Ative para criar eventos recorrentes</Text>
+                      <Text style={[styles.premiumTitle, { color: textPrimary }]}>{t('createEvent.repeatEvent', 'Repetir Evento?')}</Text>
+                      <Text style={[styles.premiumSub, { color: textSecondary }]}>{t('createEvent.enableRecurrent', t('createEvent.enableRecurrent', 'Ative para criar eventos recorrentes'))}</Text>
                     </View>
                     <Switch 
                       value={isRecurring} 
@@ -687,7 +689,7 @@ export default function CreateEvent() {
                   {isRecurring && (
                     <Animated.View entering={FadeInDown} style={{ gap: 12, marginTop: 8 }}>
                       {/* Tipo de Recorrência */}
-                      <Text style={[styles.label, { color: accent, marginTop: 8 }]}>FREQUÊNCIA DE REPETIÇÃO</Text>
+                      <Text style={[styles.label, { color: accent, marginTop: 8 }]}>{t('createEvent.repeatFrequency', t('createEvent.repeatFrequency', 'FREQUÊNCIA DE REPETIÇÃO'))}</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                         {(['daily', 'weekly', 'monthly', 'yearly'] as const).map((type) => (
                           <TouchableOpacity
@@ -712,7 +714,7 @@ export default function CreateEvent() {
                       {/* Se for Semanal: Seleção dos Dias */}
                       {recurrenceType === 'weekly' && (
                         <View style={{ gap: 8 }}>
-                          <Text style={[styles.label, { color: accent }]}>DIAS DA SEMANA</Text>
+                          <Text style={[styles.label, { color: accent }]}>{t('createEvent.weekDays', t('createEvent.weekDays', 'DIAS DA SEMANA'))}</Text>
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 4 }}>
                             {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((dayName, index) => {
                               const isSelected = weeklyDays.includes(index);
@@ -750,8 +752,8 @@ export default function CreateEvent() {
                       >
                         <Calendar size={22} color="#ff3b30" />
                         <View>
-                          <Text style={[styles.glassLabel, { color: textSecondary }]}>TERMINA EM</Text>
-                          <Text style={[styles.glassValue, { color: textPrimary, fontSize: 16 }]}>{new Date(Platform.OS === 'ios' ? recurrenceEndDate + 'T00:00:00' : recurrenceEndDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</Text>
+                          <Text style={[styles.glassLabel, { color: textSecondary }]}>{t('createEvent.endsOn', t('createEvent.endsOn', 'TERMINA EM'))}</Text>
+                          <Text style={[styles.glassValue, { color: textPrimary, fontSize: 16 }]}>{new Date(Platform.OS === 'ios' ? recurrenceEndDate + 'T00:00:00' : recurrenceEndDate).toLocaleDateString(language?.includes('pt') ? 'pt-BR' : language?.includes('en') ? 'en-US' : 'es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}</Text>
                         </View>
                       </TouchableOpacity>
                     </Animated.View>
@@ -762,19 +764,19 @@ export default function CreateEvent() {
           )}
           {currentStep === 4 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
-              <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><View><Text style={[styles.premiumTitle, { color: textPrimary }]}>Evento Pago?</Text><Text style={[styles.premiumSub, { color: textSecondary }]}>Ative para cobrar ingressos</Text></View><Switch value={isPaid} onValueChange={setIsPaid} trackColor={{ false: isDark ? '#333' : '#ccc', true: accent }} thumbColor={isPaid ? '#fff' : '#f4f3f4'} /></View>
-              {isPaid && <View style={[styles.priceBox, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }]}><Text style={[styles.priceSymbol, { color: accent }]}>R$</Text><TextInput style={[styles.priceInput, { color: textPrimary }]} keyboardType="numeric" placeholder="0,00" placeholderTextColor={isDark ? '#444' : '#999'} value={price} onChangeText={setPrice} /></View>}
+              <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><View><Text style={[styles.premiumTitle, { color: textPrimary }]}>{t('auto.sa98ee7e2', 'Evento Pago?')}</Text><Text style={[styles.premiumSub, { color: textSecondary }]}>{t('auto.s47954f49', 'Ative para cobrar ingressos')}</Text></View><Switch value={isPaid} onValueChange={setIsPaid} trackColor={{ false: isDark ? '#333' : '#ccc', true: accent }} thumbColor={isPaid ? '#fff' : '#f4f3f4'} /></View>
+              {isPaid && <View style={[styles.priceBox, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }]}><Text style={[styles.priceSymbol, { color: accent }]}>{t('auto.s2b416a58', 'R$')}</Text><TextInput style={[styles.priceInput, { color: textPrimary }]} keyboardType="numeric" placeholder={t('createEvent.placeholderPrice', '0,00')} placeholderTextColor={isDark ? '#444' : '#999'} value={price} onChangeText={setPrice} /></View>}
               <View style={styles.limitsRow}>
-                <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><Users size={20} color={accent} /><TextInput style={[styles.limitInput, { color: textPrimary }]} placeholder="Limite" keyboardType="numeric" value={maxParticipants} onChangeText={setMaxParticipants} /></View>
-                <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><Info size={20} color="#ff1493" /><TextInput style={[styles.limitInput, { color: textPrimary }]} placeholder="Idade" keyboardType="numeric" value={minAge} onChangeText={setMinAge} /></View>
+                <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><Users size={20} color={accent} /><TextInput style={[styles.limitInput, { color: textPrimary }]} placeholder={t('createEvent.placeholderLimit', 'Limite')} keyboardType="numeric" value={maxParticipants} onChangeText={setMaxParticipants} /></View>
+                <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><Info size={20} color="#ff1493" /><TextInput style={[styles.limitInput, { color: textPrimary }]} placeholder={t('createEvent.placeholderAge', 'Idade')} keyboardType="numeric" value={minAge} onChangeText={setMinAge} /></View>
               </View>
               <View style={{ width: '100%', marginTop: 20 }}>
-                <Text style={[styles.label, { color: accent, marginBottom: 8 }]}>LINK PARA COMPRA DE INGRESSOS (OPCIONAL)</Text>
+                <Text style={[styles.label, { color: accent, marginBottom: 8 }]}>{t('auto.sc34dc273', 'LINK PARA COMPRA DE INGRESSOS (OPCIONAL)')}</Text>
                 <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', width: '100%', flexDirection: 'row', alignItems: 'center' }]}>
                   <Ticket size={20} color="#ff1493" />
                   <TextInput 
                     style={{ flex: 1, color: textPrimary, fontSize: 14, marginLeft: 8 }} 
-                    placeholder="https://exemplo.com/ingressos" 
+                    placeholder={t('createEvent.placeholderLink', 'https://exemplo.com/ingressos')} 
                     placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}
                     value={ticketUrl} 
                     onChangeText={setTicketUrl}
@@ -795,18 +797,18 @@ export default function CreateEvent() {
                   <Text style={styles.reviewMainTitle}>{title}</Text>
                   {contentType === 'event' ? (
                     <>
-                      <View style={styles.reviewRow}><Calendar size={14} color="#fff" /><Text style={styles.reviewText}>{new Date(Platform.OS === 'ios' ? eventDate + 'T00:00:00' : eventDate).toLocaleDateString('pt-BR')} das {eventTime} às {eventEndTime}</Text></View>
+                      <View style={styles.reviewRow}><Calendar size={14} color="#fff" /><Text style={styles.reviewText}>{new Date(Platform.OS === 'ios' ? eventDate + 'T00:00:00' : eventDate).toLocaleDateString(language?.includes('pt') ? 'pt-BR' : language?.includes('en') ? 'en-US' : 'es-ES')} das {eventTime} às {eventEndTime}</Text></View>
                       <View style={styles.reviewRow}><MapPin size={14} color="#fff" /><Text style={styles.reviewText} numberOfLines={1}>{locationName}</Text></View>
                     </>
                   ) : (
                     <>
-                      <View style={styles.reviewRow}><Flag size={14} color="#fff" /><Text style={styles.reviewText}>Publicação sem data fixa</Text></View>
+                      <View style={styles.reviewRow}><Flag size={14} color="#fff" /><Text style={styles.reviewText}>{t('createEvent.postNoDate', t('createEvent.postNoDate', 'Publicação sem data fixa'))}</Text></View>
                       {locationName && <View style={styles.reviewRow}><MapPin size={14} color="#fff" /><Text style={styles.reviewText} numberOfLines={1}>{locationName}</Text></View>}
                     </>
                   )}
                 </View>
               </View>
-              <TouchableOpacity style={styles.publishButton} onPress={handleCreate} disabled={loading}><LinearGradient colors={['#00d9ff', '#ff1493']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.publishGradient}>{loading ? <ActivityIndicator color="#fff" /> : <><Text style={[styles.publishText, { color: '#fff' }]}>PUBLICAR {contentType === 'event' ? 'EVENTO' : 'AGORA'}</Text><Sparkles size={20} color="#fff" /></>}</LinearGradient></TouchableOpacity>
+              <TouchableOpacity style={styles.publishButton} onPress={handleCreate} disabled={loading}><LinearGradient colors={['#00d9ff', '#ff1493']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.publishGradient}>{loading ? <ActivityIndicator color="#fff" /> : <><Text style={[styles.publishText, { color: '#fff' }]}>{contentType === 'event' ? t('createEvent.publishEvent', 'PUBLICAR EVENTO') : t('createEvent.publishNow', 'PUBLICAR AGORA')}</Text><Sparkles size={20} color="#fff" /></>}</LinearGradient></TouchableOpacity>
             </Animated.View>
           )}
         </ScrollView>
@@ -816,7 +818,7 @@ export default function CreateEvent() {
         <View style={[styles.modalOverlay, { backgroundColor: backgroundPrimary }]}>
           <SafeAreaView style={{ flex: 1 }}>
             <View style={[styles.modalHeader, { borderBottomColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-              <Text style={[styles.modalTitle, { color: textPrimary }]}>Selecione a Categoria</Text>
+              <Text style={[styles.modalTitle, { color: textPrimary }]}>{t('createEvent.selectCategory', t('createEvent.selectCategory', 'Selecione a Categoria'))}</Text>
               <TouchableOpacity onPress={() => setShowCatModal(false)} style={styles.closeModalBtn}>
                 <X size={24} color={textPrimary} />
               </TouchableOpacity>
@@ -827,7 +829,7 @@ export default function CreateEvent() {
                 <Search size={20} color={textSecondary} />
                 <TextInput 
                   style={{ flex: 1, color: textPrimary, marginLeft: 10, fontSize: 16 }} 
-                  placeholder="Buscar categoria..." 
+                  placeholder={t('createEvent.placeholderSearchCat', 'Buscar categoria...')} 
                   placeholderTextColor={textSecondary} 
                   value={catSearch} 
                   onChangeText={setCatSearch} 
@@ -857,8 +859,8 @@ export default function CreateEvent() {
                   }}
                 >
                   <View style={styles.modalItemContent}>
-                    <Text style={styles.modalEmoji}>{item.icon}</Text>
-                    <Text style={[styles.modalItemText, { color: textPrimary }]}>{item.name}</Text>
+                    {item.icon && item.icon.length <= 2 ? <Text style={styles.modalEmoji}>{item.icon}</Text> : null}
+                    <Text style={[styles.modalItemText, { color: textPrimary }]}>{t(`dbCategories.${item.name}`, item.name)}</Text>
                   </View>
                   {selectedCategory === item.id ? (
                     <View style={[styles.selectedCircle, { backgroundColor: accent }]}>
@@ -878,7 +880,7 @@ export default function CreateEvent() {
         <View style={[styles.modalOverlay, { backgroundColor: backgroundPrimary }]}>
           <SafeAreaView style={{ flex: 1 }}>
             <View style={[styles.modalHeader, { borderBottomColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-              <Text style={[styles.modalTitle, { color: textPrimary }]}>Selecione a Subcategoria</Text>
+              <Text style={[styles.modalTitle, { color: textPrimary }]}>{t('createEvent.selectSubcategory', t('createEvent.selectSubcategory', 'Selecione a Subcategoria'))}</Text>
               <TouchableOpacity onPress={() => setShowSubcatModal(false)} style={styles.closeModalBtn}>
                 <X size={24} color={textPrimary} />
               </TouchableOpacity>
@@ -889,7 +891,7 @@ export default function CreateEvent() {
                 <Search size={20} color={textSecondary} />
                 <TextInput 
                   style={{ flex: 1, color: textPrimary, marginLeft: 10, fontSize: 16 }} 
-                  placeholder="Buscar subcategoria..." 
+                  placeholder={t('createEvent.placeholderSearchSubcat', 'Buscar subcategoria...')} 
                   placeholderTextColor={textSecondary} 
                   value={subcatSearch} 
                   onChangeText={setSubcatSearch} 
@@ -956,11 +958,11 @@ export default function CreateEvent() {
             <View style={[styles.dateTimePickerModalContent, { backgroundColor: backgroundSecondary }]}>
               <View style={styles.dateTimePickerModalHeader}>
                 <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>Cancelar</Text>
+                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>{t('createEvent.cancel', t('createEvent.cancel', 'Cancelar'))}</Text>
                 </TouchableOpacity>
-                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>Selecionar Data</Text>
+                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>{t('createEvent.selectDate', t('createEvent.selectDate', 'Selecionar Data'))}</Text>
                 <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>Confirmar</Text>
+                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>{t('createEvent.confirm', t('createEvent.confirm', 'Confirmar'))}</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker
@@ -1011,11 +1013,11 @@ export default function CreateEvent() {
             <View style={[styles.dateTimePickerModalContent, { backgroundColor: backgroundSecondary }]}>
               <View style={styles.dateTimePickerModalHeader}>
                 <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>Cancelar</Text>
+                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>{t('createEvent.cancel', t('createEvent.cancel', 'Cancelar'))}</Text>
                 </TouchableOpacity>
-                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>Horário de Início</Text>
+                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>{t('createEvent.startTime', t('createEvent.startTime', 'Horário de Início'))}</Text>
                 <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>Confirmar</Text>
+                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>{t('createEvent.confirm', t('createEvent.confirm', 'Confirmar'))}</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker
@@ -1069,11 +1071,11 @@ export default function CreateEvent() {
             <View style={[styles.dateTimePickerModalContent, { backgroundColor: backgroundSecondary }]}>
               <View style={styles.dateTimePickerModalHeader}>
                 <TouchableOpacity onPress={() => setShowEndTimePicker(false)}>
-                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>Cancelar</Text>
+                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>{t('createEvent.cancel', t('createEvent.cancel', 'Cancelar'))}</Text>
                 </TouchableOpacity>
-                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>Horário de Término</Text>
+                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>{t('createEvent.endTime', t('createEvent.endTime', 'Horário de Término'))}</Text>
                 <TouchableOpacity onPress={() => setShowEndTimePicker(false)}>
-                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>Confirmar</Text>
+                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>{t('createEvent.confirm', t('createEvent.confirm', 'Confirmar'))}</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker
@@ -1127,11 +1129,11 @@ export default function CreateEvent() {
             <View style={[styles.dateTimePickerModalContent, { backgroundColor: backgroundSecondary }]}>
               <View style={styles.dateTimePickerModalHeader}>
                 <TouchableOpacity onPress={() => setShowRecurrenceEndPicker(false)}>
-                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>Cancelar</Text>
+                  <Text style={[styles.dateTimePickerModalCancelText, { color: textSecondary }]}>{t('createEvent.cancel', t('createEvent.cancel', 'Cancelar'))}</Text>
                 </TouchableOpacity>
-                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>Repetir Até</Text>
+                <Text style={[styles.dateTimePickerModalTitleText, { color: textPrimary }]}>{t('createEvent.repeatUntil', t('createEvent.repeatUntil', 'Repetir Até'))}</Text>
                 <TouchableOpacity onPress={() => setShowRecurrenceEndPicker(false)}>
-                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>Confirmar</Text>
+                  <Text style={[styles.dateTimePickerModalConfirmText, { color: accent }]}>{t('createEvent.confirm', t('createEvent.confirm', 'Confirmar'))}</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker

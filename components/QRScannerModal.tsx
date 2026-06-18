@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, Text, View, TouchableOpacity, 
@@ -17,6 +18,7 @@ interface QRScannerModalProps {
 }
 
 export const QRScannerModal = ({ visible, onClose, eventId }: QRScannerModalProps) => {
+  const { t } = useLanguage();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -69,9 +71,9 @@ export const QRScannerModal = ({ visible, onClose, eventId }: QRScannerModalProp
     return (
       <Modal visible={visible} animationType="slide">
         <View style={styles.permissionContainer}>
-          <Text style={styles.permissionText}>Precisamos de acesso à câmera para escanear os ingressos.</Text>
+          <Text style={styles.permissionText}>{t('auto.s93f9a9dc', 'Precisamos de acesso à câmera para escanear os ingressos.')}</Text>
           <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
-            <Text style={styles.btnText}>Dar Permissão</Text>
+            <Text style={styles.btnText}>{t('auto.sf7879f32', 'Dar Permissão')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <X size={30} color="#fff" />

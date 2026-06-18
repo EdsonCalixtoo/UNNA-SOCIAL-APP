@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal } from 'react-native';
 import { X, Check } from 'lucide-react-native';
@@ -13,6 +14,7 @@ interface FilterModalProps {
 }
 
 const FilterModal = ({ visible, onClose, categories, selectedCategory, onSelectCategory }: FilterModalProps) => {
+  const { t } = useLanguage();
   const { backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
 
   return (
@@ -27,7 +29,7 @@ const FilterModal = ({ visible, onClose, categories, selectedCategory, onSelectC
         
         <View style={[styles.container, { backgroundColor: backgroundSecondary }]}>
           <View style={styles.header}>
-            <Text style={[styles.title, { color: textPrimary }]}>Categorias</Text>
+            <Text style={[styles.title, { color: textPrimary }]}>{t('auto.saa966585', 'Categorias')}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <X size={20} color={textPrimary} />
             </TouchableOpacity>
@@ -44,7 +46,7 @@ const FilterModal = ({ visible, onClose, categories, selectedCategory, onSelectC
             >
               <View style={styles.itemContent}>
                 <View style={[styles.iconContainer, { backgroundColor: isDark ? '#333' : '#f0f0f0' }]}>
-                  <Text style={styles.emoji}>🌍</Text>
+                  <Text style={styles.emoji}>{t('auto.sb60e8108', '🌍')}</Text>
                 </View>
                 <Text style={[styles.itemName, { color: selectedCategory === null ? accent : textPrimary }]}>
                   Todos os Eventos

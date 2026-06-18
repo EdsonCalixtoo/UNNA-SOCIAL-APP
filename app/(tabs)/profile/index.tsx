@@ -5,6 +5,7 @@ import {
   Animated, useWindowDimensions, Dimensions,
   Platform, Modal, Share, Linking
 } from 'react-native';
+import Reanimated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Event } from '@/types/database';
@@ -114,6 +115,17 @@ export default function Profile() {
   // Animations
   const scrollY = useRef(new Animated.Value(0)).current;
   const tabIndicatorPos = useRef(new Animated.Value(0)).current;
+
+  const rotation = useSharedValue(0);
+  useEffect(() => {
+    rotation.value = withRepeat(
+      withTiming(360, { duration: 4000, easing: Easing.linear }),
+      -1
+    );
+  }, []);
+  const animatedAvatarBorderStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }]
+  }));
 
   useEffect(() => {
     showTabBar();
@@ -562,15 +574,27 @@ export default function Profile() {
                 activeOpacity={0.9} 
                 onPress={() => profile?.avatar_url && setIsViewerVisible(true)}
               >
-                <LinearGradient colors={[accent, '#ff1493']} style={styles.avatarBorder}>
-                  {profile?.avatar_url ? (
-                    <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
-                  ) : (
-                    <View style={[styles.avatarPlaceholder, { backgroundColor: backgroundPrimary }]}>
-                      <Text style={[styles.avatarInitials, { color: accent }]}>{initials}</Text>
-                    </View>
-                  )}
-                </LinearGradient>
+                <View style={[styles.avatarBorder, { backgroundColor: backgroundSecondary, padding: 0 }]}>
+                  <View style={[StyleSheet.absoluteFill, { borderRadius: ms(60), overflow: 'hidden' }]}>
+                    <Reanimated.View style={[animatedAvatarBorderStyle, { position: 'absolute', width: ms(160), height: ms(160), top: -ms(20), left: -ms(20) }]}>
+                      <LinearGradient 
+                         colors={[accent, '#ff1493', backgroundSecondary, backgroundSecondary]} 
+                         start={{ x: 0, y: 0 }}
+                         end={{ x: 1, y: 1 }}
+                         style={{ width: '100%', height: '100%' }} 
+                      />
+                    </Reanimated.View>
+                  </View>
+                  <View style={{ width: ms(112), height: ms(112), borderRadius: ms(56), overflow: 'hidden', zIndex: 10, borderWidth: 4, borderColor: backgroundSecondary }}>
+                    {profile?.avatar_url ? (
+                      <Image source={{ uri: profile.avatar_url }} style={{ width: '100%', height: '100%' }} />
+                    ) : (
+                      <View style={[styles.avatarPlaceholder, { backgroundColor: backgroundPrimary, borderWidth: 0, width: '100%', height: '100%' }]}>
+                        <Text style={[styles.avatarInitials, { color: accent }]}>{initials}</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
               </TouchableOpacity>
               {profile?.is_verified && (
                 <View style={[styles.verifiedBadge, { backgroundColor: accent }]}>
@@ -982,7 +1006,7 @@ const styles = StyleSheet.create({
   postThumbnail: { width: (SCREEN_WIDTH - 32 - 16) / 3, height: (SCREEN_WIDTH - 32 - 16) / 3 * 1.3, backgroundColor: '#333', borderRadius: 16, overflow: 'hidden', position: 'relative' },
   thumbnailImg: { width: '100%', height: '100%' },
   gridIconOverlay: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)', padding: 6, borderRadius: 10 },
-  thumbnailImg: { width: '100%', height: '100%' },
+  // thumbnailImg is already defined above
   thumbnailPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', padding: 10 },
   thumbnailText: { fontSize: ms(10), textAlign: 'center', fontWeight: '500' },
   eventsList: { gap: 16 },

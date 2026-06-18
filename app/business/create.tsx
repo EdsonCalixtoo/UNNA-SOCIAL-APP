@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, 
@@ -22,8 +23,9 @@ import * as ImagePicker from 'expo-image-picker';
 import SuccessModal from '@/components/SuccessModal';
 
 export default function BusinessCreateEvent() {
+  const { t } = useLanguage();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   
@@ -140,6 +142,23 @@ export default function BusinessCreateEvent() {
         image_urls: [publicUrl]
       });
 
+      // Notificar seguidores do criador sobre o novo evento (fire-and-forget)
+      supabase
+        .from('follows')
+        .select('follower_id')
+        .eq('following_id', user.id)
+        .then(({ data: followers }) => {
+          if (!followers || followers.length === 0) return;
+          const notifications = followers.map((f: any) => ({
+            user_id: f.follower_id,
+            type: 'new_event',
+            title: '🎉 Novo evento publicado!',
+            message: `${profile?.full_name || profile?.username || 'Alguém que você segue'} acabou de criar o evento "${title}"`,
+            data: { event_id: eventData.id, creator_id: user.id }
+          }));
+          supabase.from('notifications').insert(notifications).then(() => {});
+        });
+
       setCreatedEventId(eventData.id);
       setShowSuccessModal(true);
     } catch (e: any) { 
@@ -155,7 +174,7 @@ export default function BusinessCreateEvent() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={24} color={textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: textPrimary }]}>Criação Rápida</Text>
+        <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.sfd99e617', 'Criação Rápida')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -164,7 +183,7 @@ export default function BusinessCreateEvent() {
           
           {/* Mídia */}
           <View style={styles.section}>
-            <Text style={[styles.label, { color: textPrimary }]}>Imagem de Capa</Text>
+            <Text style={[styles.label, { color: textPrimary }]}>{t('auto.sefe03f6d', 'Imagem de Capa')}</Text>
             {mediaFile ? (
               <View style={styles.mediaPreviewContainer}>
                 <Image source={{ uri: mediaFile.uri }} style={styles.mediaPreview} />
@@ -175,23 +194,23 @@ export default function BusinessCreateEvent() {
             ) : (
               <TouchableOpacity style={[styles.addMediaBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} onPress={pickMedia}>
                 <Camera size={32} color={textSecondary} />
-                <Text style={{ color: textSecondary, marginTop: 8 }}>Toque para escolher da galeria</Text>
+                <Text style={{ color: textSecondary, marginTop: 8 }}>{t('auto.se44320e6', 'Toque para escolher da galeria')}</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {/* Detalhes Básicos */}
           <View style={styles.section}>
-            <Text style={[styles.label, { color: textPrimary }]}>Nome do Evento</Text>
+            <Text style={[styles.label, { color: textPrimary }]}>{t('auto.s8b93b4b6', 'Nome do Evento')}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}
-              placeholder="Ex: Festa de Ano Novo"
+              placeholder={t('auto.s5145c2c9', 'Ex: Festa de Ano Novo')}
               placeholderTextColor={textSecondary}
               value={title}
               onChangeText={setTitle}
             />
 
-            <Text style={[styles.label, { color: textPrimary, marginTop: 16 }]}>Categoria</Text>
+            <Text style={[styles.label, { color: textPrimary, marginTop: 16 }]}>{t('auto.s70c4fe80', 'Categoria')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
               {categories.map((cat) => (
                 <TouchableOpacity
@@ -210,10 +229,10 @@ export default function BusinessCreateEvent() {
               ))}
             </ScrollView>
 
-            <Text style={[styles.label, { color: textPrimary, marginTop: 16 }]}>Descrição (Opcional)</Text>
+            <Text style={[styles.label, { color: textPrimary, marginTop: 16 }]}>{t('auto.s50eba8b4', 'Descrição (Opcional)')}</Text>
             <TextInput
               style={[styles.input, styles.textArea, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}
-              placeholder="Fale um pouco sobre o evento..."
+              placeholder={t('auto.sa1693513', 'Fale um pouco sobre o evento...')}
               placeholderTextColor={textSecondary}
               value={description}
               onChangeText={setDescription}
@@ -223,9 +242,9 @@ export default function BusinessCreateEvent() {
 
           {/* Localização */}
           <View style={[styles.section, { zIndex: 10 }]}>
-            <Text style={[styles.label, { color: textPrimary }]}>Onde vai ser?</Text>
+            <Text style={[styles.label, { color: textPrimary }]}>{t('auto.s39f16b5d', 'Onde vai ser?')}</Text>
             <GooglePlacesAutocomplete
-              placeholder="Busque o endereço"
+              placeholder={t('auto.s808ec5e6', 'Busque o endereço')}
               onPress={(data, details = null) => {
                 setLocationName(data.structured_formatting?.main_text || data.description || '');
                 if (details?.geometry?.location) { setLat(details.geometry.location.lat); setLng(details.geometry.location.lng); }
@@ -247,7 +266,7 @@ export default function BusinessCreateEvent() {
 
           {/* Data e Hora Simples (Texto por enquanto para agilidade) */}
           <View style={styles.section}>
-            <Text style={[styles.label, { color: textPrimary }]}>Quando? (Formato YYYY-MM-DD e HH:MM)</Text>
+            <Text style={[styles.label, { color: textPrimary }]}>{t('auto.s17418540', 'Quando? (Formato YYYY-MM-DD e HH:MM)')}</Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <TextInput style={[styles.input, { flex: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]} value={eventDate} onChangeText={setEventDate} />
               <TextInput style={[styles.input, { flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]} value={eventTime} onChangeText={setEventTime} />
@@ -257,13 +276,13 @@ export default function BusinessCreateEvent() {
           {/* Ingressos */}
           <View style={styles.section}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[styles.label, { color: textPrimary, marginBottom: 0 }]}>Evento Pago?</Text>
+              <Text style={[styles.label, { color: textPrimary, marginBottom: 0 }]}>{t('auto.sa98ee7e2', 'Evento Pago?')}</Text>
               <Switch value={isPaid} onValueChange={setIsPaid} trackColor={{ true: accent }} />
             </View>
             {isPaid && (
               <TextInput
                 style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary, marginBottom: 12 }]}
-                placeholder="Preço (ex: 50.00)"
+                placeholder={t('auto.s3e571365', 'Preço (ex: 50.00)')}
                 placeholderTextColor={textSecondary}
                 keyboardType="numeric"
                 value={price}
@@ -272,7 +291,7 @@ export default function BusinessCreateEvent() {
             )}
             <TextInput
               style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}
-              placeholder="Link para compra de ingressos (Opcional)"
+              placeholder={t('auto.s07e33410', 'Link para compra de ingressos (Opcional)')}
               placeholderTextColor={textSecondary}
               value={ticketUrl}
               onChangeText={setTicketUrl}
@@ -282,7 +301,7 @@ export default function BusinessCreateEvent() {
           </View>
 
           <TouchableOpacity style={styles.publishBtn} onPress={handleCreate} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishBtnText}>Criar Evento</Text>}
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishBtnText}>{t('auto.s0466c8b5', 'Criar Evento')}</Text>}
           </TouchableOpacity>
 
         </ScrollView>

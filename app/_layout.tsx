@@ -4,13 +4,13 @@ import * as SplashScreen from 'expo-splash-screen';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 import { useEffect, useState } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { PushNotificationProvider } from '@/contexts/PushNotificationContext';
-import { LanguageProvider } from '@/lib/i18n';
+import { LanguageProvider, useLanguage } from '@/lib/i18n';
 import { View, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
@@ -36,9 +36,18 @@ import { mediaCacheService } from '@/services/mediaCacheService';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
+  const { setLanguage, language } = useLanguage();
   const segments = useSegments();
+  const pathname = usePathname();
   const router = useRouter();
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  useEffect(() => {
+    if (profile?.preferred_language && profile.preferred_language !== language) {
+      setLanguage(profile.preferred_language as any);
+    }
+  }, [profile?.preferred_language]);
 
   useEffect(() => {
     // Garante que a splash animada fique visível por pelo menos 2.5 segundos
@@ -51,20 +60,27 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
+    setIsInitialLoad(false);
 
     const inAuthGroup = segments[0] === '(auth)';
     const inTabsGroup = segments[0] === '(tabs)';
     const isCompleteProfile = segments[1] === 'complete-profile';
+    const isResetPassword = pathname.includes('reset-password');
+    const isVerifyResetOtp = pathname.includes('verify-reset-otp');
 
     if (!user && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (user) {
-      const hasUsername = !!profile?.username;
+      if (isResetPassword || isVerifyResetOtp) return; // Allow user to stay on reset-password flow
+
+      const hasUsername = !!profile?.username && !profile.username.startsWith('temp_');
       const onboardingCompleted = !!profile?.onboarding_completed;
       const isOnboarding = segments[1] === 'onboarding';
 
       if (!hasUsername && !isCompleteProfile) {
-        router.replace('/(auth)/complete-profile');
+        if (!pathname.includes('register')) {
+          router.replace('/(auth)/register');
+        }
       } else if (hasUsername && !onboardingCompleted) {
         if (!isOnboarding) {
           router.replace('/(auth)/onboarding');
@@ -77,9 +93,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [user, profile, loading, segments]);
+  }, [user, profile, loading, segments, pathname]);
 
-  if (loading || !minTimeElapsed) {
+  if ((loading && isInitialLoad) || !minTimeElapsed) {
     return <AnimatedSplashScreen />;
   }
 

@@ -1,8 +1,11 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Text, Image, ActivityIndicator } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, interpolate } from 'react-native-reanimated';
 import { Plus } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Story } from '@/types/database';
 import StoryCreator from './StoryCreator';
@@ -10,20 +13,64 @@ import StoryViewer from './StoryViewer';
 import { getCachedVideoUri } from '@/lib/videoCache';
 
 export default function StoriesBar() {
+  const { t } = useLanguage();
   const { user, profile } = useAuth();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
+  const router = useRouter();
   const [allStories, setAllStories] = useState<Story[]>([]);
   const [userStories, setUserStories] = useState<Story[]>([]);
+  const [activeLives, setActiveLives] = useState<any[]>([]);
   const [showCreator, setShowCreator] = useState(false);
   const [showViewer, setShowViewer] = useState(false);
   const [selectedStoryIndex, setSelectedStoryIndex] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  const officialPulse = useSharedValue(1);
+
+  useEffect(() => {
+    officialPulse.value = withRepeat(
+      withSequence(withTiming(1.05, { duration: 1000 }), withTiming(1, { duration: 1000 })),
+      -1,
+      true
+    );
+  }, []);
+
+  const officialAnimStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: officialPulse.value }],
+      shadowColor: accent,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: interpolate(officialPulse.value, [1, 1.05], [0.3, 0.8]),
+      shadowRadius: 10,
+      elevation: interpolate(officialPulse.value, [1, 1.05], [2, 6]),
+    };
+  });
+
   useEffect(() => {
     if (user) {
       loadStories();
+      loadLives();
     }
   }, [user]);
+
+  const loadLives = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('live_streams')
+        .select(`
+          *,
+          profiles:user_id (id, username, avatar_url)
+        `)
+        .eq('is_active', true)
+        .order('started_at', { ascending: false });
+
+      if (!error && data) {
+        setActiveLives(data);
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar lives:', err);
+    }
+  };
 
   const loadStories = async () => {
     try {
@@ -40,7 +87,7 @@ export default function StoriesBar() {
       // Separa stories do usuário dos demais
       const myStories = data.filter((s: any) => s.user_id === user?.id);
       const otherStories = data.filter((s: any) => s.user_id !== user?.id);
-      
+
       setUserStories(myStories);
       setAllStories(otherStories);
 
@@ -120,6 +167,18 @@ export default function StoriesBar() {
   // Render the stories bar
   const combinedStories = [...userStories, ...allStories];
 
+  // Agrupar stories por usuário para que cada usuário apareça apenas uma vez na barra
+  const uniqueUsers = new Set();
+  const groupedAllStories: { story: Story, originalIndex: number }[] = [];
+  
+  for (let i = 0; i < allStories.length; i++) {
+    const story = allStories[i];
+    if (!uniqueUsers.has(story.user_id)) {
+      uniqueUsers.add(story.user_id);
+      groupedAllStories.push({ story, originalIndex: i });
+    }
+  }
+
   return (
     <>
       <View style={[styles.container, { backgroundColor: backgroundPrimary, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
@@ -157,32 +216,66 @@ export default function StoriesBar() {
               <Plus size={16} color="#fff" strokeWidth={3} />
             </Pressable>
           </View>
-          <Text style={[styles.yourStoryLabel, { color: textPrimary }]}>Your Story</Text>
+          <Text style={[styles.yourStoryLabel, { color: textPrimary }]}>{t('auto.sb454a697', 'Your Story')}</Text>
         </Pressable>
 
-        {/* Other Stories */}
-        {allStories.map((story, index) => {
-          const profile = Array.isArray(story.profiles) ? story.profiles[0] : story.profiles;
+        {/* Lives Ativas */}
+        {activeLives.map((live) => {
+          const profile = Array.isArray(live?.profiles) ? live.profiles[0] : live?.profiles;
           return (
             <Pressable
-              key={story.id}
-              style={styles.otherStoryCard}
+              key={`live_${live.id}`}
+              style={[styles.otherStoryCard, { borderColor: '#FF3B30', borderWidth: 2 }]}
               onPress={() => {
-                setSelectedStoryIndex(userStories.length + index);
-                setShowViewer(true);
+                router.push(`/live/audience?liveID=${live.live_id}&broadcasterId=${live.user_id}`);
               }}
             >
               <Image
-                source={{ uri: story.thumbnail_url || story.media_url }}
+                source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/150' }}
                 style={styles.otherStoryThumb}
               />
-              <View style={[styles.otherStoryAvatarContainer, { borderColor: '#fff', backgroundColor: backgroundSecondary }]}>
+              <View style={styles.liveBadge}>
+                <Text style={styles.liveBadgeText}>AO VIVO</Text>
+              </View>
+              <View style={[styles.otherStoryAvatarContainer, { borderColor: '#FF3B30', backgroundColor: backgroundSecondary }]}>
                 <Image
                   source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/150' }}
                   style={styles.otherStoryAvatar}
                 />
               </View>
             </Pressable>
+          );
+        })}
+
+        {/* Other Stories */}
+        {groupedAllStories.map(({ story, originalIndex }) => {
+          const profile = Array.isArray(story?.profiles) ? story.profiles[0] : story?.profiles;
+          const isOfficial = profile?.username === 'unnasocialappoficial';
+          
+          return (
+            <Animated.View key={story.id} style={isOfficial ? officialAnimStyle : undefined}>
+              <Pressable
+                style={[
+                  styles.otherStoryCard, 
+                  isOfficial && { borderColor: accent, borderWidth: 2 }
+                ]}
+                onPress={() => {
+                  setSelectedStoryIndex(userStories.length + originalIndex);
+                  setShowViewer(true);
+                }}
+              >
+                <Image
+                  source={{ uri: story.thumbnail_url || story.media_url }}
+                  style={styles.otherStoryThumb}
+                />
+                <View style={[styles.otherStoryAvatarContainer, { borderColor: isOfficial ? accent : '#fff', backgroundColor: backgroundSecondary }]}>
+                  <Image
+                    source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/150' }}
+                    style={styles.otherStoryAvatar}
+                  />
+                </View>
+              </Pressable>
+            </Animated.View>
           );
         })}
       </ScrollView>
@@ -282,4 +375,18 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  liveBadge: {
+    position: 'absolute',
+    bottom: 8,
+    alignSelf: 'center',
+    backgroundColor: '#FF3B30',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  liveBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  }
 });

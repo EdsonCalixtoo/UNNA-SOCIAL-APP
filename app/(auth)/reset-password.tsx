@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import {
   View,
@@ -42,6 +43,7 @@ const getPasswordStrength = (pwd: string): PasswordStrength => {
 };
 
 export default function ResetPassword() {
+  const { t } = useLanguage();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -56,58 +58,7 @@ export default function ResetPassword() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
 
-  // Capture recovery token from deep link URL
-  const url = Linking.useURL();
-
-  useEffect(() => {
-    const handleDeepLink = async (incomingUrl: string | null) => {
-      if (!incomingUrl) return;
-      console.log('Incoming recovery link detected:', incomingUrl);
-      
-      try {
-        let hash = '';
-        if (incomingUrl.includes('#')) {
-          hash = incomingUrl.split('#')[1];
-        } else if (incomingUrl.includes('?')) {
-          hash = incomingUrl.split('?')[1];
-        }
-        
-        if (!hash) return;
-        
-        const params: Record<string, string> = {};
-        hash.split('&').forEach(part => {
-          const [key, val] = part.split('=');
-          if (key && val) {
-            params[key] = decodeURIComponent(val);
-          }
-        });
-        
-        const accessToken = params.access_token;
-        const refreshToken = params.refresh_token;
-        
-        if (accessToken && refreshToken) {
-          console.log('Authenticating dynamic password-reset session...');
-          const { error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          });
-          
-          if (sessionError) {
-            console.error('Session establishment failed:', sessionError.message);
-            setError('Link de redefinição expirou ou é inválido. Solicite um novo.');
-          } else {
-            console.log('Recovery session active and verified!');
-          }
-        }
-      } catch (err: any) {
-        console.error('Error parsing recovery deep link:', err);
-      }
-    };
-
-    if (url) {
-      handleDeepLink(url);
-    }
-  }, [url]);
+  // Deep link logic removed as session is now handled by OTP screen
 
   const isSmall = height < 680;
   const fs = (size: number) => Math.max(size * 0.85, Math.min(size, width * (size / 390)));
@@ -232,8 +183,8 @@ export default function ResetPassword() {
               >
                 <Lock size={36} color="#fff" />
               </LinearGradient>
-              <Text style={[styles.title, { fontSize: fs(26), marginTop: sp(16) }]}>Nova Senha</Text>
-              <Text style={[styles.subtitle, { fontSize: fs(14) }]}>Crie uma nova credencial para acessar sua conta</Text>
+              <Text style={[styles.title, { fontSize: fs(26), marginTop: sp(16) }]}>{t('auto.se13cee89', 'Nova Senha')}</Text>
+              <Text style={[styles.subtitle, { fontSize: fs(14) }]}>{t('auto.s6482b72e', 'Crie uma nova credencial para acessar sua conta')}</Text>
             </View>
 
             {error ? (
@@ -246,14 +197,14 @@ export default function ResetPassword() {
             <AnimatedView entering={FadeInUp.delay(300).springify()} style={styles.card}>
               <View style={[styles.inputGroup, { marginBottom: sp(14) }]}>
                 <View style={styles.labelRow}>
-                  <Text style={[styles.label, { fontSize: fs(11) }]}>NOVA SENHA</Text>
+                  <Text style={[styles.label, { fontSize: fs(11) }]}>{t('auto.se48c14ef', 'NOVA SENHA')}</Text>
                   {password ? <Text style={[styles.strengthText, { fontSize: fs(11), color: strengthColor }]}>{strengthLabel}</Text> : null}
                 </View>
                 <View style={[styles.inputRow, pwdFocused && styles.inputRowFocused]}>
                   <Lock size={fs(17)} color={pwdFocused ? '#00d9ff' : '#555'} />
                   <TextInput
                     style={[styles.input, { fontSize: fs(15) }]}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder={t('auto.sa09c5b5b', 'Mínimo 6 caracteres')}
                     placeholderTextColor="#444"
                     value={password}
                     onChangeText={setPassword}
@@ -269,12 +220,12 @@ export default function ResetPassword() {
               </View>
 
               <View style={[styles.inputGroup, { marginBottom: sp(20) }]}>
-                <Text style={[styles.label, { fontSize: fs(11) }]}>CONFIRME A SENHA</Text>
+                <Text style={[styles.label, { fontSize: fs(11) }]}>{t('auto.s54272e0e', 'CONFIRME A SENHA')}</Text>
                 <View style={[styles.inputRow, confirmFocused && styles.inputRowFocused]}>
                   <Lock size={fs(17)} color={confirmFocused ? '#ff1493' : '#555'} />
                   <TextInput
                     style={[styles.input, { fontSize: fs(15) }]}
-                    placeholder="Repita a nova senha"
+                    placeholder={t('auto.s51566d61', 'Repita a nova senha')}
                     placeholderTextColor="#444"
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
@@ -293,7 +244,7 @@ export default function ResetPassword() {
                 <LinearGradient colors={['#00d9ff', '#7b2fff', '#ff1493']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.btnGradient, { paddingVertical: sp(16) }]}>
                   {loading ? <ActivityIndicator color="#fff" /> : (
                     <View style={styles.btnContent}>
-                      <Text style={[styles.btnText, { fontSize: fs(16) }]}>Salvar Nova Senha</Text>
+                      <Text style={[styles.btnText, { fontSize: fs(16) }]}>{t('auto.s6c6dbd9e', 'Salvar Nova Senha')}</Text>
                       <ArrowRight size={fs(20)} color="#fff" />
                     </View>
                   )}
@@ -311,7 +262,7 @@ export default function ResetPassword() {
             <View style={styles.modalIconBg}>
               <CheckCircle2 size={36} color="#00e676" />
             </View>
-            <Text style={styles.modalTitle}>Senha Atualizada!</Text>
+            <Text style={styles.modalTitle}>{t('auto.saddfa928', 'Senha Atualizada!')}</Text>
             <Text style={styles.modalDescription}>
               Sua senha foi redefinida com total segurança. Agora você já pode entrar na sua conta com a nova senha criada.
             </Text>
@@ -320,7 +271,7 @@ export default function ResetPassword() {
               style={styles.modalBtn}
               onPress={() => {
                 setSuccess(false);
-                router.replace('/(auth)/login');
+                router.replace('/');
               }}
             >
               <LinearGradient 
@@ -329,7 +280,7 @@ export default function ResetPassword() {
                 end={{ x: 1, y: 0 }} 
                 style={styles.modalBtnGradient}
               >
-                <Text style={styles.modalBtnText}>Acessar Minha Conta</Text>
+                <Text style={styles.modalBtnText}>{t('auto.s1cb804fe', 'Acessar Minha Conta')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>

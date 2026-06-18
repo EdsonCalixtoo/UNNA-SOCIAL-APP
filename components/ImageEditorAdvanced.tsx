@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, Image, TouchableOpacity, Dimensions, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { 
@@ -58,6 +59,7 @@ const PRESETS = [
 ];
 
 export default function ImageEditor({ visible, imageUri, onClose, onSave }: ImageEditorProps) {
+  const { t } = useLanguage();
   const [activeTool, setActiveTool] = useState('adjust');
   const [editState, setEditState] = useState<EditState>({
     rotation: 0,
@@ -283,7 +285,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
         onPress={() => setEditState(prev => ({ ...prev, rotation: (prev.rotation + 90) % 360 }))}
       >
         <RotateCw size={28} color="#fff" />
-        <Text style={styles.transformButtonText}>Girar</Text>
+        <Text style={styles.transformButtonText}>{t('auto.s381dc09b', 'Girar')}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -291,7 +293,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
         onPress={() => setEditState(prev => ({ ...prev, flipHorizontal: !prev.flipHorizontal }))}
       >
         <Text style={styles.flipIconLarge}>↔</Text>
-        <Text style={styles.transformButtonText}>Espelhar</Text>
+        <Text style={styles.transformButtonText}>{t('auto.s5a05d734', 'Espelhar')}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -299,7 +301,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
         onPress={() => setEditState(prev => ({ ...prev, flipVertical: !prev.flipVertical }))}
       >
         <Text style={styles.flipIconLarge}>↕</Text>
-        <Text style={styles.transformButtonText}>Inverter</Text>
+        <Text style={styles.transformButtonText}>{t('auto.s7064e3bc', 'Inverter')}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -307,7 +309,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
         onPress={handleReset}
       >
         <Undo2 size={28} color="#fff" />
-        <Text style={styles.transformButtonText}>Resetar</Text>
+        <Text style={styles.transformButtonText}>{t('auto.s4a0e8b61', 'Resetar')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -343,7 +345,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
           <TouchableOpacity onPress={onClose}>
             <X size={28} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Editor de Imagem</Text>
+          <Text style={styles.headerTitle}>{t('auto.s3c5c3319', 'Editor de Imagem')}</Text>
           <TouchableOpacity onPress={handleSave} disabled={processing}>
             {processing ? (
               <ActivityIndicator size="small" color="#fff" />

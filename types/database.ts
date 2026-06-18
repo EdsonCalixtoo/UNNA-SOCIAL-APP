@@ -2,6 +2,8 @@ export interface Profile {
   id: string;
   username: string;
   full_name: string;
+  email?: string;
+  phone_number?: string;
   avatar_url?: string;
   cover_url?: string;
   bio?: string;
@@ -10,6 +12,7 @@ export interface Profile {
   secondary_color?: string;
   accent_color?: string;
   preferred_categories?: string[];
+  preferred_language?: string;
   onboarding_completed?: boolean;
   created_at: string;
   updated_at: string;

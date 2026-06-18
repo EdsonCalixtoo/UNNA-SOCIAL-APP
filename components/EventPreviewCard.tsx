@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Image, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,6 +27,7 @@ interface EventPreviewCardProps {
 const { width } = Dimensions.get('window');
 
 export function EventPreviewCard({ event, visible, onClose, router }: EventPreviewCardProps) {
+  const { t } = useLanguage();
   if (!event) return null;
 
   return (
@@ -65,7 +67,7 @@ export function EventPreviewCard({ event, visible, onClose, router }: EventPrevi
           {event.isLive && (
             <View style={[styles.liveBadge, { backgroundColor: event.categoryColor }]}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveText}>AO VIVO</Text>
+              <Text style={styles.liveText}>{t('auto.s9b52000c', 'AO VIVO')}</Text>
             </View>
           )}
 
@@ -112,7 +114,7 @@ export function EventPreviewCard({ event, visible, onClose, router }: EventPrevi
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.primaryButtonText}>Ver Detalhes</Text>
+                  <Text style={styles.primaryButtonText}>{t('auto.s6418a4ce', 'Ver Detalhes')}</Text>
                 </TouchableOpacity>
               </LinearGradient>
 
@@ -124,7 +126,7 @@ export function EventPreviewCard({ event, visible, onClose, router }: EventPrevi
                 activeOpacity={0.8}
               >
                 <Share2 size={18} color="#fff" strokeWidth={2.5} />
-                <Text style={styles.secondaryButtonText}>Compartilhar</Text>
+                <Text style={styles.secondaryButtonText}>{t('auto.sa3bd2b71', 'Compartilhar')}</Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -1,3 +1,4 @@
+
 import { Stack } from 'expo-router/stack';
 
 export default function AuthLayout() {
@@ -8,6 +9,9 @@ export default function AuthLayout() {
       <Stack.Screen name="register" />
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="complete-profile" />
+      <Stack.Screen name="reset-password" />
+      <Stack.Screen name="verify-otp" />
+      <Stack.Screen name="verify-reset-otp" />
     </Stack>
   );
 }

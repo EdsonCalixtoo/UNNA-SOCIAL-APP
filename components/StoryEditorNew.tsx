@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState } from 'react';
 import {
   View,
@@ -98,6 +99,7 @@ export default function StoryEditorComplete({
   onClose,
   onSave,
 }: StoryEditorCompleteProps) {
+  const { t } = useLanguage();
   const [rotation, setRotation] = useState(0);
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [captionText, setCaptionText] = useState('');
@@ -188,7 +190,7 @@ export default function StoryEditorComplete({
           <TouchableOpacity onPress={onClose}>
             <X size={24} color="#2D2D3D" strokeWidth={3} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Editar Story</Text>
+          <Text style={styles.headerTitle}>{t('auto.s1dfe9106', 'Editar Story')}</Text>
           <TouchableOpacity onPress={handleSave}>
             <Check size={24} color="#FF8C3D" strokeWidth={3} />
           </TouchableOpacity>
@@ -233,13 +235,13 @@ export default function StoryEditorComplete({
           {/* CROP TAB */}
           {activeTab === 'crop' && (
             <View style={styles.tabContent}>
-              <Text style={styles.sectionTitle}>✂️ Recortar & Girar</Text>
+              <Text style={styles.sectionTitle}>{t('auto.s8fa6e00b', '✂️ Recortar & Girar')}</Text>
               <TouchableOpacity style={styles.controlButton} onPress={() => setRotation((r) => (r + 90) % 360)}>
                 <RotateCw size={18} color="#FF8C3D" />
                 <Text style={styles.controlButtonText}>Girar 90° (Atual: {rotation}°)</Text>
               </TouchableOpacity>
 
-              <Text style={styles.sectionTitle}>📐 Proporção</Text>
+              <Text style={styles.sectionTitle}>{t('auto.s87d70604', '📐 Proporção')}</Text>
               <View style={styles.ratioGrid}>
                 {ASPECT_RATIOS.map((ratio) => (
                   <TouchableOpacity
@@ -259,10 +261,10 @@ export default function StoryEditorComplete({
           {/* CAPTION TAB */}
           {activeTab === 'caption' && (
             <View style={styles.tabContent}>
-              <Text style={styles.sectionTitle}>✍️ Adicionar Legenda</Text>
+              <Text style={styles.sectionTitle}>{t('auto.s30b980db', '✍️ Adicionar Legenda')}</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="Digite sua legenda..."
+                placeholder={t('auto.s4fb86f1c', 'Digite sua legenda...')}
                 placeholderTextColor="#CCC"
                 value={captionText}
                 onChangeText={setCaptionText}
@@ -271,7 +273,7 @@ export default function StoryEditorComplete({
               />
               <Text style={styles.counter}>{captionText.length}/500</Text>
 
-              <Text style={styles.sectionTitle}>🎨 Cor do Texto</Text>
+              <Text style={styles.sectionTitle}>{t('auto.s203d0a0c', '🎨 Cor do Texto')}</Text>
               <View style={styles.colorGrid}>
                 {TEXT_COLORS.map((color) => (
                   <TouchableOpacity
@@ -282,7 +284,7 @@ export default function StoryEditorComplete({
                 ))}
               </View>
 
-              <Text style={styles.sectionTitle}>🔤 Tamanho</Text>
+              <Text style={styles.sectionTitle}>{t('auto.s2da803f8', '🔤 Tamanho')}</Text>
               <View style={styles.sizeGrid}>
                 {FONT_SIZES.map((size) => (
                   <TouchableOpacity
@@ -297,7 +299,7 @@ export default function StoryEditorComplete({
                 ))}
               </View>
 
-              <Text style={styles.sectionTitle}>✨ Efeito</Text>
+              <Text style={styles.sectionTitle}>{t('auto.s6dc511d6', '✨ Efeito')}</Text>
               <View style={styles.effectGrid}>
                 {TEXT_EFFECTS.map((effect) => (
                   <TouchableOpacity
@@ -317,7 +319,7 @@ export default function StoryEditorComplete({
           {/* AUDIO TAB */}
           {activeTab === 'audio' && (
             <View style={styles.tabContent}>
-              <Text style={styles.sectionTitle}>🎵 Selecionar Música</Text>
+              <Text style={styles.sectionTitle}>{t('auto.s9d7b665a', '🎵 Selecionar Música')}</Text>
               {MOCK_AUDIOS.map((audio) => (
                 <TouchableOpacity
                   key={audio.id}
@@ -334,7 +336,7 @@ export default function StoryEditorComplete({
 
               {selectedAudio && (
                 <View style={styles.volumeContainer}>
-                  <Text style={styles.sectionTitle}>🔊 Volume</Text>
+                  <Text style={styles.sectionTitle}>{t('auto.sfb08b9c1', '🔊 Volume')}</Text>
                   <View style={styles.volumeGrid}>
                     {[0, 25, 50, 75, 100].map((vol) => (
                       <TouchableOpacity
@@ -356,7 +358,7 @@ export default function StoryEditorComplete({
           {/* TAGS TAB */}
           {activeTab === 'tags' && (
             <View style={styles.tabContent}>
-              <Text style={styles.sectionTitle}>📍 Adicionar Tags</Text>
+              <Text style={styles.sectionTitle}>{t('auto.sd8426142', '📍 Adicionar Tags')}</Text>
               <View style={styles.tagTypeGrid}>
                 {(['person', 'location', 'hashtag', 'link'] as const).map((type) => (
                   <TouchableOpacity

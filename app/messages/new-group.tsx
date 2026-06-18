@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert, Dimensions } from 'react-native';
 import { supabase } from '@/lib/supabase';
@@ -23,6 +24,7 @@ interface Profile {
 }
 
 export default function NewGroupScreen() {
+  const { t } = useLanguage();
   const { user } = useAuth();
   const router = useRouter();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
@@ -161,13 +163,13 @@ export default function NewGroupScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
             <ArrowLeft color="#fff" size={24} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Criar Grupo</Text>
+          <Text style={styles.headerTitle}>{t('auto.sdc2d65a0', 'Criar Grupo')}</Text>
           <TouchableOpacity 
             onPress={createGroup} 
             disabled={creating}
             style={[styles.createBtn, (selectedUsers.length === 0 || !groupName) && styles.createBtnDisabled]}
           >
-            {creating ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.createBtnText}>Criar</Text>}
+            {creating ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.createBtnText}>{t('auto.s75b1629a', 'Criar')}</Text>}
           </TouchableOpacity>
         </View>
 
@@ -187,7 +189,7 @@ export default function NewGroupScreen() {
           <View style={{ flex: 1, gap: 8 }}>
             <TextInput
               style={styles.groupNameInput}
-              placeholder="Nome do Grupo"
+              placeholder={t('auto.scb40cbda', 'Nome do Grupo')}
               placeholderTextColor="rgba(255,255,255,0.6)"
               value={groupName}
               onChangeText={setGroupName}
@@ -195,7 +197,7 @@ export default function NewGroupScreen() {
             />
             <TextInput
               style={styles.groupDescriptionInput}
-              placeholder="Descrição do Grupo (opcional)"
+              placeholder={t('auto.s00d736a9', 'Descrição do Grupo (opcional)')}
               placeholderTextColor="rgba(255,255,255,0.6)"
               value={groupDescription}
               onChangeText={setGroupDescription}
@@ -240,7 +242,7 @@ export default function NewGroupScreen() {
           <Search size={20} color={isDark ? '#8E8E93' : '#a1a1a6'} />
           <TextInput
             style={[styles.searchInput, { color: textPrimary }]}
-            placeholder="Buscar amigos..."
+            placeholder={t('auto.sf98a15e9', 'Buscar amigos...')}
             placeholderTextColor={isDark ? '#8E8E93' : '#a1a1a6'}
             value={search}
             onChangeText={setSearch}
@@ -294,7 +296,7 @@ export default function NewGroupScreen() {
         ) : (
           <View style={styles.emptyContainer}>
             <Users size={48} color={isDark ? '#333' : '#ccc'} />
-            <Text style={[styles.emptyText, { color: textSecondary }]}>Nenhum amigo encontrado</Text>
+            <Text style={[styles.emptyText, { color: textSecondary }]}>{t('auto.s6cf2f0ab', 'Nenhum amigo encontrado')}</Text>
           </View>
         )}
       />

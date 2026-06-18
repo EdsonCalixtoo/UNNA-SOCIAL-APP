@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -20,6 +21,7 @@ interface InterestOnboardingModalProps {
 }
 
 export function InterestOnboardingModal({ visible, onComplete }: InterestOnboardingModalProps) {
+  const { t } = useLanguage();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const { user, refreshProfile } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -80,8 +82,8 @@ export function InterestOnboardingModal({ visible, onComplete }: InterestOnboard
         style={styles.container}
       >
         <View style={{ marginTop: height * 0.1, paddingHorizontal: 24, paddingBottom: 24 }}>
-          <Text style={[styles.title, { color: textPrimary }]}>O que te interessa?</Text>
-          <Text style={[styles.subtitle, { color: textSecondary }]}>Selecione 1 ou mais categorias para personalizar o seu feed de eventos e publicações.</Text>
+          <Text style={[styles.title, { color: textPrimary }]}>{t('auto.s7185dc3d', 'O que te interessa?')}</Text>
+          <Text style={[styles.subtitle, { color: textSecondary }]}>{t('auto.sbcafa0d4', 'Selecione 1 ou mais categorias para personalizar o seu feed de eventos e publicações.')}</Text>
         </View>
 
         <ScrollView 

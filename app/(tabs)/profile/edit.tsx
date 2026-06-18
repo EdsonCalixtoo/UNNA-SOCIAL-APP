@@ -203,6 +203,15 @@ export default function EditProfile() {
     setShowImageSourceModal(true);
   };
 
+  const handleRemovePhoto = () => {
+    if (imageEditTarget === 'cover') {
+      setNewCoverUri('remove');
+    } else {
+      setNewAvatarUri('remove');
+    }
+    setShowImageSourceModal(false);
+  };
+
   const handleSaveEditedAvatar = (editedUri: string) => {
     if (imageEditTarget === 'cover') {
       setNewCoverUri(editedUri);
@@ -290,13 +299,17 @@ export default function EditProfile() {
     setLoading(true);
     try {
       let avatarUrl = formData.avatar_url;
-      if (newAvatarUri) {
+      if (newAvatarUri === 'remove') {
+        avatarUrl = null;
+      } else if (newAvatarUri) {
         const uploadedUrl = await uploadImage(newAvatarUri, 'media', 'avatars', user.id);
         if (uploadedUrl) avatarUrl = uploadedUrl;
       }
 
       let coverUrl = formData.cover_url;
-      if (newCoverUri) {
+      if (newCoverUri === 'remove') {
+        coverUrl = null;
+      } else if (newCoverUri) {
         const uploadedCoverUrl = await uploadImage(newCoverUri, 'media', 'banners', user.id);
         if (uploadedCoverUrl) coverUrl = uploadedCoverUrl;
       }
@@ -924,6 +937,21 @@ export default function EditProfile() {
                 <View style={styles.actionSheetOptionText}>
                   <Text style={[styles.actionSheetOptionTitle, { color: textPrimary }]}>Escolher da Galeria</Text>
                   <Text style={[styles.actionSheetOptionDesc, { color: textSecondary }]}>Buscar foto no rolo da câmera</Text>
+                </View>
+                <ChevronRight size={18} color={textSecondary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.actionSheetOption, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}
+                activeOpacity={0.8}
+                onPress={handleRemovePhoto}
+              >
+                <View style={[styles.actionSheetIconWrapper, { backgroundColor: 'rgba(255, 59, 48, 0.15)' }]}>
+                  <Trash2 size={22} color="#FF3B30" />
+                </View>
+                <View style={styles.actionSheetOptionText}>
+                  <Text style={[styles.actionSheetOptionTitle, { color: textPrimary }]}>Remover Foto</Text>
+                  <Text style={[styles.actionSheetOptionDesc, { color: textSecondary }]}>Ficar sem imagem</Text>
                 </View>
                 <ChevronRight size={18} color={textSecondary} />
               </TouchableOpacity>

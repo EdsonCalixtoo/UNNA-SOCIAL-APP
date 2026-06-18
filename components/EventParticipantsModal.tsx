@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -48,6 +49,7 @@ export function EventParticipantsModal({
   onClose,
   eventId,
 }: EventParticipantsModalProps) {
+  const { t } = useLanguage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
@@ -184,7 +186,7 @@ export function EventParticipantsModal({
                   <Users size={22} color="#fff" />
                 </LinearGradient>
                 <View>
-                  <Text style={[styles.headerTitle, { color: textPrimary }]}>CONFIRMADAS</Text>
+                  <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.sf0681b00', 'CONFIRMADAS')}</Text>
                   <Text style={[styles.headerSubtitle, { color: textSecondary }]}>
                     {participants.length} {participants.length === 1 ? 'membro confirmado' : 'membros confirmados'}
                   </Text>
@@ -202,7 +204,7 @@ export function EventParticipantsModal({
             {loading ? (
               <View style={styles.centerContainer}>
                 <ActivityIndicator size="large" color={accent} />
-                <Text style={[styles.infoText, { color: textSecondary }]}>Sincronizando participantes...</Text>
+                <Text style={[styles.infoText, { color: textSecondary }]}>{t('auto.s742504f0', 'Sincronizando participantes...')}</Text>
               </View>
             ) : participants.length === 0 ? (
               <View style={styles.centerContainer}>
@@ -215,7 +217,7 @@ export function EventParticipantsModal({
                     </View>
                   </View>
                 </View>
-                <Text style={[styles.emptyTitle, { color: textPrimary }]}>O círculo está aberto!</Text>
+                <Text style={[styles.emptyTitle, { color: textPrimary }]}>{t('auto.sd0668152', 'O círculo está aberto!')}</Text>
                 <Text style={[styles.emptyDesc, { color: textSecondary }]}>
                   Ainda não há ninguém na lista. Que tal convidar alguns amigos para este role?
                 </Text>
@@ -228,7 +230,7 @@ export function EventParticipantsModal({
                     style={styles.inviteGradient}
                   >
                     <UserPlus size={18} color="#fff" />
-                    <Text style={styles.inviteText}>Convidar Amigos</Text>
+                    <Text style={styles.inviteText}>{t('auto.sacc2209f', 'Convidar Amigos')}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>

@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect, useRef, memo } from 'react';
 import {
   View,
@@ -169,6 +170,7 @@ const MessageItem = memo(({
 });
 
 export default function EventChat() {
+  const { t } = useLanguage();
   const { user } = useAuth();
   const { accent, backgroundPrimary, backgroundSecondary, textPrimary, textSecondary } = useTheme();
   const router = useRouter();
@@ -401,7 +403,7 @@ export default function EventChat() {
             <ArrowLeft size={24} color={textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerInfo}>
-            <Text style={[styles.headerTitle, { color: textPrimary }]}>Chat do Evento</Text>
+            <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.s0c82ccd1', 'Chat do Evento')}</Text>
             <Text style={[styles.headerSubtitle, { color: textSecondary }]}>
               {messages.length} mensagens enviadas
             </Text>
@@ -430,7 +432,7 @@ export default function EventChat() {
             style={[styles.menuContent, { backgroundColor: backgroundSecondary }]}
           >
             <View style={[styles.menuIndicator, { backgroundColor: textSecondary + '44' }]} />
-            <Text style={[styles.menuTitle, { color: textPrimary }]}>Opções do Evento</Text>
+            <Text style={[styles.menuTitle, { color: textPrimary }]}>{t('auto.s80d18a9f', 'Opções do Evento')}</Text>
             
             <TouchableOpacity 
               style={styles.menuItem} 
@@ -439,14 +441,14 @@ export default function EventChat() {
               <View style={[styles.menuIconCircle, { backgroundColor: '#FF3B3022' }]}>
                 <ShieldAlert size={20} color="#FF3B30" />
               </View>
-              <Text style={[styles.menuItemText, { color: '#FF3B30' }]}>Denunciar Evento</Text>
+              <Text style={[styles.menuItemText, { color: '#FF3B30' }]}>{t('auto.s3cf85d44', 'Denunciar Evento')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.menuCancelBtn} 
               onPress={() => setShowEventMenu(false)}
             >
-              <Text style={[styles.menuCancelText, { color: textSecondary }]}>Cancelar</Text>
+              <Text style={[styles.menuCancelText, { color: textSecondary }]}>{t('auto.s847607d7', 'Cancelar')}</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -541,7 +543,7 @@ export default function EventChat() {
 
           <TextInput
             style={[styles.input, { color: textPrimary }]}
-            placeholder="Diga algo incrível..."
+            placeholder={t('auto.s06a2898e', 'Diga algo incrível...')}
             placeholderTextColor={textSecondary}
             value={messageText}
             onChangeText={(text) => {

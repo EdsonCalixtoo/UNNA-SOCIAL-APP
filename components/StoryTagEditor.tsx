@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState } from 'react';
 import {
   View,
@@ -97,6 +98,7 @@ export default function StoryTagEditor({
   onClose,
   onSave,
 }: StoryTagEditorProps) {
+  const { t } = useLanguage();
   const [tags, setTags] = useState<Tag[]>([]);
   const [activeTab, setActiveTab] = useState<'person' | 'location' | 'hashtag' | 'link'>('person');
   const [inputValue, setInputValue] = useState('');
@@ -215,7 +217,7 @@ export default function StoryTagEditor({
           <TouchableOpacity onPress={onClose}>
             <X size={28} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Marcar Pessoas e Locais</Text>
+          <Text style={styles.headerTitle}>{t('auto.sba4f72a8', 'Marcar Pessoas e Locais')}</Text>
           <TouchableOpacity onPress={handleSave}>
             <Check size={28} color="#fff" />
           </TouchableOpacity>
@@ -288,7 +290,7 @@ export default function StoryTagEditor({
             {/* Quick suggestions */}
             {!inputValue && (activeTab === 'person' || activeTab === 'location') && (
               <>
-                <Text style={styles.quickSuggestionsTitle}>Sugestões rápidas:</Text>
+                <Text style={styles.quickSuggestionsTitle}>{t('auto.sbd2c8f91', 'Sugestões rápidas:')}</Text>
                 <View style={styles.quickSuggestionsContainer}>
                   {(activeTab === 'person' ? MOCK_USERS : MOCK_LOCATIONS).map((item) => (
                     <TouchableOpacity
@@ -323,18 +325,18 @@ export default function StoryTagEditor({
 
           {/* Info */}
           <View style={styles.infoBox}>
-            <Text style={styles.infoTitle}>💡 Dicas de Tags</Text>
+            <Text style={styles.infoTitle}>{t('auto.s29bb96a3', '💡 Dicas de Tags')}</Text>
             <Text style={styles.infoText}>
-              • <Text style={{ fontWeight: 'bold' }}>Pessoas:</Text> Marque amigos e seguidores
+              • <Text style={{ fontWeight: 'bold' }}>{t('auto.s3c3c83e0', 'Pessoas:')}</Text> Marque amigos e seguidores
             </Text>
             <Text style={styles.infoText}>
-              • <Text style={{ fontWeight: 'bold' }}>Locais:</Text> Indique onde está
+              • <Text style={{ fontWeight: 'bold' }}>{t('auto.s56f3df83', 'Locais:')}</Text> Indique onde está
             </Text>
             <Text style={styles.infoText}>
-              • <Text style={{ fontWeight: 'bold' }}>Hashtags:</Text> Use para descoberta (#viagem)
+              • <Text style={{ fontWeight: 'bold' }}>{t('auto.sbf42c6c9', 'Hashtags:')}</Text> Use para descoberta (#viagem)
             </Text>
             <Text style={styles.infoText}>
-              • <Text style={{ fontWeight: 'bold' }}>Links:</Text> Compartilhe URLs relacionadas
+              • <Text style={{ fontWeight: 'bold' }}>{t('auto.s9fcb915a', 'Links:')}</Text> Compartilhe URLs relacionadas
             </Text>
             <Text style={styles.infoText}>
               • Você pode adicionar várias tags de cada tipo!

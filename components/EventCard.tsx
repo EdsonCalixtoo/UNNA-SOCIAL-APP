@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Platform } from 'react-native';
-import { MoreVertical, Heart, MessageCircle, MapPin, Sparkles, Users } from 'lucide-react-native';
+
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform } from 'react-native';
+import { Image } from 'expo-image';
+import { MoreVertical, Heart, MessageCircle, MapPin, Sparkles, Users, Tag } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
 import MediaCarousel from './MediaCarousel';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, withRepeat, withSequence, interpolate } from 'react-native-reanimated';
 import { hapticFeedback } from '@/utils/haptics';
 import { soundService } from '@/utils/soundService';
 import { mapService } from '@/services/mapService';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -32,9 +35,9 @@ function formatRelativeTime(dateStr: string): string {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
-export default function EventCard({ event, onPress, isVisible = true, onLike, onParticipantsPress, onCommentPress }: EventCardProps) {
+export default React.memo(function EventCard({ event, onPress, isVisible = true, onLike, onParticipantsPress, onCommentPress }: EventCardProps) {
   const router = useRouter();
-  const { backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
+  const { isDark, accent, textPrimary, textSecondary } = useTheme();
   
   const likeScale = useSharedValue(1);
   const [distanceKm, setDistanceKm] = useState<string | null>(null);
@@ -75,20 +78,20 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
     });
   };
 
-  const isPublication = event.type === 'publication' || !event.event_date || !event.event_time;
+  const isPublication = event?.type === 'publication' || !event?.event_date || !event?.event_time;
   
 
   // Base details
-  const avatarUrl = event.profiles?.avatar_url;
-  const username = event.profiles?.username || 'user';
-  const fullName = event.profiles?.full_name || username;
-  const timeAgo = formatRelativeTime(event.created_at || new Date().toISOString());
+  const avatarUrl = event?.profiles?.avatar_url;
+  const username = event?.profiles?.username || 'user';
+  const fullName = event?.profiles?.full_name || username;
+  const timeAgo = formatRelativeTime(event?.created_at || new Date().toISOString());
   
-  const imageToUse = event.image_urls && event.image_urls.length > 0 
+  const imageToUse = event?.image_urls && event.image_urls.length > 0 
                      ? event.image_urls 
-                     : (event.image_url ? [event.image_url] : []);
+                     : (event?.image_url ? [event.image_url] : []);
   
-  const mediaTypesToUse = event.media_types || (event.media_type ? [event.media_type] : undefined);
+  const mediaTypesToUse = event?.media_types || (event?.media_type ? [event.media_type] : undefined);
 
   // Parse Date for Badge
   let eventMonth = '';
@@ -134,17 +137,69 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
     return isDark ? '#333' : '#E5E5E5';
   };
 
+  const glowOpacity = useSharedValue(0.2);
+  useEffect(() => {
+    if (eventStatus === 'live') {
+      glowOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0.8, { duration: 1000 }),
+          withTiming(0.2, { duration: 1000 })
+        ),
+        -1,
+        true
+      );
+    }
+  }, [eventStatus]);
+
+  const animatedGlowStyle = useAnimatedStyle(() => {
+    return {
+      shadowOpacity: glowOpacity.value,
+      shadowRadius: 15 + (glowOpacity.value * 5),
+    };
+  });
+
+  const isOfficial = event?.profiles?.username === 'unnasocialappoficial';
+  const officialPulse = useSharedValue(1);
+  
+  useEffect(() => {
+    if (isOfficial) {
+      officialPulse.value = withRepeat(
+        withSequence(withTiming(1.02, { duration: 1000 }), withTiming(1, { duration: 1000 })),
+        -1,
+        true
+      );
+    }
+  }, [isOfficial]);
+
+  const officialAnimStyle = useAnimatedStyle(() => {
+    if (!isOfficial) return {};
+    return {
+      transform: [{ scale: officialPulse.value }],
+      shadowColor: accent,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: interpolate(officialPulse.value, [1, 1.02], [0.3, 0.8]),
+      shadowRadius: 10,
+      elevation: interpolate(officialPulse.value, [1, 1.02], [2, 6]),
+      borderColor: accent,
+      borderWidth: 2,
+    };
+  });
+
 
   return (
     <Animated.View style={[
       styles.cardContainer, 
       { 
         backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', 
-        borderWidth: eventStatus !== 'none' ? 2 : 1, 
-        borderColor: getBorderColor() 
-      }
+        borderWidth: eventStatus !== 'none' || isOfficial ? 2 : 1, 
+        borderColor: isOfficial ? accent : getBorderColor(),
+        overflow: 'hidden'
+      },
+      animatedGlowStyle,
+      officialAnimStyle
     ]}>
       
+
       {/* ── Header ── */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.avatarWrap} activeOpacity={0.8} onPress={() => {
@@ -152,7 +207,7 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
           if (profileId) router.push(`/profile/${profileId}`);
         }}>
           {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            <Image source={{ uri: avatarUrl }} style={styles.avatar} transition={200} />
           ) : (
             <View style={[styles.avatar, { backgroundColor: '#444', justifyContent: 'center', alignItems: 'center' }]}>
                <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{fullName.charAt(0).toUpperCase()}</Text>
@@ -215,21 +270,41 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
               </View>
             )}
 
-            {/* Live/Soon/Upcoming/Finished Badge */}
-            {eventStatus !== 'none' && (
-              <View style={[styles.liveBadge, { 
-                backgroundColor: eventStatus === 'live' ? 'rgba(0,230,118,0.9)' : eventStatus === 'soon' ? 'rgba(255,215,0,0.9)' : eventStatus === 'upcoming' ? 'rgba(157,78,221,0.9)' : 'rgba(255,59,48,0.9)', 
-                borderColor: eventStatus === 'live' ? '#00E676' : eventStatus === 'soon' ? '#FFD700' : eventStatus === 'upcoming' ? '#9D4EDD' : '#FF3B30' 
-              }]}>
-                {(eventStatus === 'live' || eventStatus === 'soon' || eventStatus === 'upcoming') && <View style={[styles.liveDot, { backgroundColor: eventStatus === 'soon' ? '#333' : '#FFF' }]} />}
-                <Text style={[styles.liveText, { color: eventStatus === 'soon' ? '#333' : '#FFF' }]}>
-                  {eventStatus === 'live' ? 'AO VIVO' : 
-                   eventStatus === 'soon' ? `COMEÇA EM ${timeUntilStart.toUpperCase()}` : 
-                   eventStatus === 'upcoming' ? `FALTAM ${timeUntilStart.toUpperCase()}` : 
-                   'FINALIZADO'}
-                </Text>
+            {/* Top Left Badges */}
+            <View style={styles.badgesTopLeft}>
+
+              {/* Live/Soon/Upcoming/Finished Badge */}
+              {eventStatus !== 'none' && (
+                <View style={[styles.liveBadge, { 
+                  backgroundColor: eventStatus === 'live' ? 'rgba(0,230,118,0.9)' : eventStatus === 'soon' ? 'rgba(255,215,0,0.9)' : eventStatus === 'upcoming' ? 'rgba(157,78,221,0.9)' : 'rgba(255,59,48,0.9)', 
+                  borderColor: eventStatus === 'live' ? '#00E676' : eventStatus === 'soon' ? '#FFD700' : eventStatus === 'upcoming' ? '#9D4EDD' : '#FF3B30' 
+                }]}>
+                  {(eventStatus === 'live' || eventStatus === 'soon' || eventStatus === 'upcoming') && <View style={[styles.liveDot, { backgroundColor: eventStatus === 'soon' ? '#333' : '#FFF' }]} />}
+                  <Text style={[styles.liveText, { color: eventStatus === 'soon' ? '#333' : '#FFF' }]}>
+                    {eventStatus === 'live' ? 'AO VIVO' : 
+                     eventStatus === 'soon' ? `COMEÇA EM ${timeUntilStart.toUpperCase()}` : 
+                     eventStatus === 'upcoming' ? `FALTAM ${timeUntilStart.toUpperCase()}` : 
+                     'FINALIZADO'}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Top Right Badges */}
+            {event.categories?.name && (
+              <View style={[styles.badgesTopRight]}>
+                <View style={[styles.categoryBadge, { borderColor: event.categories.color ? event.categories.color + '50' : accent + '50', backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+                  {event.categories.icon ? (
+                    <Text style={{ fontSize: 12, marginRight: 4 }}>{event.categories.icon}</Text>
+                  ) : (
+                    <Tag size={12} color={event.categories.color || accent} style={{ marginRight: 4 }} />
+                  )}
+                  <Text style={[styles.categoryBadgeText, { color: event.categories.color || accent }]}>{event.categories.name}</Text>
+                </View>
               </View>
             )}
+
+
           </View>
         )}
 
@@ -269,7 +344,7 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
       </View>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   cardContainer: {
@@ -376,10 +451,43 @@ const styles = StyleSheet.create({
     fontSize: ms(11),
     fontWeight: '800',
   },
-  liveBadge: {
+  badgesTopLeft: {
     position: 'absolute',
     top: 12,
     left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(8),
+    flexWrap: 'wrap',
+    right: 100, // Avoid overlapping with right badges
+  },
+  badgesTopRight: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: s(10),
+    paddingVertical: vs(5),
+    borderRadius: ms(12),
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  categoryBadgeText: {
+    fontSize: ms(10),
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,20,147,0.8)',

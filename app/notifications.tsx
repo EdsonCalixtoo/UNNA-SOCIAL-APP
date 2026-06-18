@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Platform } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -50,6 +51,7 @@ const formatNotificationMessage = (msg: string) => {
 };
 
 export default function NotificationsScreen() {
+  const { t } = useLanguage();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -367,7 +369,7 @@ export default function NotificationsScreen() {
         {/* Botão de delete revelado atrás */}
         <Animated.View style={[styles.swipeDeleteBg, deleteButtonStyle]}>
           <Trash2 size={22} color="#fff" />
-          <Text style={styles.swipeDeleteText}>Excluir</Text>
+          <Text style={styles.swipeDeleteText}>{t('auto.s856c3790', 'Excluir')}</Text>
         </Animated.View>
 
         <GestureDetector gesture={panGesture}>
@@ -518,13 +520,13 @@ export default function NotificationsScreen() {
                   style={[styles.actionBtn, styles.acceptBtn, { backgroundColor: accent }]}
                   onPress={() => handleAcceptRequest(req)}
                 >
-                  <Text style={styles.acceptBtnText}>Aceitar</Text>
+                  <Text style={styles.acceptBtnText}>{t('auto.s0daa75a4', 'Aceitar')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[styles.actionBtn, styles.declineBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}
                   onPress={() => handleDeclineRequest(req)}
                 >
-                  <Text style={[styles.declineBtnText, { color: textSecondary }]}>Recusar</Text>
+                  <Text style={[styles.declineBtnText, { color: textSecondary }]}>{t('auto.sa3eb1eb4', 'Recusar')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -545,7 +547,7 @@ export default function NotificationsScreen() {
           <BellOff size={vs(40)} color={textSecondary} opacity={0.5} />
         </View>
       </Animated.View>
-      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Tudo limpo por aqui!</Text>
+      <Text style={[styles.emptyTitle, { color: textPrimary }]}>{t('auto.s7baefcc0', 'Tudo limpo por aqui!')}</Text>
       <Text style={[styles.emptySubtitle, { color: textSecondary }]}>
         Suas notificações aparecerão aqui quando alguém interagir com você.
       </Text>
@@ -553,7 +555,7 @@ export default function NotificationsScreen() {
         style={[styles.refreshButton, { backgroundColor: accent }]}
         onPress={() => fetchNotifications()}
       >
-        <Text style={styles.refreshButtonText}>Atualizar</Text>
+        <Text style={styles.refreshButtonText}>{t('auto.se0520c8c', 'Atualizar')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -569,7 +571,7 @@ export default function NotificationsScreen() {
           >
             <ChevronLeft size={vs(24)} color={textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: textPrimary }]}>Notificações</Text>
+          <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.sc5786b62', 'Notificações')}</Text>
           {notifications.length > 0 ? (
             <TouchableOpacity
               style={styles.clearAllBtn}

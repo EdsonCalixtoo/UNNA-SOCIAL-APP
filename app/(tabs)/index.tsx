@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Image, Modal, ScrollView, Platform, Dimensions, AppState } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, Image, Modal, ScrollView, Platform, Dimensions, AppState } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Post, Category, Subcategory } from '@/types/database';
+import { useLanguage } from '@/lib/i18n';
 import StoriesBar from '@/components/StoriesBar';
 import PostCard from '@/components/PostCard';
 import EventCard from '@/components/EventCard';
 import { EventCardSkeleton } from '@/components/Skeleton';
 import { EventParticipantsModal } from '@/components/EventParticipantsModal';
 import CommentsModal from '@/components/CommentsModal';
-import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle, MapPin, Trophy } from 'lucide-react-native';
+import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle, MapPin } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +19,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
 import PageTransition from '@/components/PageTransition';
 import * as Haptics from 'expo-haptics';
-import { Check } from 'lucide-react-native';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -25,13 +26,14 @@ import Animated, {
   useAnimatedScrollHandler,
   interpolate,
   Extrapolation,
-  FadeInUp,
   runOnJS
 } from 'react-native-reanimated';
 import { useUI } from '@/contexts/UIContext';
 import { notifyEventLike } from '@/lib/notifications';
 import { mapService } from '@/services/mapService';
+import LottieView from 'lottie-react-native';
 
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any) as any;
 
 const { width } = Dimensions.get('window');
 
@@ -101,7 +103,9 @@ interface ExtendedPost {
 
 export default function Feed() {
   const { user } = useAuth();
-  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent, isWorldCupMode, toggleWorldCupMode } = useTheme();
+  const { t } = useLanguage();
+  const { isDark, accent, backgroundPrimary, backgroundSecondary, textPrimary, textSecondary } = useTheme();
+  const [showConfetti, setShowConfetti] = useState(false);
   const params = useLocalSearchParams();
   const [posts, setPosts] = useState<ExtendedPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +127,12 @@ export default function Feed() {
   const [appState, setAppState] = useState(AppState.currentState);
   const [userLoc, setUserLoc] = useState<{ latitude: number; longitude: number } | null>(null);
   const [searchRadius, setSearchRadius] = useState<number>(0);
+
+  // Pagination state
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const PAGE_SIZE = 15;
 
   useEffect(() => {
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
@@ -150,11 +160,9 @@ export default function Feed() {
       const currentY = event.contentOffset.y;
       const diff = currentY - lastScrollY.value;
       
-      // Esconder header ao subir, mostrar ao descer
       if (currentY > HEADER_HEIGHT) {
         headerTranslateY.value = withTiming(diff > 0 ? -HEADER_HEIGHT : 0, { duration: 300 });
         
-        // Controle da TabBar
         if (diff > 10 && currentY > 100) {
           runOnJS(hideTabBar)();
         } else if (diff < -10) {
@@ -180,16 +188,14 @@ export default function Feed() {
     loadUnreadNotifications();
     loadUnreadMessages();
     
-    // Gerar um ID único para esta instância da inscrição para evitar conflitos de HMR
     const instanceId = Math.random().toString(36).substring(7);
 
-    // Escutar mudanças em tempo real nas notificações
     const notificationSubscription = supabase
       .channel(`notifications-badge:${user?.id}:${instanceId}`)
       .on(
         'postgres_changes',
         {
-          event: '*', // Escuta INSERT, UPDATE e DELETE em um só
+          event: '*',
           schema: 'public',
           table: 'notifications',
           filter: `user_id=eq.${user?.id}`,
@@ -200,7 +206,6 @@ export default function Feed() {
       )
       .subscribe();
 
-    // Escutar mudanças em tempo real nos eventos
     const eventsSubscription = supabase
       .channel(`events-realtime:${user?.id}:${instanceId}`)
       .on(
@@ -216,7 +221,6 @@ export default function Feed() {
       )
       .subscribe();
 
-    // Escutar mudanças em tempo real nos posts
     const postsSubscription = supabase
       .channel(`posts-realtime:${user?.id}:${instanceId}`)
       .on(
@@ -232,7 +236,6 @@ export default function Feed() {
       )
       .subscribe();
 
-    // Escutar curtidas e participações para atualizar contadores
     const interactionsSubscription = supabase
       .channel(`interactions-realtime:${user?.id}:${instanceId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, () => loadPosts())
@@ -240,7 +243,6 @@ export default function Feed() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, () => loadPosts())
       .subscribe();
 
-    // Escutar mudanças em tempo real nas mensagens para a badge
     const messagesSubscription = supabase
       .channel(`messages-badge:${user?.id}:${instanceId}`)
       .on(
@@ -311,9 +313,8 @@ export default function Feed() {
   };
 
   useEffect(() => {
-    loadPosts();
     loadCategories();
-    loadUserPreferences();
+    loadPosts();
   }, []);
 
   useEffect(() => {
@@ -327,13 +328,8 @@ export default function Feed() {
       } else {
         setSelectedSubcategories([]);
       }
-
-      // Removido o setTimeout que abria o modal de filtros automaticamente
-      // para permitir que o usuário veja o feed filtrado direto.
     }
   }, [params.filterCategoryId, params.filterSubcategoryId]);
-
-  // As subcategorias agora são pré-carregadas em lote na inicialização, eliminando a lentidão e requisições ao clicar.
 
   useEffect(() => {
     if (showFilters) {
@@ -342,26 +338,13 @@ export default function Feed() {
   }, [showFilters]);
 
   useEffect(() => {
-    loadPosts();
+    setPage(0);
+    setHasMore(true);
+    setPosts([]);
+    loadPosts(0, true);
   }, [selectedCategories, selectedSubcategories, dateFilter, searchRadius]);
 
-  const loadUserPreferences = async () => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('preferred_categories')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data?.preferred_categories && data.preferred_categories.length > 0) {
-        setSelectedCategories(data.preferred_categories);
-      }
-    } catch (error) {
-      console.error('Error loading user preferences:', error);
-    }
-  };
+  // User preferences are no longer loaded here to avoid automatically filtering the feed
 
   const loadCategories = async () => {
     try {
@@ -380,13 +363,38 @@ export default function Feed() {
     }
   };
 
-  const loadPosts = async () => {
+  const loadPosts = async (currentPage = page, isRefresh = false) => {
+    if (loading && !isRefresh) return;
+    if (!isRefresh && !hasMore) return;
+    
+    if (isRefresh) {
+      setLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+
     try {
-      // 1. Busca os Posts recentes
+      const from = currentPage * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      // Pegar todas as curtidas do usuário de uma vez
+      let userEventLikesSet = new Set<string>();
+      let userPostLikesSet = new Set<string>();
+      
+      if (user) {
+        const [uEventLikes, uPostLikes] = await Promise.all([
+          supabase.from('event_likes').select('event_id').eq('user_id', user.id),
+          supabase.from('post_likes').select('post_id').eq('user_id', user.id)
+        ]);
+        userEventLikesSet = new Set(uEventLikes.data?.map(l => l.event_id) || []);
+        userPostLikesSet = new Set(uPostLikes.data?.map(l => l.post_id) || []);
+      }
+
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
         .select(`
           *,
+          likes:post_likes(count),
           profiles:user_id (id, username, full_name, avatar_url),
           events:event_id (
             id, title, description, image_url, image_urls, media_types, event_date, event_time, 
@@ -394,19 +402,24 @@ export default function Feed() {
             category_id, subcategory_id, created_at,
             categories:category_id (name, icon),
             subcategories:subcategory_id (name),
-            profiles:creator_id (id, username, full_name, avatar_url)
+            profiles:creator_id (id, username, full_name, avatar_url),
+            likes:event_likes(count),
+            comments:event_comments(count),
+            participants:event_participants(count)
           )
         `)
         .order('created_at', { ascending: false })
-        .limit(30);
+        .range(from, to);
 
       if (postsError) throw postsError;
 
-      // 2. Busca Eventos que ainda não aconteceram e que PODEM não ter posts vinculados
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select(`
           *,
+          likes:event_likes(count),
+          comments:event_comments(count),
+          participants:event_participants(count),
           categories:category_id (name, icon),
           subcategories:subcategory_id (name),
           profiles:creator_id (id, username, full_name, avatar_url)
@@ -414,11 +427,10 @@ export default function Feed() {
         .eq('type', 'event')
         .gte('event_date', new Date().toISOString().split('T')[0])
         .order('created_at', { ascending: false })
-        .limit(20);
+        .range(from, to);
 
       if (eventsError) throw eventsError;
 
-      // 3. Mesclar e remover duplicatas (eventos que já aparecem como posts)
       const eventIdsInPosts = new Set(postsData?.map(p => p.event_id).filter(Boolean));
       
       const uniqueEvents = (eventsData || [])
@@ -434,7 +446,9 @@ export default function Feed() {
         }));
 
       let combinedData = [...(postsData || []), ...uniqueEvents];
-      let filteredData = combinedData;
+      
+      // Filter out memory posts from the feed so they don't duplicate the event
+      let filteredData = combinedData.filter(post => !(post.event_id && post.content === 'Memória do evento! 📸'));
 
       if (selectedCategories.length > 0) {
         filteredData = filteredData.filter(post =>
@@ -477,112 +491,98 @@ export default function Feed() {
         if (currentLoc) setUserLoc(currentLoc);
       }
 
-      if (currentLoc) {
-        const distanceFiltered = filteredData.filter(post => {
+      if (currentLoc && searchRadius > 0) {
+        filteredData = filteredData.filter(post => {
           const eventLat = post.events?.latitude;
           const eventLon = post.events?.longitude;
           if (eventLat && eventLon) {
-             const dist = mapService.getDistanceInKm(currentLoc.latitude, currentLoc.longitude, parseFloat(String(eventLat)), parseFloat(String(eventLon)));
-             if (searchRadius === 0) return true; // 0 significa "Qualquer distância"
+             const dist = mapService.getDistanceInKm(currentLoc!.latitude, currentLoc!.longitude, parseFloat(String(eventLat)), parseFloat(String(eventLon)));
              return dist <= searchRadius;
           }
-          return true; // Mantém posts sem localização específica
+          return true;
         });
-        
-        // Fallback: se o filtro por KM esvaziou o feed de eventos locais, 
-        // e não há posts normais para mostrar, ignoramos a distância para a tela não ficar em branco
-        if (distanceFiltered.length === 0 && filteredData.length > 0) {
-          // Mantém o filteredData original (ignorando os KMs)
-        } else {
-          filteredData = distanceFiltered;
-        }
       }
 
-      const postsWithLikes = await Promise.all(
-        filteredData
-          .filter(post => {
-            // Se o post é automático (sistema) e tem um event_id, ele OBRIGATORIAMENTE precisa ter o objeto events
-            const isAutoPost = post.content?.includes('Criei um novo evento') || post.content?.includes('Publiquei algo novo');
-            if (isAutoPost && post.event_id && (!post.events || !post.events.id)) return false;
-            // Garante que o perfil do autor exista
-            return post && post.profiles;
-          })
-          .map(async (post) => {
-            try {
-              // Determine if we should look for event likes or post likes
-              const isEventPost = !!post.event_id && !!post.events;
-              const targetTable = isEventPost ? 'event_likes' : 'post_likes';
-              const targetColumn = isEventPost ? 'event_id' : 'post_id';
-              const targetId = isEventPost ? post.events!.id : post.id;
+      // NO MORE N+1 PROMISE.ALL HERE!
+      const processedPosts = filteredData
+        .filter(post => {
+          const isAutoPost = post.content?.includes('Criei um novo evento') || post.content?.includes('Publiquei algo novo');
+          if (isAutoPost && post.event_id && (!post.events || !post.events.id)) return false;
+          return post && post.profiles;
+        })
+        .map(post => {
+          const isEventPost = !!post.event_id && !!post.events;
+          
+          let pLikesCount = 0;
+          if (post.likes && Array.isArray(post.likes)) pLikesCount = post.likes[0]?.count || 0;
+          
+          let eLikesCount = 0;
+          let eCommentsCount = 0;
+          let eParticipantsCount = 0;
+          
+          if (post.events) {
+            if (post.events.likes && Array.isArray(post.events.likes)) eLikesCount = post.events.likes[0]?.count || 0;
+            if (post.events.comments && Array.isArray(post.events.comments)) eCommentsCount = post.events.comments[0]?.count || 0;
+            if (post.events.participants && Array.isArray(post.events.participants)) eParticipantsCount = post.events.participants[0]?.count || 0;
+          }
 
-              const { count: likesCount } = await supabase
-                .from(targetTable)
-                .select('*', { count: 'exact', head: true })
-                .eq(targetColumn, targetId);
+          return {
+            ...post,
+            likes_count: isEventPost ? eLikesCount : pLikesCount,
+            comments_count: isEventPost ? eCommentsCount : 0,
+            participants_count: isEventPost ? eParticipantsCount : 0,
+            is_liked: isEventPost ? userEventLikesSet.has(post.events!.id) : userPostLikesSet.has(post.id),
+            events: post.events ? {
+              ...post.events,
+              likes_count: eLikesCount,
+              comments_count: eCommentsCount,
+              participants_count: eParticipantsCount,
+              is_liked: userEventLikesSet.has(post.events.id)
+            } : undefined
+          };
+        });
 
-              const { data: userLike } = await supabase
-                .from(targetTable)
-                .select('id')
-                .eq(targetColumn, targetId)
-                .eq('user_id', user?.id)
-                .maybeSingle();
-
-              let commentsCount = 0;
-              let participantsCount = 0;
-              
-              if (isEventPost && post.events) {
-                const [{ count: cCount }, { count: pCount }] = await Promise.all([
-                  supabase.from('event_comments').select('*', { count: 'exact', head: true }).eq('event_id', post.events.id),
-                  supabase.from('event_participants').select('*', { count: 'exact', head: true }).eq('event_id', post.events.id)
-                ]);
-                commentsCount = cCount || 0;
-                participantsCount = pCount || 0;
-              }
-
-              return {
-                ...post,
-                likes_count: likesCount || 0,
-                comments_count: commentsCount,
-                participants_count: participantsCount,
-                is_liked: !!userLike,
-                events: post.events ? {
-                  ...post.events,
-                  likes_count: isEventPost ? (likesCount || 0) : post.events.likes_count,
-                  comments_count: isEventPost ? commentsCount : post.events.comments_count,
-                  participants_count: isEventPost ? participantsCount : post.events.participants_count,
-                  is_liked: isEventPost ? !!userLike : post.events.is_liked
-                } : undefined
-              };
-            } catch (err) {
-              console.error('Error processing post:', post.id, err);
-              return post;
-            }
-          })
-      );
-
-
-      setPosts(postsWithLikes.filter(p => p !== null).sort((a, b) => {
-        // Lógica de Smart Feed: Prioriza categorias selecionadas/interesses
+      const newPosts = processedPosts.sort((a, b) => {
         const aMatches = a.events?.category_id && selectedCategories.includes(a.events.category_id);
         const bMatches = b.events?.category_id && selectedCategories.includes(b.events.category_id);
-        
         if (aMatches && !bMatches) return -1;
         if (!aMatches && bMatches) return 1;
-        
-        // Se ambos casam ou ambos não casam, mantém a ordem cronológica (mais novos primeiro)
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }));
+      });
+
+      if (isRefresh) {
+        setPosts(newPosts);
+      } else {
+        setPosts(prev => {
+          // Remove duplicates
+          const existingIds = new Set(prev.map(p => p.id));
+          const uniqueNew = newPosts.filter(p => !existingIds.has(p.id));
+          return [...prev, ...uniqueNew];
+        });
+      }
+
+      setHasMore(postsData!.length === PAGE_SIZE || eventsData!.length === PAGE_SIZE);
+      
     } catch (error) {
       console.error('Error loading posts:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setIsLoadingMore(false);
     }
   };
 
+  const handleLoadMore = () => {
+    if (!isLoadingMore && hasMore && !loading) {
+      setPage(prev => prev + 1);
+      loadPosts(page + 1, false);
+    }
+  };;
+
   const handleRefresh = () => {
-    setRefreshing(true);
-    loadPosts();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPage(0);
+    loadPosts(0, true);
   };
 
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
@@ -590,7 +590,6 @@ export default function Feed() {
     setVisibleItems(ids);
 
     if (viewableItems && viewableItems.length > 0) {
-      // O item ativo é o primeiro item visível da lista (estilo TikTok/Facebook)
       const activeItem = viewableItems[0];
       setActiveVideoId(activeItem.key);
     } else {
@@ -599,13 +598,12 @@ export default function Feed() {
   }, []);
 
   const viewabilityConfig = useMemo(() => ({
-    itemVisiblePercentThreshold: 50, // O item é considerado visível se 50% dele aparecer
+    itemVisiblePercentThreshold: 50,
   }), []);
 
   const handleLike = async (id: string, isLiked: boolean) => {
     if (!user) return;
 
-    // Detect if it's an event or a post
     const targetPost = posts.find(p => p.id === id || p.events?.id === id);
     const isEvent = !!targetPost?.events && targetPost.events.id === id;
 
@@ -617,7 +615,6 @@ export default function Feed() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await supabase.from('event_likes').insert({ event_id: id, user_id: user.id });
         
-        // Notificar o criador do evento
         if (targetPost?.events) {
           notifyEventLike(
             id, 
@@ -642,7 +639,6 @@ export default function Feed() {
       if (isEvent && p.events?.id === id) {
         const isLikedNow = !isLiked;
       
-        // Feedback Tátil Premium
         if (isLikedNow) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } else {
@@ -667,7 +663,7 @@ export default function Feed() {
     }));
   };
 
-  const renderItem = ({ item, index }: { item: ExtendedPost; index: number }) => {
+  const renderItem = ({ item, index }: { item: any; index: number }) => {
     const isItemActive = activeVideoId === item.id && appState === 'active';
     return (
       <View>
@@ -693,16 +689,6 @@ export default function Feed() {
     );
   };
 
-  if (loading && !refreshing) {
-    return (
-      <View style={[styles.container, { backgroundColor: backgroundPrimary, paddingTop: HEADER_HEIGHT }]}>
-        <EventCardSkeleton />
-        <EventCardSkeleton />
-        <EventCardSkeleton />
-      </View>
-    );
-  }
-
   return (
     <PageTransition>
       <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
@@ -726,12 +712,6 @@ export default function Feed() {
           <Text style={[styles.logo, { color: textPrimary }]} numberOfLines={1}>U<Text style={styles.logoSpecial}>N</Text><Text style={styles.logoPink}>И</Text>A</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={[styles.iconButton, { backgroundColor: isWorldCupMode ? '#00B32C' : (isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)'), borderColor: isWorldCupMode ? '#FFD700' : (isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)') }]}
-            onPress={toggleWorldCupMode}
-          >
-            <Trophy size={18} color={isWorldCupMode ? '#fff' : accent} />
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}
             onPress={() => router.push('/messages')}
@@ -766,23 +746,24 @@ export default function Feed() {
         </View>
       </Animated.View>
 
-      <Animated.FlatList
-        ref={listRef}
+      {/* @ts-ignore - Reanimated drops FlashList typings */}
+      <AnimatedFlashList
+        ref={listRef as any}
         data={posts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item: any) => item.id}
+        estimatedItemSize={500}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          isLoadingMore ? (
+            <View style={{ padding: 20 }}>
+              <ActivityIndicator color={accent} />
+            </View>
+          ) : null
+        }
         ListHeaderComponent={
           <View>
             <StoriesBar />
-            {isWorldCupMode && (
-              <View style={{ paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#FFD700', marginHorizontal: 12, borderRadius: 16, marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View>
-                  <Text style={{ fontWeight: '900', color: '#00B32C', fontSize: 18, textTransform: 'uppercase' }}>Rumo ao Hexa 🇧🇷</Text>
-                  <Text style={{ color: '#000', fontWeight: '600', fontSize: 12, marginTop: 4 }}>Bares, Arenas e Transmissões</Text>
-                </View>
-                <Trophy size={32} color="#00B32C" />
-              </View>
-            )}
-            {/* Categories horizontal list removed per user request */}
           </View>
         }
         renderItem={renderItem}
@@ -790,10 +771,19 @@ export default function Feed() {
         scrollEventThrottle={16}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        windowSize={3}
-        initialNumToRender={5}
-        removeClippedSubviews={Platform.OS === 'android'}
-        maxToRenderPerBatch={5}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.loadingContainer}>
+              <EventCardSkeleton />
+              <EventCardSkeleton />
+              <EventCardSkeleton />
+            </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: textSecondary }]}>{t('feed.noPosts', 'Nenhum post encontrado.')}</Text>
+            </View>
+          )
+        }
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
@@ -803,7 +793,6 @@ export default function Feed() {
             progressViewOffset={HEADER_HEIGHT + vs(10)}
           />
         }
-
         contentContainerStyle={[
           styles.listContent, 
           { 
@@ -813,6 +802,18 @@ export default function Feed() {
         ]}
         showsVerticalScrollIndicator={false}
       />
+
+        {showConfetti && (
+          <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none', zIndex: 9999 }]}>
+            <LottieView
+              source={{ uri: 'https://assets9.lottiefiles.com/packages/lf20_u4yrau.json' }}
+              autoPlay
+              loop={false}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+            />
+          </View>
+        )}
 
       <Modal
         visible={showFilters}
@@ -843,8 +844,8 @@ export default function Feed() {
             
             <View style={[styles.modalHeader, { borderBottomWidth: 0 }]}>
               <View>
-                <Text style={[styles.modalTitle, { color: textPrimary }]}>Filtrar Experiências</Text>
-                <Text style={[styles.modalSubtitle, { color: textSecondary }]}>Encontre exatamente o que você busca</Text>
+                <Text style={[styles.modalTitle, { color: textPrimary }]}>{t('home.filterExperiences', 'Filtrar Experiências')}</Text>
+                <Text style={[styles.modalSubtitle, { color: textSecondary }]}>{t('home.searchGuide', 'Encontre exatamente o que você busca')}</Text>
               </View>
               <TouchableOpacity 
                 onPress={() => setShowFilters(false)}
@@ -858,7 +859,7 @@ export default function Feed() {
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <Calendar size={18} color={accent} />
-                  <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>Quando?</Text>
+                  <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>{t('home.when', 'Quando?')}</Text>
                 </View>
                 <ScrollView 
                   horizontal 
@@ -866,10 +867,10 @@ export default function Feed() {
                   contentContainerStyle={styles.dateChipsContainer}
                 >
                   {[
-                    { key: 'all', label: 'Tudo' },
-                    { key: 'today', label: 'Hoje' },
-                    { key: 'week', label: 'Esta Semana' },
-                    { key: 'month', label: 'Este Mês' }
+                    { key: 'all', label: t('date.all', 'Tudo') },
+                    { key: 'today', label: t('date.today', 'Hoje') },
+                    { key: 'week', label: t('date.week', 'Esta Semana') },
+                    { key: 'month', label: t('date.month', 'Este Mês') }
                   ].map(option => (
                     <TouchableOpacity
                       key={option.key}
@@ -898,7 +899,7 @@ export default function Feed() {
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <MapPin size={18} color={accent} />
-                  <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>Distância Máxima</Text>
+                  <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>{t('home.maxDistance', 'Distância Máxima')}</Text>
                 </View>
                 <ScrollView 
                   horizontal 
@@ -910,7 +911,7 @@ export default function Feed() {
                     { value: 50, label: '50 km' },
                     { value: 100, label: '100 km' },
                     { value: 500, label: '500 km' },
-                    { value: 0, label: 'Qualquer' }
+                    { value: 0, label: t('home.any', 'Qualquer') }
                   ].map(option => (
                     <TouchableOpacity
                       key={option.value}
@@ -939,9 +940,8 @@ export default function Feed() {
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <Filter size={18} color={accent} />
-                  <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>O que te interessa?</Text>
+                  <Text style={[styles.filterSectionTitle, { color: textSecondary }]}>{t('home.interests', 'O que te interessa?')}</Text>
                 </View>
-                {/* LISTA DE CATEGORIAS EM LARGURA TOTAL */}
                 <View style={styles.modernCategoryList}>
                   {categories.map((category) => {
                     const isExpanded = expandedCategory === category.id;
@@ -970,12 +970,12 @@ export default function Feed() {
                         >
                           <View style={styles.categoryRowLeft}>
                             <Text style={styles.categoryRowIcon}>{category.icon}</Text>
-                            <Text style={[styles.categoryRowLabel, { color: textPrimary }]}>{category.name}</Text>
+                            <Text style={[styles.categoryRowLabel, { color: textPrimary }]}>{t(`dbCategories.${category.name}`, category.name)}</Text>
                           </View>
                           <View style={styles.categoryRowRight}>
                             {isSelected && (
                               <View style={[styles.miniBadge, { backgroundColor: accent }]}>
-                                <Text style={styles.miniBadgeText}>OK</Text>
+                                <Text style={styles.miniBadgeText}>{t('auto.se0aa021e', 'OK')}</Text>
                               </View>
                             )}
                             <View style={{ transform: [{ rotate: isExpanded ? '90deg' : '0deg' }] }}>
@@ -1012,7 +1012,7 @@ export default function Feed() {
                                     styles.subcategoryRowText, 
                                     { color: isSubSelected ? rowColor : '#fff' }
                                   ]}>
-                                    {sub.name}
+                                    {t(`dbCategories.${sub.name}`, sub.name)}
                                   </Text>
                                   <View style={[styles.chevronCircle, { backgroundColor: isSubSelected ? rowColor + '22' : 'rgba(255,255,255,0.3)' }]}>
                                     <ChevronRight size={16} color={isSubSelected ? rowColor : '#fff'} strokeWidth={3} />
@@ -1040,13 +1040,13 @@ export default function Feed() {
                   setSearchRadius(0);
                 }}
               >
-                <Text style={styles.clearButtonText}>Limpar Filtros</Text>
+                <Text style={styles.clearButtonText}>{t('home.clearFilters', 'Limpar Filtros')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.applyButton}
                 onPress={() => setShowFilters(false)}
               >
-                <Text style={styles.applyButtonText}>Aplicar</Text>
+                <Text style={styles.applyButtonText}>{t('home.apply', 'Aplicar')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1428,6 +1428,16 @@ const styles = StyleSheet.create({
     paddingLeft: s(6),
     paddingRight: s(18),
     gap: s(10),
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: vs(50),
+  },
+  emptyText: {
+    fontSize: ms(14),
+    fontFamily: 'Inter-Medium',
   },
   bubblyFilterIconBox: {
     width: vs(36),

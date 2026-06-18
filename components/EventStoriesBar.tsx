@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadFile } from '@/lib/storage';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import { useLanguage } from '@/lib/i18n';
 import { Alert } from 'react-native';
 import FullscreenMediaViewer from './FullscreenMediaViewer';
 import PremiumConfirmationModal from './PremiumConfirmationModal';
@@ -31,6 +32,7 @@ interface EventStory {
 export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, isParticipant: boolean }) => {
   const { user } = useAuth();
   const { accent, textPrimary, backgroundSecondary, isDark } = useTheme();
+  const { t } = useLanguage();
   
   const [stories, setStories] = useState<EventStory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,20 +71,49 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
   const handleAddStory = async () => {
     if (!isParticipant) return;
     
+    Alert.alert(
+      t('common.addMemory', 'Adicionar Memória'),
+      t('common.chooseMediaDesc', 'Como deseja adicionar esta foto?'),
+      [
+        {
+          text: t('common.camera', 'Câmera'),
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permissão', 'Precisamos de acesso à câmera.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              quality: 0.7,
+              allowsEditing: true,
+              aspect: [9, 16]
+            });
+            if (!result.canceled) processImage(result.assets[0]);
+          }
+        },
+        {
+          text: t('common.gallery', 'Galeria'),
+          onPress: async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              quality: 0.7,
+              allowsEditing: true,
+              aspect: [9, 16]
+            });
+            if (!result.canceled) processImage(result.assets[0]);
+          }
+        },
+        { text: t('common.cancel', 'Cancelar'), style: 'cancel' }
+      ]
+    );
+  };
+
+  const processImage = async (asset: any) => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.7,
-        allowsEditing: true,
-        aspect: [9, 16]
-      });
-
-      if (result.canceled) return;
-
       setUploading(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      const asset = result.assets[0];
       const fileName = `event-stories/${eventId}/${user?.id}-${Date.now()}.jpg`;
       const publicUrl = await uploadFile(asset.uri, fileName, 'image/jpeg');
 
@@ -164,7 +195,7 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.title, { color: textPrimary }]}>Memórias do Evento</Text>
+      <Text style={[styles.title, { color: textPrimary }]}>{t('events.eventMemories', 'Memórias do Evento')}</Text>
       
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {isParticipant && (
@@ -180,7 +211,7 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
                 <Plus size={20} color="#fff" />
               </View>
             )}
-            <Text style={[styles.addText, { color: textPrimary }]}>Postar</Text>
+            <Text style={[styles.addText, { color: textPrimary }]}>{t('common.post', 'Postar')}</Text>
           </TouchableOpacity>
         )}
 
@@ -196,9 +227,9 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
                 }}
               >
                 <View style={[styles.storyBorder, { borderColor: isOwner ? accent : 'rgba(150,150,150,0.3)' }]}>
-                  <Image source={{ uri: story.media_url }} style={styles.storyImg} />
+                  <Image source={{ uri: story?.media_url }} style={styles.storyImg} />
                 </View>
-                <Image source={{ uri: story.profiles?.avatar_url }} style={styles.miniAvatar} />
+                <Image source={{ uri: story?.profiles?.avatar_url }} style={styles.miniAvatar} />
               </TouchableOpacity>
 
               {isOwner && (
@@ -223,10 +254,10 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
 
       <PremiumConfirmationModal
         visible={deleteModalVisible}
-        title="Remover Memória"
-        description="Tem certeza que deseja apagar esta foto do evento e do seu mural permanentemente?"
-        confirmText="Apagar Agora"
-        cancelText="Voltar"
+        title={t('events.removeMemory', 'Remover Memória')}
+        description={t('events.removeMemoryConfirm', 'Tem certeza que deseja apagar esta foto do evento e do seu mural permanentemente?')}
+        confirmText={t('common.delete', 'Apagar Agora')}
+        cancelText={t('common.back', 'Voltar')}
         onConfirm={confirmDeleteStory}
         onCancel={() => setDeleteModalVisible(false)}
       />

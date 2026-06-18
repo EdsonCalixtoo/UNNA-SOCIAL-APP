@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { memo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Image, Platform, Animated, Easing } from 'react-native';
 import { Marker } from 'react-native-maps';
@@ -10,6 +11,7 @@ interface EventMarkerProps {
 }
 
 const EventMarker = ({ event, markerColor, onPress, isSelected }: EventMarkerProps) => {
+  const { t } = useLanguage();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim2 = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(0.6)).current;
@@ -131,7 +133,7 @@ const EventMarker = ({ event, markerColor, onPress, isSelected }: EventMarkerPro
         {/* Badge de "Bombando" */}
         {isHot && !isSelected && (
           <View style={styles.hotBadge}>
-            <Text style={styles.hotBadgeText}>🔥</Text>
+            <Text style={styles.hotBadgeText}>{t('auto.scbe676ae', '🔥')}</Text>
           </View>
         )}
     </Marker>

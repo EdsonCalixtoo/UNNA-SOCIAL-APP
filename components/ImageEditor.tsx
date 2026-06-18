@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, Image, TouchableOpacity, Dimensions, ActivityIndicator, Platform } from 'react-native';
 import { X, RotateCw, Crop, ZoomIn, ZoomOut, Check, Undo2 } from 'lucide-react-native';
@@ -39,6 +40,7 @@ const FILTERS = [
 ];
 
 export default function ImageEditor({ visible, imageUri, onClose, onSave }: ImageEditorProps) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('adjust');
   const [editState, setEditState] = useState<EditState>({
     rotation: 0,
@@ -136,7 +138,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
   const renderAdjustTab = () => (
     <View style={styles.tabContent}>
       <View style={styles.sliderContainer}>
-        <Text style={styles.sliderLabel}>Brilho</Text>
+        <Text style={styles.sliderLabel}>{t('auto.sba830f72', 'Brilho')}</Text>
         <Slider
           style={styles.slider}
           minimumValue={-1}
@@ -151,7 +153,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
       </View>
 
       <View style={styles.sliderContainer}>
-        <Text style={styles.sliderLabel}>Contraste</Text>
+        <Text style={styles.sliderLabel}>{t('auto.se87e20af', 'Contraste')}</Text>
         <Slider
           style={styles.slider}
           minimumValue={-1}
@@ -166,7 +168,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
       </View>
 
       <View style={styles.sliderContainer}>
-        <Text style={styles.sliderLabel}>Saturação</Text>
+        <Text style={styles.sliderLabel}>{t('auto.s99484937', 'Saturação')}</Text>
         <Slider
           style={styles.slider}
           minimumValue={-1}
@@ -187,21 +189,21 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
       <View style={styles.transformButtons}>
         <TouchableOpacity style={styles.transformButton} onPress={handleRotate}>
           <RotateCw size={24} color="#00d9ff" />
-          <Text style={styles.transformButtonText}>Girar</Text>
+          <Text style={styles.transformButtonText}>{t('auto.s381dc09b', 'Girar')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.transformButton} onPress={handleFlipHorizontal}>
           <View style={styles.flipIcon}>
             <Text style={styles.flipIconText}>↔</Text>
           </View>
-          <Text style={styles.transformButtonText}>Espelhar H</Text>
+          <Text style={styles.transformButtonText}>{t('auto.s38ce720f', 'Espelhar H')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.transformButton} onPress={handleFlipVertical}>
           <View style={styles.flipIcon}>
             <Text style={styles.flipIconText}>↕</Text>
           </View>
-          <Text style={styles.transformButtonText}>Espelhar V</Text>
+          <Text style={styles.transformButtonText}>{t('auto.sd6017f09', 'Espelhar V')}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -235,7 +237,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
           <TouchableOpacity onPress={onClose} style={styles.headerButton}>
             <X size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Editar Foto</Text>
+          <Text style={styles.headerTitle}>{t('auto.sc0e701b4', 'Editar Foto')}</Text>
           <TouchableOpacity onPress={handleReset} style={styles.headerButton}>
             <Undo2 size={24} color="#00d9ff" />
           </TouchableOpacity>
@@ -245,7 +247,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
           {processing ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#00d9ff" />
-              <Text style={styles.loadingText}>Processando...</Text>
+              <Text style={styles.loadingText}>{t('auto.sb90655c4', 'Processando...')}</Text>
             </View>
           ) : (
             <Image
@@ -287,7 +289,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
 
         <View style={styles.footer}>
           <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-            <Text style={styles.cancelButtonText}>Cancelar</Text>
+            <Text style={styles.cancelButtonText}>{t('auto.s847607d7', 'Cancelar')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -300,7 +302,7 @@ export default function ImageEditor({ visible, imageUri, onClose, onSave }: Imag
             ) : (
               <>
                 <Check size={20} color="#fff" />
-                <Text style={styles.saveButtonText}>Salvar</Text>
+                <Text style={styles.saveButtonText}>{t('auto.seb7a0fed', 'Salvar')}</Text>
               </>
             )}
           </TouchableOpacity>

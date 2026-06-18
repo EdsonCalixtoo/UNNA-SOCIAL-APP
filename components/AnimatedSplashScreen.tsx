@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useEffect } from 'react';
 import { View, StyleSheet, Dimensions, Text } from 'react-native';
 import Animated, {
@@ -15,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 const { width, height } = Dimensions.get('window');
 
 export default function AnimatedSplashScreen() {
+  const { t } = useLanguage();
   const fadeIn = useSharedValue(0);
   const logoScale = useSharedValue(0.85);
   const loadingProgress = useSharedValue(0);
@@ -103,7 +105,7 @@ export default function AnimatedSplashScreen() {
         </View>
 
         {/* Subtítulo */}
-        <Text style={styles.tagline}>SOCIAL · EVENTS · YOU</Text>
+        <Text style={styles.tagline}>{t('auto.sab043598', 'SOCIAL · EVENTS · YOU')}</Text>
       </Animated.View>
 
       {/* Barra de progresso + pontos */}

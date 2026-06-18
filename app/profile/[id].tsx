@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Dimensions, Share, Animated, Easing, RefreshControl, Platform, Linking } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
@@ -47,6 +48,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 type TabType = 'posts' | 'events' | 'achievements';
 
 export default function UserProfile() {
+  const { t } = useLanguage();
   const { user, profile: currentUserProfile } = useAuth();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const router = useRouter();
@@ -553,7 +555,7 @@ export default function UserProfile() {
             <View style={[styles.compatibilityBox, { backgroundColor: isDark ? 'rgba(0,217,255,0.06)' : 'rgba(0,217,255,0.03)' }]}>
               <View style={styles.compatibilityHeader}>
                 <Heart size={16} color="#ff1493" fill="#ff1493" />
-                <Text style={[styles.compatibilityTitle, { color: textPrimary }]}>Vocês dois gostam de:</Text>
+                <Text style={[styles.compatibilityTitle, { color: textPrimary }]}>{t('auto.sd28100f7', 'Vocês dois gostam de:')}</Text>
               </View>
               <View style={styles.interestsGrid}>
                 {sharedInterests.map((cat) => (
@@ -582,7 +584,7 @@ export default function UserProfile() {
           <View style={styles.mainActions}>
             {user?.id === profile.id ? (
               <TouchableOpacity onPress={() => router.push('/(tabs)/profile/edit')} style={[styles.followBtn, { backgroundColor: backgroundSecondary, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} disabled={actionLoading}>
-                <Text style={[styles.followBtnText, { color: textPrimary }]}>Editar Perfil</Text>
+                <Text style={[styles.followBtnText, { color: textPrimary }]}>{t('auto.s91113aa1', 'Editar Perfil')}</Text>
               </TouchableOpacity>
             ) : (
               <>
@@ -606,7 +608,7 @@ export default function UserProfile() {
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: textPrimary }]}>{posts.length}</Text>
-            <Text style={[styles.statLabel, { color: textSecondary }]}>Posts</Text>
+            <Text style={[styles.statLabel, { color: textSecondary }]}>{t('auto.s5dc52ca9', 'Posts')}</Text>
           </View>
           <View style={styles.statDivider} />
           <TouchableOpacity 
@@ -618,7 +620,7 @@ export default function UserProfile() {
             }
           >
             <Text style={[styles.statValue, { color: textPrimary }]}>{followersCount}</Text>
-            <Text style={[styles.statLabel, { color: textSecondary }]}>Seguidores</Text>
+            <Text style={[styles.statLabel, { color: textSecondary }]}>{t('auto.sa9184d83', 'Seguidores')}</Text>
           </TouchableOpacity>
           <View style={styles.statDivider} />
           <TouchableOpacity 
@@ -630,7 +632,7 @@ export default function UserProfile() {
             }
           >
             <Text style={[styles.statValue, { color: textPrimary }]}>{followingCount}</Text>
-            <Text style={[styles.statLabel, { color: textSecondary }]}>Seguindo</Text>
+            <Text style={[styles.statLabel, { color: textSecondary }]}>{t('auto.s2ff5d35c', 'Seguindo')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -639,13 +641,13 @@ export default function UserProfile() {
             <View style={[styles.lockCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
               <Lock size={40} color={textSecondary} strokeWidth={1.5} />
             </View>
-            <Text style={[styles.privacyTitle, { color: textPrimary }]}>Esta conta é privada</Text>
+            <Text style={[styles.privacyTitle, { color: textPrimary }]}>{t('auto.s89998a7a', 'Esta conta é privada')}</Text>
             <Text style={[styles.privacySubtext, { color: textSecondary }]}>
               Siga esta conta para ver seus eventos e interações.
             </Text>
             {hasRequestPending && (
               <View style={[styles.pendingBadge, { backgroundColor: isDark ? 'rgba(0,217,255,0.1)' : 'rgba(0,217,255,0.05)' }]}>
-                <Text style={[styles.pendingText, { color: accent }]}>Solicitação enviada</Text>
+                <Text style={[styles.pendingText, { color: accent }]}>{t('auto.sd792ad2a', 'Solicitação enviada')}</Text>
               </View>
             )}
           </View>
@@ -654,30 +656,38 @@ export default function UserProfile() {
             {badges.length > 0 && (
               <View style={styles.badgesWrapper}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgesList}>
-                  {badges.map((badge: Badge) => (
+                  {badges.map((badge: any) => (
                     <TouchableOpacity 
                       key={badge.id} 
                       style={[styles.badgeChip, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}
-                      onPress={() => Alert.alert(badge.label, badge.description)}
+                      onPress={() => Alert.alert(badge.name || badge.label, badge.description || '')}
                     >
-                      <View style={[styles.badgeIconBg, { backgroundColor: badge.color + '20' }]}>
-                        {badge.icon === 'Sparkles' && <Sparkles size={12} color={badge.color} fill={badge.color} />}
-                        {badge.icon === 'Users' && <Users size={12} color={badge.color} />}
-                        {badge.icon === 'Award' && <Award size={12} color={badge.color} />}
-                        {badge.icon === 'Star' && <Star size={12} color={badge.color} />}
+                      <View style={[styles.badgeIconBg, { backgroundColor: (badge.color || accent) + '20' }]}>
+                        {/* Emoji icon from DB badges */}
+                        {badge.icon && badge.icon.length <= 4 ? (
+                          <Text style={{ fontSize: 12 }}>{badge.icon}</Text>
+                        ) : (
+                          <>
+                            {badge.icon === 'Sparkles' && <Sparkles size={12} color={badge.color || accent} fill={badge.color || accent} />}
+                            {badge.icon === 'Users' && <Users size={12} color={badge.color || accent} />}
+                            {badge.icon === 'Award' && <Award size={12} color={badge.color || accent} />}
+                            {badge.icon === 'Star' && <Star size={12} color={badge.color || accent} />}
+                          </>
+                        )}
                       </View>
-                      <Text style={[styles.badgeLabel, { color: textPrimary }]}>{badge.label}</Text>
+                      <Text style={[styles.badgeLabel, { color: textPrimary }]}>{badge.name || badge.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
             )}
 
+
             <View style={styles.tabsWrapper}>
               <View style={[styles.tabsTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
                 <Animated.View style={[styles.tabIndicator, { backgroundColor: backgroundSecondary, transform: [{ translateX: tabIndicatorPos }] }]} />
-                <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('posts'); }}><Grid3X3 size={18} color={activeTab === 'posts' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'posts' ? textPrimary : textSecondary }]}>Mural</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('events'); }}><Calendar size={18} color={activeTab === 'events' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'events' ? textPrimary : textSecondary }]}>Experiências</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('posts'); }}><Grid3X3 size={18} color={activeTab === 'posts' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'posts' ? textPrimary : textSecondary }]}>{t('auto.s8c4578af', 'Mural')}</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('events'); }}><Calendar size={18} color={activeTab === 'events' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'events' ? textPrimary : textSecondary }]}>{t('auto.s89f10894', 'Experiências')}</Text></TouchableOpacity>
               </View>
             </View>
 
@@ -704,8 +714,8 @@ export default function UserProfile() {
                   ) : (
                     <View style={styles.emptyContent}>
                       <Heart size={48} color={textSecondary} strokeWidth={1} />
-                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem Memórias</Text>
-                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma memória compartilhada ainda.</Text>
+                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>{t('auto.sb689f187', 'Sem Memórias')}</Text>
+                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>{t('auto.sbf37c50a', 'Nenhuma memória compartilhada ainda.')}</Text>
                     </View>
                   )}
                 </View>
@@ -737,8 +747,8 @@ export default function UserProfile() {
                   ) : (
                     <View style={styles.emptyContent}>
                       <Calendar size={48} color={textSecondary} strokeWidth={1} />
-                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Nenhum evento</Text>
-                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma experiência criada por este usuário.</Text>
+                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>{t('auto.s0b34adda', 'Nenhum evento')}</Text>
+                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>{t('auto.s91f0f9d5', 'Nenhuma experiência criada por este usuário.')}</Text>
                     </View>
                   )}
                   {events.length > visibleEvents && activeTab === 'events' && (
@@ -746,7 +756,7 @@ export default function UserProfile() {
                       style={[styles.followBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', marginHorizontal: 16, marginTop: 20, width: '90%', alignSelf: 'center' }]} 
                       onPress={() => setVisibleEvents(prev => prev + 15)}
                     >
-                      <Text style={[styles.followBtnText, { color: textPrimary }]}>Carregar mais</Text>
+                      <Text style={[styles.followBtnText, { color: textPrimary }]}>{t('auto.s91711d3f', 'Carregar mais')}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -878,9 +888,9 @@ const styles = StyleSheet.create({
     gap: 8,
     width: '100%'
   },
-  socialButtonsRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 24 },
-  socialPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-  socialPillText: { fontSize: ms(13), fontWeight: '700' },
+  socialButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 24, paddingHorizontal: 16 },
+  socialPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, maxWidth: '100%', flexShrink: 1 },
+  socialPillText: { fontSize: ms(13), fontWeight: '700', flexShrink: 1 },
   postThumbnail: { 
     width: (SCREEN_WIDTH - 32 - 16) / 3, 
     height: (SCREEN_WIDTH - 32 - 16) / 3,

@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
@@ -57,6 +58,7 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 export default function CommentsModal({ visible, eventId, eventTitle, onClose }: CommentsModalProps) {
+  const { t } = useLanguage();
   const { user, profile } = useAuth();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -356,7 +358,7 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
                 setText(mention);
                 inputRef.current?.focus();
               }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={{ color: textSecondary, fontSize: ms(11), fontWeight: '700' }}>Responder</Text>
+                <Text style={{ color: textSecondary, fontSize: ms(11), fontWeight: '700' }}>{t('auto.sdf7e8969', 'Responder')}</Text>
               </TouchableOpacity>
             )}
             {isOwn && (
@@ -367,10 +369,10 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
                   setText(item.content);
                   inputRef.current?.focus();
                 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={{ color: textSecondary, opacity: 0.8, fontSize: ms(11), fontWeight: '600' }}>Editar</Text>
+                  <Text style={{ color: textSecondary, opacity: 0.8, fontSize: ms(11), fontWeight: '600' }}>{t('auto.sef485eb6', 'Editar')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleDelete(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={{ color: textSecondary, opacity: 0.6, fontSize: ms(11), fontWeight: '600' }}>Excluir</Text>
+                  <Text style={{ color: textSecondary, opacity: 0.6, fontSize: ms(11), fontWeight: '600' }}>{t('auto.s856c3790', 'Excluir')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -442,7 +444,7 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
           ) : comments.length === 0 ? (
             <View style={styles.emptyState}>
               <MessageCircle size={40} color={textSecondary} opacity={0.3} />
-              <Text style={[styles.emptyText, { color: textSecondary }]}>Seja o primeiro a comentar!</Text>
+              <Text style={[styles.emptyText, { color: textSecondary }]}>{t('auto.sf0813f8f', 'Seja o primeiro a comentar!')}</Text>
             </View>
           ) : (
             <FlatList
@@ -529,7 +531,7 @@ export default function CommentsModal({ visible, eventId, eventTitle, onClose }:
                 <TextInput
                   ref={inputRef}
                   style={[styles.input, { color: textPrimary }]}
-                  placeholder="Adicionar comentário..."
+                  placeholder={t('auto.s192f8684', 'Adicionar comentário...')}
                   placeholderTextColor={isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)'}
                   value={text}
                   onChangeText={(newText) => {

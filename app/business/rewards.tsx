@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -17,6 +18,7 @@ const TEMPLATES = [
 ];
 
 export default function BusinessRewardsScreen() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { user } = useAuth();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark } = useTheme();
@@ -112,7 +114,7 @@ export default function BusinessRewardsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={24} color={textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: textPrimary }]}>Gestão de Prêmios</Text>
+        <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.s579f72fc', 'Gestão de Prêmios')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -120,8 +122,8 @@ export default function BusinessRewardsScreen() {
         
         {/* Ativos */}
         <Animated.View entering={FadeIn.delay(100)} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textPrimary }]}>Seus Prêmios Ativos</Text>
-          <Text style={[styles.sectionDesc, { color: textSecondary }]}>Estes são os brindes que os usuários podem resgatar no seu estabelecimento neste momento.</Text>
+          <Text style={[styles.sectionTitle, { color: textPrimary }]}>{t('auto.s0ca48d9f', 'Seus Prêmios Ativos')}</Text>
+          <Text style={[styles.sectionDesc, { color: textSecondary }]}>{t('auto.sdc6e8f01', 'Estes são os brindes que os usuários podem resgatar no seu estabelecimento neste momento.')}</Text>
 
           {loading ? (
             <ActivityIndicator color="#00d9ff" style={{ marginVertical: 30 }} />
@@ -160,9 +162,9 @@ export default function BusinessRewardsScreen() {
         <Animated.View entering={FadeInUp.delay(200)} style={[styles.section, { marginTop: 10 }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 }}>
             <Plus size={20} color="#00d9ff" />
-            <Text style={[styles.sectionTitle, { color: textPrimary, marginBottom: 0 }]}>Adicionar Novo Prêmio</Text>
+            <Text style={[styles.sectionTitle, { color: textPrimary, marginBottom: 0 }]}>{t('auto.s70581a36', 'Adicionar Novo Prêmio')}</Text>
           </View>
-          <Text style={[styles.sectionDesc, { color: textSecondary, marginBottom: 20 }]}>Escolha um modelo abaixo para começar a atrair mais clientes para o seu negócio com o poder da recompensa.</Text>
+          <Text style={[styles.sectionDesc, { color: textSecondary, marginBottom: 20 }]}>{t('auto.s25ec5b31', 'Escolha um modelo abaixo para começar a atrair mais clientes para o seu negócio com o poder da recompensa.')}</Text>
 
           <View style={styles.grid}>
             {TEMPLATES.map((template, index) => {
@@ -192,7 +194,7 @@ export default function BusinessRewardsScreen() {
                         ) : isActive ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <CheckCircle size={14} color="#fff" />
-                            <Text style={styles.addBtnText}>Adicionado</Text>
+                            <Text style={styles.addBtnText}>{t('auto.s2425cb7e', 'Adicionado')}</Text>
                           </View>
                         ) : (
                           <Text style={styles.addBtnText}>Adicionar por {template.cost}pts</Text>

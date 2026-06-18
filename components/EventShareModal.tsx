@@ -244,7 +244,7 @@ export function EventShareModal({
 
   const handleShare = async () => {
     try {
-      const shareMessage = `🚀 *${event.title}*\n\n📅 Data: ${formatDate(event.event_date)}\n⏰ Horário: ${formatTime(event.event_time)}\n📍 Local: ${event.location_name}\n\nGaranta sua vaga e confira no app UNИA!\n👉 https://unna.app/event/${event.id}`;
+      const shareMessage = `🚀 *${event.title}*\n\n📅 Data: ${formatDate(event.event_date)}\n⏰ Horário: ${formatTime(event.event_time)}\n📍 Local: ${event.location_name}\n\nGaranta sua vaga e confira no app UNИA!\n👉 https://unnasocialapp.com/event/${event.id}`;
       
       await Share.share({
         message: shareMessage,
@@ -273,7 +273,7 @@ export function EventShareModal({
   };
 
   const handleCopyLink = async () => {
-    const link = `https://unna.app/event/${event.id}`;
+    const link = `https://unnasocialapp.com/event/${event.id}`;
     await Clipboard.setStringAsync(link);
     Alert.alert('Copiado!', 'Link do evento copiado');
     setCopied(true);
@@ -281,7 +281,7 @@ export function EventShareModal({
   };
 
   const handleWhatsAppShare = async () => {
-    const shareMessage = `🚀 *${event.title}*\n\n📅 Data: ${formatDate(event.event_date)}\n⏰ Horário: ${formatTime(event.event_time)}\n📍 Local: ${event.location_name}\n\nGaranta sua vaga e confira os detalhes no app UNИA!\n👉 https://unna.app/event/${event.id}`;
+      const shareMessage = `🚀 *${event.title}*\n\n📅 Data: ${formatDate(event.event_date)}\n⏰ Horário: ${formatTime(event.event_time)}\n📍 Local: ${event.location_name}\n\nGaranta sua vaga e confira os detalhes no app UNИA!\n👉 https://unnasocialapp.com/event/${event.id}`;
     const url = `whatsapp://send?text=${encodeURIComponent(shareMessage)}`;
     
     try {
@@ -309,86 +309,51 @@ export function EventShareModal({
       <View style={styles.modalContainer}>
         <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
         <View style={[styles.modalContent, { backgroundColor: backgroundPrimary }]}>
-          <View style={[styles.header, { borderBottomColor: isDark ? '#222' : 'rgba(0,0,0,0.05)' }]}>
+          
+          {/* Drag Indicator */}
+          <View style={styles.dragIndicator} />
+
+          <View style={styles.header}>
             <Text style={[styles.headerTitle, { color: textPrimary }]}>Compartilhar Evento</Text>
-            <TouchableOpacity onPress={onClose}>
-              <X size={28} color={textPrimary} />
+            <TouchableOpacity onPress={onClose} style={styles.closeIconBtn}>
+              <X size={24} color={textPrimary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
-              <View style={styles.premiumTicketCard}>
-                {/* Background Image / Blur */}
-                {event.image_url ? (
-                  <Image source={{ uri: event.image_url }} style={styles.ticketBgImage} resizeMode="cover" blurRadius={3} />
-                ) : (
-                  <LinearGradient colors={['#111', '#222']} style={styles.ticketBgImage} />
-                )}
-                <View style={styles.ticketOverlay} />
-
-                {/* Header (App Logo) */}
-                <View style={styles.ticketHeader}>
-                  <Text style={styles.ticketLogoText}>UNИA</Text>
-                  <View style={styles.ticketBadge}>
-                    <Text style={styles.ticketBadgeText}>PREMIUM EVENT</Text>
-                  </View>
+            
+            {/* Sleek Preview Header */}
+            <View style={[styles.previewContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f0f0f0' }]}>
+              {event.image_url ? (
+                <Image source={{ uri: event.image_url }} style={styles.previewImage} />
+              ) : (
+                <View style={[styles.previewImage, { backgroundColor: accent, justifyContent: 'center', alignItems: 'center' }]}>
+                  <Calendar size={24} color="#fff" />
                 </View>
-
-                {/* Main Content Area */}
-                <View style={styles.ticketContent}>
-                  {event.image_url ? (
-                    <Image source={{ uri: event.image_url }} style={styles.ticketMainImage} resizeMode="cover" />
-                  ) : (
-                    <LinearGradient colors={['#00d9ff', '#ff1493']} style={styles.ticketMainImage}>
-                      <Text style={{color: '#fff', fontWeight: '900', fontSize: 24}}>UNИA</Text>
-                    </LinearGradient>
-                  )}
-                  
-                  <View style={styles.ticketInfoBox}>
-                    <Text style={styles.ticketTitle} numberOfLines={2}>{event.title}</Text>
-                    
-                    <View style={styles.ticketRow}>
-                      <View style={styles.ticketIconBg}>
-                        <Calendar size={16} color="#00d9ff" />
-                      </View>
-                      <View>
-                        <Text style={styles.ticketLabel}>DATA</Text>
-                        <Text style={styles.ticketValue}>{formatDate(event.event_date)}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.ticketRow}>
-                      <View style={styles.ticketIconBg}>
-                        <Clock size={16} color="#FF9500" />
-                      </View>
-                      <View>
-                        <Text style={styles.ticketLabel}>HORÁRIO</Text>
-                        <Text style={styles.ticketValue}>{formatTime(event.event_time)}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.ticketRow}>
-                      <View style={styles.ticketIconBg}>
-                        <MapPin size={16} color="#34C759" />
-                      </View>
-                      <View>
-                        <Text style={styles.ticketLabel}>LOCAL</Text>
-                        <Text style={styles.ticketValue} numberOfLines={1}>{event.location_name}</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Footer (Scan to View) */}
-                <View style={styles.ticketFooter}>
-                  <Text style={styles.ticketFooterText}>https://unna.app/event/{event.id.split('-')[0]}</Text>
-                </View>
+              )}
+              <View style={styles.previewTextContainer}>
+                <Text style={[styles.previewTitle, { color: textPrimary }]} numberOfLines={2}>{event.title}</Text>
+                <Text style={[styles.previewSubtitle, { color: textSecondary }]} numberOfLines={1}>
+                  {formatDate(event.event_date)} • {formatTime(event.event_time)}
+                </Text>
               </View>
-            </ViewShot>
+            </View>
 
+            {/* Quick Actions Row */}
+            <View style={styles.quickActionsContainer}>
+              {shareOptions.map((option) => (
+                <TouchableOpacity key={option.id} style={styles.quickActionBtn} onPress={option.onPress}>
+                  <View style={[styles.quickActionIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#e0e0e0' }]}>
+                    {React.createElement(option.icon, { size: 24, color: option.color })}
+                  </View>
+                  <Text style={[styles.quickActionText, { color: textPrimary }]}>{option.title}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Internal Share: Groups */}
             <View style={styles.internalShareContainer}>
-              <Text style={[styles.optionsTitle, { color: textPrimary }]}>Compartilhar nos Grupos ({groupContacts.length})</Text>
+              <Text style={[styles.optionsTitle, { color: textPrimary }]}>Grupos ({groupContacts.length})</Text>
               {loadingContacts ? (
                 <ActivityIndicator color={accent} style={{ marginVertical: 20 }} />
               ) : (
@@ -402,7 +367,7 @@ export function EventShareModal({
                     <TouchableOpacity style={styles.contactItem} onPress={() => shareToContact(item)}>
                       <View style={styles.avatarContainer}>
                         {item.avatar_url ? (
-                          <Image source={{ uri: item.avatar_url }} style={[styles.contactAvatar, { borderColor: isDark ? '#222' : 'rgba(0,0,0,0.05)' }]} />
+                          <Image source={{ uri: item.avatar_url }} style={[styles.contactAvatar, { borderColor: isDark ? '#333' : '#ddd' }]} />
                         ) : (
                           <View style={[styles.avatarPlaceholder, { backgroundColor: accent }]}>
                             <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
@@ -410,7 +375,7 @@ export function EventShareModal({
                         )}
                         {sharedIds.includes(item.id) && (
                           <View style={[styles.sharedBadge, { borderColor: backgroundPrimary }]}>
-                            <Check size={10} color="#fff" strokeWidth={4} />
+                            <Check size={12} color="#fff" strokeWidth={3} />
                           </View>
                         )}
                       </View>
@@ -422,8 +387,9 @@ export function EventShareModal({
               )}
             </View>
 
+            {/* Internal Share: Contacts */}
             <View style={styles.internalShareContainer}>
-              <Text style={[styles.optionsTitle, { color: textPrimary }]}>Compartilhar com Contatos ({userContacts.length})</Text>
+              <Text style={[styles.optionsTitle, { color: textPrimary }]}>Contatos ({userContacts.length})</Text>
               {loadingContacts ? (
                 <ActivityIndicator color={accent} style={{ marginVertical: 20 }} />
               ) : (
@@ -437,7 +403,7 @@ export function EventShareModal({
                     <TouchableOpacity style={styles.contactItem} onPress={() => shareToContact(item)}>
                       <View style={styles.avatarContainer}>
                         {item.avatar_url ? (
-                          <Image source={{ uri: item.avatar_url }} style={[styles.contactAvatar, { borderColor: isDark ? '#222' : 'rgba(0,0,0,0.05)' }]} />
+                          <Image source={{ uri: item.avatar_url }} style={[styles.contactAvatar, { borderColor: isDark ? '#333' : '#ddd' }]} />
                         ) : (
                           <View style={[styles.avatarPlaceholder, { backgroundColor: '#00d9ff' }]}>
                             <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
@@ -445,38 +411,83 @@ export function EventShareModal({
                         )}
                         {sharedIds.includes(item.id) && (
                           <View style={[styles.sharedBadge, { borderColor: backgroundPrimary }]}>
-                            <Check size={10} color="#fff" strokeWidth={4} />
+                            <Check size={12} color="#fff" strokeWidth={3} />
                           </View>
                         )}
                       </View>
                       <Text style={[styles.contactName, { color: textSecondary }]} numberOfLines={1}>{item.name.split(' ')[0]}</Text>
                     </TouchableOpacity>
                   )}
-                  ListEmptyComponent={<Text style={[styles.emptyText, { color: textSecondary }]}>Siga pessoas para compartilhar eventos!</Text>}
+                  ListEmptyComponent={<Text style={[styles.emptyText, { color: textSecondary }]}>Siga pessoas para compartilhar!</Text>}
                 />
               )}
             </View>
 
-            <View style={styles.optionsContainer}>
-              <Text style={[styles.optionsTitle, { color: textPrimary }]}>Outras opções</Text>
-              <View style={styles.optionsGrid}>
-                {shareOptions.map((option) => (
-                  <TouchableOpacity key={option.id} style={styles.optionButton} onPress={option.onPress}>
-                    <View style={[styles.optionIconContainer, { borderColor: option.color, backgroundColor: isDark ? '#161616' : '#fff', borderWidth: isDark ? 1 : 1.5 }]}>
-                      {React.createElement(option.icon, { size: 24, color: option.color })}
-                    </View>
-                    <Text style={[styles.optionTitle, { color: textSecondary }]}>{option.title}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
           </ScrollView>
 
-          <View style={[styles.footer, { borderTopColor: isDark ? '#222' : 'rgba(0,0,0,0.05)' }]}>
-            <TouchableOpacity style={[styles.closeButton, { backgroundColor: accent }]} onPress={onClose}>
-              <Text style={styles.closeButtonText}>Concluído</Text>
-            </TouchableOpacity>
+          {/* HIDDEN TICKET FOR VIEWSHOT */}
+          <View style={{ position: 'absolute', left: -5000, top: 0 }}>
+            <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
+              <View style={styles.premiumTicketCard}>
+                {event.image_url ? (
+                  <Image source={{ uri: event.image_url }} style={styles.ticketBgImage} resizeMode="cover" blurRadius={3} />
+                ) : (
+                  <LinearGradient colors={['#111', '#222']} style={styles.ticketBgImage} />
+                )}
+                <View style={styles.ticketOverlay} />
+
+                <View style={styles.ticketHeader}>
+                  <Text style={styles.ticketLogoText}>UNИA</Text>
+                  <View style={styles.ticketBadge}>
+                    <Text style={styles.ticketBadgeText}>PREMIUM EVENT</Text>
+                  </View>
+                </View>
+
+                <View style={styles.ticketContent}>
+                  {event.image_url ? (
+                    <Image source={{ uri: event.image_url }} style={styles.ticketMainImage} resizeMode="cover" />
+                  ) : (
+                    <LinearGradient colors={['#00d9ff', '#ff1493']} style={styles.ticketMainImage}>
+                      <Text style={{color: '#fff', fontWeight: '900', fontSize: 24}}>UNИA</Text>
+                    </LinearGradient>
+                  )}
+                  
+                  <View style={styles.ticketInfoBox}>
+                    <Text style={styles.ticketTitle} numberOfLines={2}>{event.title}</Text>
+                    
+                    <View style={styles.ticketRow}>
+                      <View style={styles.ticketIconBg}><Calendar size={16} color="#00d9ff" /></View>
+                      <View>
+                        <Text style={styles.ticketLabel}>DATA</Text>
+                        <Text style={styles.ticketValue}>{formatDate(event.event_date)}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.ticketRow}>
+                      <View style={styles.ticketIconBg}><Clock size={16} color="#FF9500" /></View>
+                      <View>
+                        <Text style={styles.ticketLabel}>HORÁRIO</Text>
+                        <Text style={styles.ticketValue}>{formatTime(event.event_time)}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.ticketRow}>
+                      <View style={styles.ticketIconBg}><MapPin size={16} color="#34C759" /></View>
+                      <View>
+                        <Text style={styles.ticketLabel}>LOCAL</Text>
+                        <Text style={styles.ticketValue} numberOfLines={1}>{event.location_name}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.ticketFooter}>
+                  <Text style={styles.ticketFooterText}>https://unnasocialapp.com/event/{event.id.split('-')[0]}</Text>
+                </View>
+              </View>
+            </ViewShot>
           </View>
+          
         </View>
       </View>
     </Modal>
@@ -485,11 +496,24 @@ export function EventShareModal({
 
 const styles = StyleSheet.create({
   modalContainer: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.8)' },
-  modalContent: { backgroundColor: '#0a0a0a', borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: '85%' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#fff' },
-  scrollContent: { padding: 20 },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+  modalContent: { borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '90%' },
+  dragIndicator: { width: 40, height: 5, backgroundColor: 'rgba(150,150,150,0.3)', borderRadius: 3, alignSelf: 'center', marginTop: 12, marginBottom: 8 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(150,150,150,0.1)' },
+  headerTitle: { fontSize: 18, fontWeight: '700' },
+  closeIconBtn: { padding: 4, backgroundColor: 'rgba(150,150,150,0.1)', borderRadius: 20 },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+  
+  previewContainer: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 16, marginBottom: 24 },
+  previewImage: { width: 60, height: 60, borderRadius: 12, marginRight: 14 },
+  previewTextContainer: { flex: 1, justifyContent: 'center' },
+  previewTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  previewSubtitle: { fontSize: 13 },
+
+  quickActionsContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30, paddingHorizontal: 10 },
+  quickActionBtn: { alignItems: 'center', width: 70 },
+  quickActionIcon: { width: 54, height: 54, borderRadius: 27, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  quickActionText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
   
   // Premium Ticket Styles
   premiumTicketCard: {
@@ -615,23 +639,14 @@ const styles = StyleSheet.create({
   },
   
   internalShareContainer: { marginBottom: 25 },
-  optionsTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 15 },
-  internalList: { gap: 15 },
-  contactItem: { alignItems: 'center', width: 70 },
-  avatarContainer: { position: 'relative', marginBottom: 6 },
-  contactAvatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: '#222' },
-  avatarPlaceholder: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' },
+  optionsTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
+  internalList: { gap: 16, paddingRight: 20 },
+  contactItem: { alignItems: 'center', width: 64 },
+  avatarContainer: { position: 'relative', marginBottom: 8 },
+  contactAvatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 1.5 },
+  avatarPlaceholder: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
   avatarText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  sharedBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#34C759', width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#0a0a0a' },
-  groupBadge: { position: 'absolute', top: 0, right: 0, backgroundColor: '#00d9ff', width: 16, height: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#0a0a0a' },
-  contactName: { color: '#888', fontSize: 11, fontWeight: '600', textAlign: 'center' },
-  emptyText: { color: '#555', fontSize: 14, fontStyle: 'italic', textAlign: 'center', marginVertical: 10 },
-  optionsContainer: { marginBottom: 20 },
-  optionsGrid: { flexDirection: 'row', gap: 15 },
-  optionButton: { alignItems: 'center', gap: 8 },
-  optionIconContainer: { width: 50, height: 50, borderRadius: 15, justifyContent: 'center', alignItems: 'center', backgroundColor: '#161616', borderWidth: 1 },
-  optionTitle: { fontSize: 11, fontWeight: '600', color: '#888' },
-  footer: { padding: 20, borderTopWidth: 1, borderTopColor: '#222' },
-  closeButton: { backgroundColor: '#00d9ff', borderRadius: 15, paddingVertical: 15, alignItems: 'center' },
-  closeButtonText: { fontSize: 16, fontWeight: '800', color: '#000' },
+  sharedBadge: { position: 'absolute', bottom: -2, right: -2, backgroundColor: '#34C759', width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 2 },
+  contactName: { fontSize: 12, fontWeight: '500', textAlign: 'center' },
+  emptyText: { fontSize: 14, fontStyle: 'italic', opacity: 0.6 },
 });

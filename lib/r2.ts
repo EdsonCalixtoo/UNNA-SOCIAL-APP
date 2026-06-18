@@ -1,29 +1,87 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { decode } from 'base64-arraybuffer';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
+import CryptoJS from 'crypto-js';
 
-// Configurações do R2 via variáveis de ambiente
 const ACCOUNT_ID = process.env.EXPO_PUBLIC_R2_ACCOUNT_ID;
 const ACCESS_KEY = process.env.EXPO_PUBLIC_R2_ACCESS_KEY;
 const SECRET_KEY = process.env.EXPO_PUBLIC_R2_SECRET_KEY;
 const BUCKET_NAME = process.env.EXPO_PUBLIC_R2_BUCKET_NAME;
 const PUBLIC_DOMAIN = process.env.EXPO_PUBLIC_R2_PUBLIC_DOMAIN;
 
-// Inicializa o cliente S3 configurado para o Cloudflare R2
-const s3Client = new S3Client({
-  region: 'auto',
-  endpoint: `https://${ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: ACCESS_KEY || '',
-    secretAccessKey: SECRET_KEY || '',
-  },
-});
+async function hmacSHA256(key: string | CryptoJS.lib.WordArray, data: string): Promise<CryptoJS.lib.WordArray> {
+  return CryptoJS.HmacSHA256(data, key);
+}
 
-/**
- * Faz o upload de um arquivo para o Cloudflare R2 de forma otimizada
- */
+async function sha256Hex(data: string): Promise<string> {
+  return CryptoJS.SHA256(data).toString(CryptoJS.enc.Hex);
+}
+
+function bufToHex(buf: CryptoJS.lib.WordArray): string {
+  return buf.toString(CryptoJS.enc.Hex);
+}
+
+async function generatePresignedUrl(
+  path: string,
+  expiresInSeconds = 3600
+): Promise<string> {
+  if (!ACCOUNT_ID || !ACCESS_KEY || !SECRET_KEY || !BUCKET_NAME) {
+    throw new Error('R2 configuration is missing.');
+  }
+
+  const host = `${ACCOUNT_ID}.r2.cloudflarestorage.com`;
+  const endpoint = `https://${host}`;
+  const now = new Date();
+
+  const datestamp = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
+
+  const region = 'auto';
+  const service = 's3';
+  const scope = `${datestamp}/${region}/${service}/aws4_request`;
+  const algorithm = 'AWS4-HMAC-SHA256';
+
+  // Importante: No estilo "path", o nome do bucket faz parte da URI canônica
+  const encodedPath = '/' + BUCKET_NAME + '/' + path.split('/').map(encodeURIComponent).join('/');
+
+  const queryParams: Record<string, string> = {
+    'X-Amz-Algorithm': algorithm,
+    'X-Amz-Content-Sha256': 'UNSIGNED-PAYLOAD',
+    'X-Amz-Credential': `${ACCESS_KEY}/${scope}`,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': String(expiresInSeconds),
+    'X-Amz-SignedHeaders': 'host',
+  };
+
+  const sortedKeys = Object.keys(queryParams).sort();
+  const canonicalQueryString = sortedKeys
+    .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k])}`)
+    .join('&');
+
+  const canonicalHeaders = `host:${host}\n`;
+  const signedHeaders = 'host';
+  const canonicalRequest = [
+    'PUT',
+    encodedPath,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+
+  const hashedCanonicalRequest = await sha256Hex(canonicalRequest);
+  const stringToSign = [algorithm, amzDate, scope, hashedCanonicalRequest].join('\n');
+
+  const kDate = await hmacSHA256(`AWS4${SECRET_KEY}`, datestamp);
+  const kRegion = await hmacSHA256(kDate, region);
+  const kService = await hmacSHA256(kRegion, service);
+  const kSigning = await hmacSHA256(kService, 'aws4_request');
+
+  const signatureBuf = await hmacSHA256(kSigning, stringToSign);
+  const signature = bufToHex(signatureBuf);
+
+  return `${endpoint}${encodedPath}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
+}
+
 export async function uploadToR2(
   uri: string,
   path: string,
@@ -31,44 +89,28 @@ export async function uploadToR2(
 ): Promise<string | null> {
   try {
     if (!ACCOUNT_ID || !ACCESS_KEY || !SECRET_KEY || !BUCKET_NAME) {
-      console.error('R2 configuration is missing. Please check your .env file.');
+      console.error('R2 configuration is missing.');
       return null;
     }
 
     console.log(`[R2] Gerando URL pré-assinada para: ${path}`);
-    
-    // 1. Gerar URL pré-assinada (Presigned URL) com headers de Cache agressivos
-    const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: path,
-      ContentType: contentType,
-      CacheControl: 'public, max-age=31536000, immutable', // 1 ano de cache imutável no Edge e no App
-    });
+    const presignedUrl = await generatePresignedUrl(path);
 
-    const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-
-    // 2. Fazer o upload
     if (Platform.OS === 'web') {
       const response = await fetch(uri);
       const blob = await response.blob();
-      
       const uploadResponse = await fetch(presignedUrl, {
         method: 'PUT',
         body: blob,
-        headers: {
-          'Content-Type': contentType,
-        },
+        headers: { 'Content-Type': contentType },
       });
-
       if (!uploadResponse.ok) throw new Error(`R2 upload failed: ${uploadResponse.statusText}`);
     } else {
-      // No Native, usamos uploadAsync que é MUITO mais rápido (streaming direto do disco)
       const result = await FileSystem.uploadAsync(presignedUrl, uri, {
         httpMethod: 'PUT',
         mimeType: contentType,
         uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
       });
-
       if (result.status >= 400) {
         throw new Error(`R2 Native upload failed: Status ${result.status} - ${result.body}`);
       }
@@ -82,9 +124,6 @@ export async function uploadToR2(
   }
 }
 
-/**
- * Gera um nome de arquivo único baseado no timestamp
- */
 export function generateFileName(userId: string, folder: string, extension: string) {
   return `${userId}/${folder}/${Date.now()}.${extension}`;
 }

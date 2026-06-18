@@ -1,4 +1,6 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'expo-router';
 import {
   View,
   StyleSheet,
@@ -23,9 +25,12 @@ interface Props {
 }
 
 export default function StoryCameraModal({ visible, onClose, onCapture, usageType = 'story' }: Props) {
+  const { t } = useLanguage();
+  const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const [facing, setFacing] = useState<CameraType>('back');
+  const [mode, setMode] = useState<'story' | 'live'>('story');
   const [flash, setFlash] = useState<FlashMode>('off');
   const [cameraReady, setCameraReady] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -107,11 +112,18 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
   }, [stopRecording]);
 
   const handlePress = useCallback(() => {
+    if (mode === 'live') {
+      onClose();
+      // Gerar um ID único para a live
+      const liveID = `live_${Date.now()}`;
+      router.push(`/live/broadcaster?liveID=${liveID}`);
+      return;
+    }
     if (!isHoldingRef.current) {
       takePhoto();
     }
     isHoldingRef.current = false;
-  }, [takePhoto]);
+  }, [takePhoto, mode, onClose, router]);
 
   const pickFromGallery = useCallback(async () => {
     try {
@@ -141,10 +153,10 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
             Precisamos da câmera e microfone para {usageType === 'event' ? 'o seu Evento' : usageType === 'profile' ? 'o seu Perfil' : 'os Stories'}
           </Text>
           <TouchableOpacity style={st.permBtn} onPress={() => { requestPermission(); requestMicPermission(); }}>
-            <Text style={st.permBtnTxt}>Dar permissão</Text>
+            <Text style={st.permBtnTxt}>{t('auto.s76edb213', 'Dar permissão')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={onClose} style={{ marginTop: 16, alignItems: 'center' }}>
-            <Text style={{ color: '#fff' }}>Cancelar</Text>
+            <Text style={{ color: '#fff' }}>{t('auto.s847607d7', 'Cancelar')}</Text>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -158,7 +170,7 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
         {!mounted ? (
           <View style={st.loading}>
             <ActivityIndicator size="large" color="#00d9ff" />
-            <Text style={st.loadingTxt}>Iniciando câmera...</Text>
+            <Text style={st.loadingTxt}>{t('auto.s8f0f9330', 'Iniciando câmera...')}</Text>
           </View>
         ) : (
           <>
@@ -188,12 +200,24 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
             {isRecording && (
               <View style={st.recBadge}>
                 <View style={st.recDot} />
-                <Text style={st.recTxt}>GRAVANDO</Text>
+                <Text style={st.recTxt}>{t('auto.s702f5723', 'GRAVANDO')}</Text>
               </View>
             )}
 
-            {/* Controles inferiores */}
-            <View style={st.bottomRow}>
+            {/* Controles inferiores e seletor de modo */}
+            <View style={{ position: 'absolute', bottom: Platform.OS === 'ios' ? 48 : 32, left: 0, right: 0 }}>
+              
+              {/* Seletor Story / Live */}
+              <View style={st.modeSelector}>
+                <TouchableOpacity onPress={() => setMode('story')}>
+                  <Text style={[st.modeText, mode === 'story' && st.modeTextActive]}>STORY</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setMode('live')}>
+                  <Text style={[st.modeText, mode === 'live' && st.modeTextActive]}>AO VIVO</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={st.bottomRow}>
               <TouchableOpacity onPress={pickFromGallery} style={st.sideBtn}>
                 <ImageIcon size={26} color="#fff" />
               </TouchableOpacity>
@@ -209,7 +233,7 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
                 activeOpacity={0.85}
                 disabled={!cameraReady}
               >
-                <View style={[st.shutterInner, isRecording && st.shutterInnerRec]} />
+                <View style={[st.shutterInner, isRecording && st.shutterInnerRec, mode === 'live' && st.shutterInnerLive]} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -218,6 +242,7 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
               >
                 <RefreshCcw size={26} color="#fff" />
               </TouchableOpacity>
+            </View>
             </View>
 
             {!cameraReady && (
@@ -245,11 +270,15 @@ const st = StyleSheet.create({
   recBadge:        { position: 'absolute', top: Platform.OS === 'ios' ? 120 : 100, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   recDot:          { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FF3B30' },
   recTxt:          { color: '#fff', fontWeight: '900', fontSize: 12, letterSpacing: 1.5 },
-  bottomRow:       { position: 'absolute', bottom: Platform.OS === 'ios' ? 48 : 32, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 20 },
+  modeSelector:    { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 24, marginBottom: 20 },
+  modeText:        { color: 'rgba(255,255,255,0.5)', fontWeight: 'bold', fontSize: 14, letterSpacing: 1 },
+  modeTextActive:  { color: '#fff', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  bottomRow:       { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 20 },
   sideBtn:         { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   shutter:         { width: 82, height: 82, borderRadius: 41, borderWidth: 4, borderColor: '#fff', justifyContent: 'center', alignItems: 'center' },
   shutterRec:      { borderColor: '#FF3B30' },
   shutterInner:    { width: 66, height: 66, borderRadius: 33, backgroundColor: '#fff' },
   shutterInnerRec: { backgroundColor: '#FF3B30', borderRadius: 10, width: 32, height: 32 },
+  shutterInnerLive:{ backgroundColor: '#FF3B30', width: 66, height: 66, borderRadius: 33 },
   notReady:        { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
 });

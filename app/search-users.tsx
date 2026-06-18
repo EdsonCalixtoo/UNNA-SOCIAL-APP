@@ -1,11 +1,15 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator, Dimensions } from 'react-native';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Search, User, MessageCircle } from 'lucide-react-native';
+import { ArrowLeft, Search, User, MessageCircle, X, Compass } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import Skeleton from '@/components/Skeleton';
+import { ms, vs, s } from '@/utils/responsive';
 
 interface Profile {
   id: string;
@@ -15,16 +19,21 @@ interface Profile {
   bio: string | null;
 }
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 export default function SearchUsers() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { user } = useAuth();
+  const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
-    // Carregar usuários iniciais ao abrir a tela
+    // Load initial users
     handleSearch('');
   }, []);
 
@@ -57,14 +66,18 @@ export default function SearchUsers() {
 
   const onSearchTextChange = (text: string) => {
     setSearchQuery(text);
-    handleSearch(text); // Busca em tempo real
+    handleSearch(text); // Real-time search
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    handleSearch('');
   };
 
   const handleSendMessage = async (otherUserId: string) => {
     if (!user) return;
 
     try {
-      // Usar a função RPC para encontrar ou criar conversa
       const { data: conversationData, error: rpcError } = await supabase
         .rpc('find_or_create_conversation', {
           other_user_id: otherUserId
@@ -79,134 +92,128 @@ export default function SearchUsers() {
       router.push(`/messages/${conversationData}?userId=${otherUserId}`);
     } catch (error) {
       console.error('Error creating/finding conversation:', error);
-      // Mostrar erro para o usuário
       if (error instanceof Error) {
         alert(`Erro: ${error.message}`);
       }
     }
   };
 
-  const renderUserItem = ({ item }: { item: Profile }) => (
-    <View style={styles.userCard}>
-      <TouchableOpacity
-        style={styles.userInfo}
-        onPress={() => router.push(`/profile/${item.id}`)}
-        activeOpacity={0.7}
-      >
-        {item.avatar_url ? (
-          <Animated.Image 
-            source={{ uri: item.avatar_url }} 
-            style={styles.avatar} 
-            // @ts-ignore
-            sharedTransitionTag={`avatar-${item.id}`}
-          />
-        ) : (
-          <LinearGradient
-            colors={['#00d9ff', '#0097a7']}
-            style={styles.avatarPlaceholder}
-          >
-            <Text style={styles.avatarText}>
-              {item.username.charAt(0).toUpperCase()}
-            </Text>
-          </LinearGradient>
-        )}
-        <View style={styles.userDetails}>
-          <Text style={styles.fullName}>{item.full_name}</Text>
-          <Text style={styles.username}>@{item.username}</Text>
-          {item.bio && (
-            <Text style={styles.bio} numberOfLines={2}>
-              {item.bio}
-            </Text>
+  const renderUserItem = ({ item, index }: { item: Profile, index: number }) => (
+    <Animated.View entering={FadeInDown.delay(index * 50).springify()}>
+      <View style={[styles.userCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+        <TouchableOpacity
+          style={styles.userInfo}
+          onPress={() => router.push(`/profile/${item.id}`)}
+          activeOpacity={0.7}
+        >
+          {item.avatar_url ? (
+            <View style={[styles.avatarBorder, { borderColor: accent }]}>
+              <Image 
+                source={{ uri: item.avatar_url }} 
+                style={styles.avatar} 
+              />
+            </View>
+          ) : (
+            <View style={[styles.avatarBorder, { borderColor: accent }]}>
+              <LinearGradient
+                colors={[accent, accent + '80']}
+                style={styles.avatarPlaceholder}
+              >
+                <Text style={styles.avatarText}>
+                  {item.username.charAt(0).toUpperCase()}
+                </Text>
+              </LinearGradient>
+            </View>
           )}
-        </View>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.messageButton}
-        onPress={() => handleSendMessage(item.id)}
-      >
-        <MessageCircle size={20} color="#00d9ff" />
-      </TouchableOpacity>
-    </View>
+          <View style={styles.userDetails}>
+            <Text style={[styles.fullName, { color: textPrimary }]} numberOfLines={1}>{item.full_name}</Text>
+            <Text style={[styles.username, { color: accent }]} numberOfLines={1}>@{item.username}</Text>
+            {item.bio ? (
+              <Text style={[styles.bio, { color: textSecondary }]} numberOfLines={1}>
+                {item.bio}
+              </Text>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.messageButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+          onPress={() => handleSendMessage(item.id)}
+        >
+          <MessageCircle size={20} color={textPrimary} />
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
   );
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#00d9ff', '#0097a7', '#1a1a1a']}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
+    <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
+      <View style={[styles.header, { backgroundColor: backgroundSecondary }]}>
+        <View style={styles.headerTop}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={styles.backButton}
+            style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
           >
-            <ArrowLeft size={24} color="#fff" />
+            <ArrowLeft size={24} color={textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Buscar Usuários</Text>
+          <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.s998abc61', 'Buscar Usuários')}</Text>
+          <View style={{ width: 44 }} />
         </View>
 
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <Search size={20} color="#8E8E93" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Digite @ ou nome do usuário..."
-              placeholderTextColor="#8E8E93"
-              value={searchQuery}
-              onChangeText={onSearchTextChange}
-              onSubmitEditing={() => handleSearch()}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-            />
-          </View>
-          <TouchableOpacity
-            style={styles.searchButton}
-            onPress={() => handleSearch()}
-            disabled={loading || !searchQuery.trim()}
-          >
-            <LinearGradient
-              colors={loading || !searchQuery.trim() ? ['#666', '#666'] : ['#00d9ff', '#0097a7']}
-              style={styles.searchButtonGradient}
-            >
-              <Text style={styles.searchButtonText}>Buscar</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+        <View style={[styles.searchPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
+          <Search size={20} color={textSecondary} />
+          <TextInput
+            style={[styles.searchInput, { color: textPrimary }]}
+            placeholder={t('auto.s9f5df017', 'Digite @ ou nome do usuário...')}
+            placeholderTextColor={textSecondary}
+            value={searchQuery}
+            onChangeText={onSearchTextChange}
+            onSubmitEditing={() => handleSearch()}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+              <X size={18} color={textSecondary} />
+            </TouchableOpacity>
+          )}
         </View>
-      </LinearGradient>
+      </View>
 
       <View style={styles.content}>
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#00d9ff" />
-            <Text style={styles.loadingText}>Buscando usuários...</Text>
+          <View style={styles.listContainer}>
+            {[1, 2, 3, 4, 5].map((_, idx) => (
+               <View key={idx} style={[styles.userCard, { backgroundColor: backgroundSecondary, borderColor: 'transparent' }]}>
+                 <Skeleton width={56} height={56} borderRadius={28} />
+                 <View style={{ flex: 1, gap: 8, marginLeft: 16 }}>
+                   <Skeleton width="60%" height={16} borderRadius={8} />
+                   <Skeleton width="40%" height={14} borderRadius={7} />
+                 </View>
+               </View>
+            ))}
           </View>
         ) : hasSearched && searchResults.length === 0 ? (
-          <View style={styles.emptyState}>
-            <LinearGradient
-              colors={['rgba(0, 217, 255, 0.1)', 'rgba(0, 217, 255, 0.02)']}
-              style={styles.emptyStateCard}
-            >
-              <Search size={56} color="#00d9ff" strokeWidth={1.5} />
-              <Text style={styles.emptyStateTitle}>Nenhum usuário encontrado</Text>
-              <Text style={styles.emptyStateText}>
-                Tente buscar por outro nome ou @username
-              </Text>
-            </LinearGradient>
-          </View>
+          <Animated.View entering={FadeIn.duration(400)} style={styles.emptyState}>
+            <View style={[styles.emptyIconCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+              <User size={48} color={textSecondary} strokeWidth={1.5} />
+            </View>
+            <Text style={[styles.emptyStateTitle, { color: textPrimary }]}>{t('auto.s6d277ec2', 'Nenhum usuário encontrado')}</Text>
+            <Text style={[styles.emptyStateText, { color: textSecondary }]}>
+              Tente buscar por outro nome ou @username
+            </Text>
+          </Animated.View>
         ) : !hasSearched ? (
-          <View style={styles.emptyState}>
-            <LinearGradient
-              colors={['rgba(0, 217, 255, 0.1)', 'rgba(0, 217, 255, 0.02)']}
-              style={styles.emptyStateCard}
-            >
-              <Search size={56} color="#00d9ff" strokeWidth={1.5} />
-              <Text style={styles.emptyStateTitle}>Encontre outros usuários</Text>
-              <Text style={styles.emptyStateText}>
-                Digite o nome ou @username de quem você procura
-              </Text>
-            </LinearGradient>
-          </View>
+          <Animated.View entering={FadeIn.duration(400)} style={styles.emptyState}>
+            <View style={[styles.emptyIconCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+              <Compass size={48} color={accent} strokeWidth={1.5} />
+            </View>
+            <Text style={[styles.emptyStateTitle, { color: textPrimary }]}>{t('auto.s6df02665', 'Encontre outros usuários')}</Text>
+            <Text style={[styles.emptyStateText, { color: textSecondary }]}>
+              Digite o nome ou @username de quem você procura
+            </Text>
+          </Animated.View>
         ) : (
           <FlatList
             data={searchResults}
@@ -224,85 +231,127 @@ export default function SearchUsers() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
   },
   header: {
     paddingTop: 60,
-    paddingBottom: 24,
+    paddingBottom: 20,
     paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    zIndex: 10,
   },
-  headerContent: {
+  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
-    gap: 16,
+    justifyContent: 'space-between',
+    marginBottom: 20,
   },
   backButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#fff',
+    fontSize: ms(20),
+    fontWeight: '800',
     letterSpacing: -0.5,
   },
-  searchContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  searchInputContainer: {
-    flex: 1,
+  searchPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 16,
+    borderRadius: 24,
     paddingHorizontal: 16,
-    gap: 12,
+    height: 50,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   searchInput: {
     flex: 1,
-    height: 52,
-    color: '#fff',
-    fontSize: 16,
+    height: '100%',
+    fontSize: ms(15),
     fontWeight: '600',
+    marginLeft: 12,
   },
-  searchButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  searchButtonGradient: {
-    paddingHorizontal: 24,
-    height: 52,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
+  clearButton: {
+    padding: 8,
   },
   content: {
     flex: 1,
   },
-  loadingContainer: {
+  listContainer: {
+    padding: 20,
+    paddingTop: 10,
+  },
+  userCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
+    gap: 14,
+  },
+  avatarBorder: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
   },
-  loadingText: {
-    fontSize: 16,
-    color: '#8E8E93',
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  avatarPlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: ms(20),
+    fontWeight: '900',
+  },
+  userDetails: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  fullName: {
+    fontSize: ms(16),
+    fontWeight: '700',
+  },
+  username: {
+    fontSize: ms(13),
     fontWeight: '600',
+  },
+  bio: {
+    fontSize: ms(12),
+    marginTop: 2,
+  },
+  messageButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
   },
   emptyState: {
     flex: 1,
@@ -310,97 +359,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
-  emptyStateCard: {
+  emptyIconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 217, 255, 0.2)',
-    maxWidth: 400,
+    marginBottom: 20,
   },
   emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-    marginTop: 20,
-    marginBottom: 12,
+    fontSize: ms(20),
+    fontWeight: '800',
+    marginBottom: 10,
+    textAlign: 'center',
   },
   emptyStateText: {
-    fontSize: 15,
-    color: '#8E8E93',
+    fontSize: ms(15),
     textAlign: 'center',
     lineHeight: 22,
-  },
-  listContainer: {
-    padding: 20,
-  },
-  userCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    gap: 12,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 16,
-  },
-  messageButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 217, 255, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 217, 255, 0.3)',
-  },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2,
-    borderColor: '#00d9ff',
-  },
-  avatarPlaceholder: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#00d9ff',
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '900',
-  },
-  userDetails: {
-    flex: 1,
-    gap: 4,
-  },
-  fullName: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  username: {
-    fontSize: 14,
-    color: '#8E8E93',
-    fontWeight: '600',
-  },
-  bio: {
-    fontSize: 13,
-    color: '#9E9E93',
-    marginTop: 4,
-    lineHeight: 18,
+    maxWidth: '80%',
   },
 });

@@ -5,6 +5,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUI } from '@/contexts/UIContext';
+import { useLanguage } from '@/lib/i18n';
 
 // Services
 import { eventService } from '@/services/eventService';
@@ -22,6 +23,7 @@ const { width, height } = Dimensions.get('window');
 
 export default function EventsMapScreen() {
   const { isDark, accent } = useTheme();
+  const { t } = useLanguage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { showTabBar } = useUI();
@@ -209,8 +211,8 @@ export default function EventsMapScreen() {
 
     const showOptions = () => {
       Alert.alert(
-        'Como chegar?',
-        'Escolha seu aplicativo de navegação favorito:',
+        t('map.directions', 'Como chegar?'),
+        t('map.chooseNavApp', 'Escolha seu aplicativo de navegação favorito:'),
         [
           ...options.map(opt => ({
             text: opt.name,
@@ -220,7 +222,7 @@ export default function EventsMapScreen() {
               });
             }
           })),
-          { text: 'Cancelar', style: 'cancel' }
+          { text: t('map.cancel', 'Cancelar'), style: 'cancel' }
         ]
       );
     };
@@ -284,7 +286,7 @@ export default function EventsMapScreen() {
           <EventMarker
             key={event.id}
             event={event}
-            markerColor={mapService.getMarkerColor(eventService.getEventStatus(event))}
+            markerColor={mapService.getMarkerColor(eventService.getEventStatus(event) as any)}
             isSelected={selectedEvent?.id === event.id}
             onPress={() => handleMarkerPress(event)}
           />

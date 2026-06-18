@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -10,6 +11,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function BusinessProfile() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const { user, profile, signOut } = useAuth();
@@ -35,7 +37,7 @@ export default function BusinessProfile() {
     <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
       {/* HEADER */}
       <View style={[styles.header, { paddingTop: insets.top + vs(10), backgroundColor: backgroundSecondary, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-        <Text style={[styles.headerTitle, { color: textPrimary }]}>Perfil Empresa</Text>
+        <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.s22b925ff', 'Perfil Empresa')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -56,7 +58,7 @@ export default function BusinessProfile() {
           
           <View style={[styles.businessBadge, { backgroundColor: 'rgba(0, 217, 255, 0.1)' }]}>
             <ShieldCheck size={14} color="#00d9ff" />
-            <Text style={{ color: '#00d9ff', fontSize: 12, fontWeight: '700', marginLeft: 4 }}>Conta Comercial</Text>
+            <Text style={{ color: '#00d9ff', fontSize: 12, fontWeight: '700', marginLeft: 4 }}>{t('auto.s260f6321', 'Conta Comercial')}</Text>
           </View>
         </View>
 
@@ -69,7 +71,7 @@ export default function BusinessProfile() {
             <View style={[styles.menuIcon, { backgroundColor: 'rgba(0, 217, 255, 0.1)' }]}>
               <Edit3 size={20} color="#00d9ff" />
             </View>
-            <Text style={[styles.menuText, { color: textPrimary }]}>Editar Perfil</Text>
+            <Text style={[styles.menuText, { color: textPrimary }]}>{t('auto.s91113aa1', 'Editar Perfil')}</Text>
             <ChevronRight size={20} color={textSecondary} />
           </TouchableOpacity>
 
@@ -80,7 +82,7 @@ export default function BusinessProfile() {
             <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
               <Settings size={20} color={textSecondary} />
             </View>
-            <Text style={[styles.menuText, { color: textPrimary }]}>Configurações</Text>
+            <Text style={[styles.menuText, { color: textPrimary }]}>{t('auto.s2571dd51', 'Configurações')}</Text>
             <ChevronRight size={20} color={textSecondary} />
           </TouchableOpacity>
         </View>
@@ -94,7 +96,7 @@ export default function BusinessProfile() {
             <View style={[styles.menuIcon, { backgroundColor: 'rgba(255, 59, 48, 0.1)' }]}>
               <LogOut size={20} color="#FF3B30" />
             </View>
-            <Text style={[styles.menuText, { color: '#FF3B30', fontWeight: '700' }]}>Sair da Conta</Text>
+            <Text style={[styles.menuText, { color: '#FF3B30', fontWeight: '700' }]}>{t('auto.s1ee9fc7c', 'Sair da Conta')}</Text>
           </View>
         </TouchableOpacity>
       </ScrollView>
@@ -108,20 +110,20 @@ export default function BusinessProfile() {
         <View style={styles.modalOverlay}>
           <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[styles.modalContent, { backgroundColor: backgroundSecondary }]}>
-            <Text style={[styles.modalTitle, { color: textPrimary }]}>Sair da Conta</Text>
-            <Text style={[styles.modalText, { color: textSecondary }]}>Tem certeza que deseja sair?</Text>
+            <Text style={[styles.modalTitle, { color: textPrimary }]}>{t('auto.s1ee9fc7c', 'Sair da Conta')}</Text>
+            <Text style={[styles.modalText, { color: textSecondary }]}>{t('auto.sc3fb460c', 'Tem certeza que deseja sair?')}</Text>
             <View style={styles.modalButtons}>
               <TouchableOpacity 
                 style={[styles.modalBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
                 onPress={() => setLogoutModalVisible(false)}
               >
-                <Text style={[styles.modalBtnText, { color: textPrimary }]}>Cancelar</Text>
+                <Text style={[styles.modalBtnText, { color: textPrimary }]}>{t('auto.s847607d7', 'Cancelar')}</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.modalBtn, { backgroundColor: '#FF3B30' }]}
                 onPress={confirmSignOut}
               >
-                <Text style={[styles.modalBtnText, { color: '#fff' }]}>Sair</Text>
+                <Text style={[styles.modalBtnText, { color: '#fff' }]}>{t('auto.s790ed91f', 'Sair')}</Text>
               </TouchableOpacity>
             </View>
           </View>

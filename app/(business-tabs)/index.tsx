@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -11,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 
 export default function BusinessDashboard() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const { user } = useAuth();
@@ -69,7 +71,7 @@ export default function BusinessDashboard() {
       <View style={[styles.header, { paddingTop: insets.top + vs(10), backgroundColor: backgroundSecondary, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
         <View style={styles.headerLeft}>
           <Briefcase size={24} color={accent} />
-          <Text style={[styles.headerTitle, { color: textPrimary }]}>UNNA Business</Text>
+          <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.s75133848', 'UNNA Business')}</Text>
         </View>
         <TouchableOpacity style={styles.headerAvatar} onPress={() => router.push('/(business-tabs)/profile')}>
            {user?.user_metadata?.avatar_url ? (
@@ -86,7 +88,7 @@ export default function BusinessDashboard() {
         
         {/* OVERVIEW SECTION */}
         <Animated.View entering={FadeInDown.delay(100)}>
-          <Text style={[styles.sectionTitle, { color: textPrimary }]}>Visão Geral</Text>
+          <Text style={[styles.sectionTitle, { color: textPrimary }]}>{t('auto.scd28583c', 'Visão Geral')}</Text>
           <View style={styles.statsGrid}>
             <View style={[styles.statCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
               <View style={styles.statHeaderRow}>
@@ -96,7 +98,7 @@ export default function BusinessDashboard() {
                 <TrendingUp size={16} color="#34C759" />
               </View>
               <Text style={[styles.statValue, { color: textPrimary }]}>{stats.events}</Text>
-              <Text style={[styles.statLabel, { color: textSecondary }]}>Eventos Ativos</Text>
+              <Text style={[styles.statLabel, { color: textSecondary }]}>{t('auto.s650952fb', 'Eventos Ativos')}</Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
@@ -107,35 +109,35 @@ export default function BusinessDashboard() {
                 <TrendingUp size={16} color="#34C759" />
               </View>
               <Text style={[styles.statValue, { color: textPrimary }]}>{stats.likes}</Text>
-              <Text style={[styles.statLabel, { color: textSecondary }]}>Engajamento</Text>
+              <Text style={[styles.statLabel, { color: textSecondary }]}>{t('auto.s7b631940', 'Engajamento')}</Text>
             </View>
           </View>
         </Animated.View>
 
         {/* QUICK ACTIONS */}
         <Animated.View entering={FadeInDown.delay(200)} style={styles.sectionContainer}>
-          <Text style={[styles.sectionTitle, { color: textPrimary }]}>Ações Rápidas</Text>
+          <Text style={[styles.sectionTitle, { color: textPrimary }]}>{t('auto.s67e999fa', 'Ações Rápidas')}</Text>
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsScroll}>
             <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/business/create')} activeOpacity={0.8}>
               <LinearGradient colors={['#00d9ff', '#ff1493']} style={styles.quickActionGradient} start={{x:0, y:0}} end={{x:1, y:1}}>
                 <CalendarPlus size={24} color="#fff" />
               </LinearGradient>
-              <Text style={[styles.quickActionText, { color: textPrimary }]}>Novo Evento</Text>
+              <Text style={[styles.quickActionText, { color: textPrimary }]}>{t('auto.s10f70799', 'Novo Evento')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/(business-tabs)/promotions')} activeOpacity={0.8}>
               <LinearGradient colors={['#FF9500', '#FF3B30']} style={styles.quickActionGradient} start={{x:0, y:0}} end={{x:1, y:1}}>
                 <Gift size={24} color="#fff" />
               </LinearGradient>
-              <Text style={[styles.quickActionText, { color: textPrimary }]}>Promoções</Text>
+              <Text style={[styles.quickActionText, { color: textPrimary }]}>{t('auto.sbb5be1f6', 'Promoções')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/(business-tabs)/marketing')} activeOpacity={0.8}>
               <LinearGradient colors={['#7b2fff', '#ff1493']} style={styles.quickActionGradient} start={{x:0, y:0}} end={{x:1, y:1}}>
                 <Bell size={24} color="#fff" />
               </LinearGradient>
-              <Text style={[styles.quickActionText, { color: textPrimary }]}>Avisos Push</Text>
+              <Text style={[styles.quickActionText, { color: textPrimary }]}>{t('auto.s13ab7961', 'Avisos Push')}</Text>
             </TouchableOpacity>
           </ScrollView>
         </Animated.View>
@@ -144,8 +146,8 @@ export default function BusinessDashboard() {
         <Animated.View entering={FadeInDown.delay(300)} style={[styles.performanceCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
            <View style={styles.perfHeader}>
              <View>
-               <Text style={[styles.perfTitle, { color: textPrimary }]}>Performance Semanal</Text>
-               <Text style={[styles.perfSubtitle, { color: textSecondary }]}>Visualizações do seu perfil e eventos</Text>
+               <Text style={[styles.perfTitle, { color: textPrimary }]}>{t('auto.s2dd32c8d', 'Performance Semanal')}</Text>
+               <Text style={[styles.perfSubtitle, { color: textSecondary }]}>{t('auto.s8e37c800', 'Visualizações do seu perfil e eventos')}</Text>
              </View>
              <BarChart2 size={24} color={accent} />
            </View>

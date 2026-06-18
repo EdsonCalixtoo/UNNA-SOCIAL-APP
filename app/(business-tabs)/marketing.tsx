@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator, Alert, Image } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import StoryCreator from '@/components/StoryCreator';
 
 export default function MarketingTab() {
+  const { t } = useLanguage();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -78,7 +80,7 @@ export default function MarketingTab() {
       {/* HEADER */}
       <View style={[styles.header, { paddingTop: insets.top + vs(10), backgroundColor: backgroundSecondary, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
         <Megaphone size={24} color={accent} style={{ marginRight: 8 }} />
-        <Text style={[styles.headerTitle, { color: textPrimary }]}>Marketing</Text>
+        <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.s7cb15e41', 'Marketing')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -96,8 +98,8 @@ export default function MarketingTab() {
               </View>
               <ChevronRight size={24} color="rgba(255,255,255,0.5)" />
             </View>
-            <Text style={styles.cardTitle}>Avisar Seguidores</Text>
-            <Text style={styles.cardDesc}>Dispare uma notificação no celular de todos os seus seguidores para avisar de lote virando ou novidades.</Text>
+            <Text style={styles.cardTitle}>{t('auto.s43eefa8a', 'Avisar Seguidores')}</Text>
+            <Text style={styles.cardDesc}>{t('auto.s9a0d9f6d', 'Dispare uma notificação no celular de todos os seus seguidores para avisar de lote virando ou novidades.')}</Text>
           </LinearGradient>
         </TouchableOpacity>
 
@@ -113,8 +115,8 @@ export default function MarketingTab() {
               </View>
               <ChevronRight size={24} color="rgba(255,255,255,0.5)" />
             </View>
-            <Text style={styles.cardTitle}>Postar Story</Text>
-            <Text style={styles.cardDesc}>Mostre os bastidores. Fotos e vídeos de até 15s que somem em 24h e ficam no topo do feed.</Text>
+            <Text style={styles.cardTitle}>{t('auto.sa215a23f', 'Postar Story')}</Text>
+            <Text style={styles.cardDesc}>{t('auto.s1d2a0969', 'Mostre os bastidores. Fotos e vídeos de até 15s que somem em 24h e ficam no topo do feed.')}</Text>
           </LinearGradient>
         </TouchableOpacity>
 
@@ -126,26 +128,26 @@ export default function MarketingTab() {
           <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[styles.modalContent, { backgroundColor: backgroundSecondary }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textPrimary }]}>Nova Notificação</Text>
+              <Text style={[styles.modalTitle, { color: textPrimary }]}>{t('auto.s8ccf2b3c', 'Nova Notificação')}</Text>
               <TouchableOpacity onPress={() => setPushModalVisible(false)}>
                 <X size={24} color={textSecondary} />
               </TouchableOpacity>
             </View>
             
-            <Text style={[styles.inputLabel, { color: textPrimary }]}>Título da Notificação</Text>
+            <Text style={[styles.inputLabel, { color: textPrimary }]}>{t('auto.sb67d7085', 'Título da Notificação')}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}
-              placeholder="Ex: Últimos Ingressos Lote 1!"
+              placeholder={t('auto.sd40c7e20', 'Ex: Últimos Ingressos Lote 1!')}
               placeholderTextColor={textSecondary}
               value={pushTitle}
               onChangeText={setPushTitle}
               maxLength={40}
             />
 
-            <Text style={[styles.inputLabel, { color: textPrimary, marginTop: 16 }]}>Mensagem</Text>
+            <Text style={[styles.inputLabel, { color: textPrimary, marginTop: 16 }]}>{t('auto.s20fda0cb', 'Mensagem')}</Text>
             <TextInput
               style={[styles.input, styles.textArea, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}
-              placeholder="Ex: Corra antes que acabe! Clique aqui para comprar..."
+              placeholder={t('auto.sed95801a', 'Ex: Corra antes que acabe! Clique aqui para comprar...')}
               placeholderTextColor={textSecondary}
               value={pushMessage}
               onChangeText={setPushMessage}
@@ -158,7 +160,7 @@ export default function MarketingTab() {
               onPress={handleSendPush}
               disabled={pushLoading}
             >
-              {pushLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Disparar Notificação</Text>}
+              {pushLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{t('auto.s124747a3', 'Disparar Notificação')}</Text>}
             </TouchableOpacity>
           </View>
         </View>

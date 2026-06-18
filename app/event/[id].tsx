@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { notifyEventPresence } from '@/lib/notifications';
+import { useLanguage } from '@/lib/i18n';
 import { EventShareModal } from '@/components/EventShareModal';
 import { EventParticipantsModal } from '@/components/EventParticipantsModal';
 import { EventTicketModal } from '@/components/EventTicketModal';
@@ -56,16 +57,16 @@ const MemoizedCard = memo(({ children, style, onPress }: any) => (
   </TouchableOpacity>
 ));
 
-const MemoizedInfoGrid = memo(({ date, time, endTime, accent, textPrimary, backgroundSecondary, formatDate }: any) => (
+const MemoizedInfoGrid = memo(({ date, time, endTime, accent, textPrimary, backgroundSecondary, formatDate, t }: any) => (
   <View style={styles.grid}>
     <View style={[styles.infoCard, { backgroundColor: backgroundSecondary }]}>
       <Calendar size={20} color={accent} />
-      <Text style={[styles.label, { color: textPrimary, opacity: 0.5 }]}>DATA</Text>
+      <Text style={[styles.label, { color: textPrimary, opacity: 0.5 }]}>{t('auto.se44f9e34', 'DATA')}</Text>
       <Text style={[styles.val, { color: textPrimary }]}>{formatDate(date)}</Text>
     </View>
     <View style={[styles.infoCard, { backgroundColor: backgroundSecondary }]}>
       <Clock size={20} color="#ff1493" />
-      <Text style={[styles.label, { color: textPrimary, opacity: 0.5 }]}>HORÁRIO</Text>
+      <Text style={[styles.label, { color: textPrimary, opacity: 0.5 }]}>{t('auto.s599ed4c2', 'HORÁRIO')}</Text>
       <Text style={[styles.val, { color: textPrimary }]}>
         {time?.slice(0, 5)} {endTime ? `às ${endTime.slice(0, 5)}` : ''}
       </Text>
@@ -78,6 +79,7 @@ export default function EventDetails() {
   const router = useRouter();
   const { user } = useAuth();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent: defaultAccent, isDark } = useTheme();
+  const { t } = useLanguage();
 
   const [event, setEvent] = useState<any>(null);
   
@@ -110,6 +112,31 @@ export default function EventDetails() {
   useEffect(() => { 
     loadEvent(); 
     loadRSVPStatus(); 
+  }, [id]);
+
+  // Lógica para Web: Tenta abrir o App, se falhar, redireciona para a loja
+  useEffect(() => {
+    if (Platform.OS === 'web' && id && id !== 'undefined') {
+      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+      const isAndroid = /android/i.test(userAgent);
+      const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !(window as any).MSStream;
+
+      if (isAndroid || isIOS) {
+        // 1. Tenta abrir o app através do Custom Scheme
+        window.location.href = `unna-social-app://event/${id}`;
+
+        // 2. Se não abrir em 2.5s (porque não tem o app instalado), vai pra loja
+        setTimeout(() => {
+          if (isAndroid) {
+            // URL da Play Store
+            window.location.href = 'https://play.google.com/store/apps/details?id=com.bolt.starter';
+          } else if (isIOS) {
+            // URL da App Store (Substitua o ID pelo ID real do seu app depois que publicar)
+            window.location.href = 'https://apps.apple.com/br/app/apple-store/id000000000';
+          }
+        }, 2500);
+      }
+    }
   }, [id]);
 
   const loadEvent = async () => {
@@ -463,7 +490,7 @@ export default function EventDetails() {
                 textAlign: 'center',
                 marginBottom: 10,
               }}>
-                Excluir Evento
+                {t('events.deleteEvent', 'Excluir Evento')}
               </Text>
 
               <Text style={{
@@ -473,7 +500,7 @@ export default function EventDetails() {
                 textAlign: 'center',
                 marginBottom: 24,
               }}>
-                Tem certeza que deseja excluir este evento? Esta ação é irreversível e removerá todos os participantes.
+                {t('events.deleteConfirm', 'Tem certeza que deseja excluir este evento? Esta ação é irreversível e removerá todos os participantes.')}
               </Text>
 
               <View style={{ width: '100%', gap: 10 }}>
@@ -503,7 +530,7 @@ export default function EventDetails() {
                     }
                   }}
                 >
-                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Excluir</Text>
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{t('common.delete', 'Excluir')}</Text>
                 </TouchableOpacity>
 
                 {/* Botão de Cancelar */}
@@ -518,7 +545,7 @@ export default function EventDetails() {
                   }}
                   onPress={() => setDeleteModalVisible(false)}
                 >
-                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>Cancelar</Text>
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>{t('common.cancel', 'Cancelar')}</Text>
                 </TouchableOpacity>
               </View>
             </Pressable>
@@ -545,8 +572,6 @@ export default function EventDetails() {
                       source={{ uri: url }} 
                       style={styles.media} 
                       resizeMode="cover" 
-                      // @ts-ignore
-                      sharedTransitionTag={`event-image-${id}-${i}`}
                     />
                   )}
                   <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent', 'rgba(0,0,0,0.9)']} style={StyleSheet.absoluteFill} />
@@ -638,6 +663,7 @@ export default function EventDetails() {
                       textPrimary={textPrimary} 
                       backgroundSecondary={backgroundSecondary} 
                       formatDate={formatDate}
+                      t={t}
                     />
                   )}
 
@@ -646,7 +672,7 @@ export default function EventDetails() {
                       <View style={{ padding: 16, flexDirection: 'row', gap: 16, alignItems: 'center' }}>
                         <MapPin size={24} color="#34C759" />
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.label, { color: textPrimary, opacity: 0.5 }]}>LOCALIZAÇÃO</Text>
+                          <Text style={[styles.label, { color: textPrimary, opacity: 0.5 }]}>{t('auto.s43f1d53c', 'LOCALIZAÇÃO')}</Text>
                           <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '500', lineHeight: 20, marginTop: 4 }}>{event.location_name}</Text>
                         </View>
                         <Navigation2 size={18} color={accent} />
@@ -715,8 +741,8 @@ export default function EventDetails() {
                     >
                       <Ticket size={24} color="#ff1493" />
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.label, { color: '#ff1493', opacity: 0.9, fontWeight: '900' }]}>COMPRAR INGRESSOS</Text>
-                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '700', marginTop: 4 }}>Adquirir ingressos para este evento</Text>
+                        <Text style={[styles.label, { color: '#ff1493', opacity: 0.9, fontWeight: '900' }]}>{t('events.buyTickets', 'COMPRAR INGRESSOS')}</Text>
+                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '700', marginTop: 4 }}>{t('events.acquireTickets', 'Adquirir ingressos para este evento')}</Text>
                       </View>
                       <ChevronRight size={18} color="#ff1493" />
                     </MemoizedCard>
@@ -752,8 +778,8 @@ export default function EventDetails() {
                     >
                       <MessageCircle size={24} color="#25D366" />
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.label, { color: '#25D366', opacity: 0.9, fontWeight: '900' }]}>RESERVAR / DÚVIDAS</Text>
-                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '700', marginTop: 4 }}>Chamar produtor no WhatsApp</Text>
+                        <Text style={[styles.label, { color: '#25D366', opacity: 0.9, fontWeight: '900' }]}>{t('events.reserveTickets', 'RESERVAR / DÚVIDAS')}</Text>
+                        <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '700', marginTop: 4 }}>{t('events.contactProducer', 'Chamar produtor no WhatsApp')}</Text>
                       </View>
                       <ChevronRight size={18} color="#25D366" />
                     </MemoizedCard>
@@ -772,7 +798,7 @@ export default function EventDetails() {
 
                   <View style={styles.section}>
                     <Text style={[styles.secTitle, { color: textPrimary }]}>
-                      {isPublication ? 'Descrição' : 'Sobre o Evento'}
+                      {isPublication ? t('events.description', 'Descrição') : t('events.aboutEvent', 'Sobre o Evento')}
                     </Text>
                     <Text style={[styles.desc, { color: textSecondary }]} selectable>
                       {event.description}
@@ -789,7 +815,7 @@ export default function EventDetails() {
               <>
                 <TouchableOpacity onPress={() => router.push(`/event/${id}/chat`)} style={[styles.mainBtn, { backgroundColor: accent }]}>
                   <MessageCircle size={20} color="#fff" />
-                  <Text style={[styles.btnText, { color: '#fff' }]}>Chat do Evento</Text>
+                  <Text style={[styles.btnText, { color: '#fff' }]}>{t('events.eventChat', 'Chat do Evento')}</Text>
                 </TouchableOpacity>
               </>
             ) : (

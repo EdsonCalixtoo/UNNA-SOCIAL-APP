@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState } from 'react';
 import {
   View,
@@ -89,6 +90,7 @@ export default function StoryAudioPicker({
   onClose,
   onSave,
 }: StoryAudioPickerProps) {
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAudio, setSelectedAudio] = useState<AudioTrack | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -176,7 +178,7 @@ export default function StoryAudioPicker({
           <TouchableOpacity onPress={onClose}>
             <X size={28} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Adicionar Música</Text>
+          <Text style={styles.headerTitle}>{t('auto.s33f3e173', 'Adicionar Música')}</Text>
           <TouchableOpacity onPress={handleSave} disabled={!selectedAudio}>
             <Check size={28} color={selectedAudio ? '#fff' : '#666'} />
           </TouchableOpacity>
@@ -187,7 +189,7 @@ export default function StoryAudioPicker({
           <Search size={20} color="#888" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Pesquisar música ou artista..."
+            placeholder={t('auto.s6e94d2a5', 'Pesquisar música ou artista...')}
             placeholderTextColor="#666"
             value={searchQuery}
             onChangeText={handleSearch}
@@ -235,7 +237,7 @@ export default function StoryAudioPicker({
           {/* Controls */}
           {selectedAudio && (
             <View style={styles.controlsContainer}>
-              <Text style={styles.sectionTitle}>🎛️ Controles</Text>
+              <Text style={styles.sectionTitle}>{t('auto.s10be155c', '🎛️ Controles')}</Text>
 
               {/* Volume */}
               <View style={styles.controlItem}>
@@ -285,7 +287,7 @@ export default function StoryAudioPicker({
 
           {/* Audio Library */}
           <View style={styles.libraryContainer}>
-            <Text style={styles.sectionTitle}>🎵 Biblioteca de Músicas</Text>
+            <Text style={styles.sectionTitle}>{t('auto.sad84f675', '🎵 Biblioteca de Músicas')}</Text>
 
             {filteredAudios.length > 0 ? (
               <FlatList
@@ -298,18 +300,18 @@ export default function StoryAudioPicker({
             ) : (
               <View style={styles.emptyState}>
                 <Music size={48} color="#666" />
-                <Text style={styles.emptyStateText}>Nenhuma música encontrada</Text>
+                <Text style={styles.emptyStateText}>{t('auto.s3e56da6b', 'Nenhuma música encontrada')}</Text>
               </View>
             )}
           </View>
 
           {/* Info */}
           <View style={styles.infoBox}>
-            <Text style={styles.infoTitle}>💡 Dicas</Text>
-            <Text style={styles.infoText}>• Selecione uma música da biblioteca</Text>
-            <Text style={styles.infoText}>• Ajuste o volume conforme necessário</Text>
-            <Text style={styles.infoText}>• Escolha onde a música começa</Text>
-            <Text style={styles.infoText}>• Toque em uma música para ouvir preview</Text>
+            <Text style={styles.infoTitle}>{t('auto.sc3ed5435', '💡 Dicas')}</Text>
+            <Text style={styles.infoText}>{t('auto.s8b6f6a41', '• Selecione uma música da biblioteca')}</Text>
+            <Text style={styles.infoText}>{t('auto.sb47e8fd8', '• Ajuste o volume conforme necessário')}</Text>
+            <Text style={styles.infoText}>{t('auto.s9a13c92f', '• Escolha onde a música começa')}</Text>
+            <Text style={styles.infoText}>{t('auto.s69145220', '• Toque em uma música para ouvir preview')}</Text>
           </View>
         </ScrollView>
       </View>

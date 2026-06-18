@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Alert } from 'react-native';
 import { AlertCircle, X, Trash2, Eye } from 'lucide-react-native';
@@ -39,6 +40,7 @@ export const ErrorLogsViewer: React.FC = () => {
     return null;
   }
 
+  const { t } = useLanguage();
   return (
     <Modal
       visible={isVisible}
@@ -48,7 +50,7 @@ export const ErrorLogsViewer: React.FC = () => {
     >
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>📋 Logs de Erro</Text>
+          <Text style={styles.headerTitle}>{t('auto.s646f9d4b', '📋 Logs de Erro')}</Text>
           <TouchableOpacity onPress={() => setIsVisible(false)}>
             <X size={24} color="#fff" />
           </TouchableOpacity>
@@ -56,11 +58,11 @@ export const ErrorLogsViewer: React.FC = () => {
 
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Total de Erros</Text>
+            <Text style={styles.statLabel}>{t('auto.sda3d71cd', 'Total de Erros')}</Text>
             <Text style={styles.statValue}>{logs.length}</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Erros Fatais</Text>
+            <Text style={styles.statLabel}>{t('auto.s1b0b2584', 'Erros Fatais')}</Text>
             <Text style={styles.statValue}>{logs.filter(l => l.fatal).length}</Text>
           </View>
         </View>
@@ -68,7 +70,7 @@ export const ErrorLogsViewer: React.FC = () => {
         <ScrollView style={styles.logsList}>
           {logs.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>✅ Nenhum erro registrado</Text>
+              <Text style={styles.emptyText}>{t('auto.s23ab0310', '✅ Nenhum erro registrado')}</Text>
             </View>
           ) : (
             logs.map((log, index) => (
@@ -84,7 +86,7 @@ export const ErrorLogsViewer: React.FC = () => {
                   <Text style={styles.logTimestamp}>{log.timestamp}</Text>
                   {log.fatal && (
                     <View style={styles.fatalBadge}>
-                      <Text style={styles.fatalBadgeText}>FATAL</Text>
+                      <Text style={styles.fatalBadgeText}>{t('auto.s19da7170', 'FATAL')}</Text>
                     </View>
                   )}
                 </View>
@@ -102,7 +104,7 @@ export const ErrorLogsViewer: React.FC = () => {
             onPress={handleClearLogs}
           >
             <Trash2 size={18} color="#fff" />
-            <Text style={styles.clearButtonText}>Limpar Logs</Text>
+            <Text style={styles.clearButtonText}>{t('auto.s144da582', 'Limpar Logs')}</Text>
           </TouchableOpacity>
         )}
 
@@ -116,7 +118,7 @@ export const ErrorLogsViewer: React.FC = () => {
             <View style={styles.detailModal}>
               <View style={styles.detailContent}>
                 <View style={styles.detailHeader}>
-                  <Text style={styles.detailTitle}>Detalhes do Erro</Text>
+                  <Text style={styles.detailTitle}>{t('auto.sd1097759', 'Detalhes do Erro')}</Text>
                   <TouchableOpacity onPress={() => setSelectedLog(null)}>
                     <X size={24} color="#fff" />
                   </TouchableOpacity>
@@ -124,24 +126,24 @@ export const ErrorLogsViewer: React.FC = () => {
 
                 <ScrollView style={styles.detailScroll}>
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Timestamp:</Text>
+                    <Text style={styles.detailLabel}>{t('auto.s002a35a1', 'Timestamp:')}</Text>
                     <Text style={styles.detailValue}>{selectedLog.timestamp}</Text>
                   </View>
 
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Mensagem:</Text>
+                    <Text style={styles.detailLabel}>{t('auto.sa9b92ed3', 'Mensagem:')}</Text>
                     <Text style={styles.detailValue}>{selectedLog.message}</Text>
                   </View>
 
                   {selectedLog.stack && (
                     <View style={styles.detailSection}>
-                      <Text style={styles.detailLabel}>Stack Trace:</Text>
+                      <Text style={styles.detailLabel}>{t('auto.sd60f426e', 'Stack Trace:')}</Text>
                       <Text style={styles.detailStack}>{selectedLog.stack}</Text>
                     </View>
                   )}
 
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Tipo:</Text>
+                    <Text style={styles.detailLabel}>{t('auto.sb828effb', 'Tipo:')}</Text>
                     <Text style={[
                       styles.detailValue,
                       selectedLog.fatal && { color: '#ff4444' }
@@ -155,7 +157,7 @@ export const ErrorLogsViewer: React.FC = () => {
                   style={styles.closeDetailButton}
                   onPress={() => setSelectedLog(null)}
                 >
-                  <Text style={styles.closeDetailButtonText}>Fechar</Text>
+                  <Text style={styles.closeDetailButtonText}>{t('auto.s23781b5e', 'Fechar')}</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -28,6 +29,7 @@ export default function StoryImageCropper({
   onClose,
   onSave,
 }: StoryImageCropperProps) {
+  const { t } = useLanguage();
   const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
   
   // Animated Values
@@ -129,7 +131,7 @@ export default function StoryImageCropper({
            <TouchableOpacity onPress={onClose} style={styles.headerBtn}>
               <X size={28} color="#fff" />
            </TouchableOpacity>
-           <Text style={styles.headerTitle}>AJUSTAR STORY</Text>
+           <Text style={styles.headerTitle}>{t('auto.sa8ce5493', 'AJUSTAR STORY')}</Text>
            <TouchableOpacity onPress={handleSave} style={styles.headerBtn}>
               <Check size={28} color="#00d9ff" />
            </TouchableOpacity>
@@ -157,17 +159,17 @@ export default function StoryImageCropper({
                 />
               </Animated.View>
            </View>
-           <Text style={styles.hintText}>Use dois dedos para ampliar ou reduzir</Text>
+           <Text style={styles.hintText}>{t('auto.s7a042a45', 'Use dois dedos para ampliar ou reduzir')}</Text>
         </View>
 
         <View style={styles.footer}>
            <TouchableOpacity style={styles.toolBtn} onPress={handleRotate}>
               <RotateCw size={24} color="#fff" />
-              <Text style={styles.toolText}>GIRAR</Text>
+              <Text style={styles.toolText}>{t('auto.se9d69bc4', 'GIRAR')}</Text>
            </TouchableOpacity>
            <TouchableOpacity style={styles.toolBtn} onPress={reset}>
               <RefreshCw size={24} color="#fff" />
-              <Text style={styles.toolText}>RESETAR</Text>
+              <Text style={styles.toolText}>{t('auto.s24478ec1', 'RESETAR')}</Text>
            </TouchableOpacity>
         </View>
       </View>

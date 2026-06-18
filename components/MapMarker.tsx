@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +23,7 @@ interface MapMarkerProps {
 }
 
 export function MapMarker({ event, onPress, isSelected }: MapMarkerProps) {
+  const { t } = useLanguage();
   return (
     <TouchableOpacity
       style={[
@@ -44,12 +46,12 @@ export function MapMarker({ event, onPress, isSelected }: MapMarkerProps) {
         {event.isLive && (
           <View style={styles.liveBadge}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveText}>AO VIVO</Text>
+            <Text style={styles.liveText}>{t('auto.s9b52000c', 'AO VIVO')}</Text>
           </View>
         )}
         
         <View style={styles.markerContent}>
-          <Text style={styles.markerEmoji}>📍</Text>
+          <Text style={styles.markerEmoji}>{t('auto.s6df173ff', '📍')}</Text>
           <Text style={styles.markerTitle} numberOfLines={1}>
             {event.title}
           </Text>

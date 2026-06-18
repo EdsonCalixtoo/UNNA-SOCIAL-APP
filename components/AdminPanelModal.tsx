@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, Modal, TextInput, FlatList, 
@@ -28,10 +29,11 @@ interface AdminPanelModalProps {
 }
 
 export default function AdminPanelModal({ visible, onClose }: AdminPanelModalProps) {
+  const { t } = useLanguage();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'verification' | 'categories' | 'notifications'>('verification');
+  const [activeTab, setActiveTab] = useState<'verification' | 'badges' | 'categories' | 'notifications'>('verification');
 
   // Verification State
   const [search, setSearch] = useState('');
@@ -61,6 +63,21 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
   const [editingTemplate, setEditingTemplate] = useState<any | null>(null);
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateBody, setTemplateBody] = useState('');
+
+  // Badges Management State
+  const [allBadges, setAllBadges] = useState<any[]>([]);
+  const [loadingBadges, setLoadingBadges] = useState(false);
+  const [showBadgeForm, setShowBadgeForm] = useState(false);
+  const [editingBadge, setEditingBadge] = useState<any | null>(null);
+  const [badgeName, setBadgeName] = useState('');
+  const [badgeDesc, setBadgeDesc] = useState('');
+  const [badgeIcon, setBadgeIcon] = useState('✨');
+  const [badgeCategory, setBadgeCategory] = useState('social');
+  
+  // User Badges (for modal assignment)
+  const [managingUserId, setManagingUserId] = useState<string | null>(null);
+  const [userBadges, setUserBadges] = useState<Set<string>>(new Set());
+  const [loadingUserBadges, setLoadingUserBadges] = useState(false);
 
   const loadTemplates = async () => {
     setLoadingTemplates(true);
@@ -93,6 +110,19 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
     }
   };
 
+  const loadBadges = async () => {
+    setLoadingBadges(true);
+    try {
+      const { data, error } = await supabase.from('badges').select('*').order('created_at', { ascending: false });
+      if (error && error.code !== '42P01') throw error;
+      setAllBadges(data || []);
+    } catch (err: any) {
+      console.error('Error fetching badges:', err);
+    } finally {
+      setLoadingBadges(false);
+    }
+  };
+
   // Load initial data
   useEffect(() => {
     if (visible) {
@@ -102,6 +132,8 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
         loadCategories();
       } else if (activeTab === 'notifications') {
         loadTemplates();
+      } else if (activeTab === 'badges') {
+        loadBadges();
       }
     }
   }, [visible, activeTab]);
@@ -136,10 +168,146 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
 
       if (error) throw error;
 
+      if (!currentStatus) {
+        // Enviar notificação de que foi verificado
+        await supabase.from('notifications').insert({
+          user_id: userId,
+          type: 'system',
+          title: 'Selo de Verificação',
+          message: 'O perfil @UNNAsocialappoficial verificou sua conta! Parabéns!',
+          data: { is_verified: true }
+        });
+      }
+
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_verified: !currentStatus } : u));
       setFeedback({ type: 'success', message: 'Selo atualizado com sucesso!' });
     } catch (err: any) {
       setFeedback({ type: 'error', message: 'Erro: ' + err.message });
+    }
+  };
+
+  // --- BADGES ROUTINES ---
+  const handleSaveBadge = async () => {
+    if (!badgeName.trim() || !badgeIcon.trim()) {
+      setFeedback({ type: 'error', message: 'Nome e Ícone são obrigatórios!' });
+      return;
+    }
+
+    try {
+      if (editingBadge) {
+        const { error } = await supabase
+          .from('badges')
+          .update({
+            name: badgeName.trim(),
+            description: badgeDesc.trim(),
+            icon: badgeIcon.trim(),
+            category: badgeCategory
+          })
+          .eq('id', editingBadge.id);
+
+        if (error) throw error;
+        setFeedback({ type: 'success', message: 'Selo atualizado!' });
+      } else {
+        const { error } = await supabase
+          .from('badges')
+          .insert({
+            name: badgeName.trim(),
+            description: badgeDesc.trim(),
+            icon: badgeIcon.trim(),
+            category: badgeCategory
+          });
+
+        if (error) throw error;
+        setFeedback({ type: 'success', message: 'Selo criado com sucesso!' });
+      }
+
+      setShowBadgeForm(false);
+      setEditingBadge(null);
+      loadBadges();
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: 'Erro ao salvar selo: ' + err.message });
+    }
+  };
+
+  const handleDeleteBadge = async (badgeId: string) => {
+    try {
+      const { error } = await supabase.from('badges').delete().eq('id', badgeId);
+      if (error) throw error;
+      setFeedback({ type: 'success', message: 'Selo removido com sucesso!' });
+      loadBadges();
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: 'Erro ao remover selo: ' + err.message });
+    }
+  };
+
+  const openManageBadges = async (userId: string) => {
+    setManagingUserId(userId);
+    setLoadingUserBadges(true);
+    // ensure badges are loaded
+    if (allBadges.length === 0) {
+      await loadBadges();
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('user_badges')
+        .select('badge_id')
+        .eq('user_id', userId);
+      
+      if (error) throw error;
+      
+      setUserBadges(new Set((data || []).map(b => b.badge_id)));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingUserBadges(false);
+    }
+  };
+
+  const toggleUserBadge = async (badgeId: string) => {
+    if (!managingUserId) return;
+    
+    const hasBadge = userBadges.has(badgeId);
+    
+    try {
+      if (hasBadge) {
+        const { error } = await supabase
+          .from('user_badges')
+          .delete()
+          .match({ user_id: managingUserId, badge_id: badgeId });
+        if (error) throw error;
+        
+        setUserBadges(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(badgeId);
+          return newSet;
+        });
+      } else {
+        const { error } = await supabase
+          .from('user_badges')
+          .insert({ user_id: managingUserId, badge_id: badgeId });
+        if (error) throw error;
+        
+        setUserBadges(prev => {
+          const newSet = new Set(prev);
+          newSet.add(badgeId);
+          return newSet;
+        });
+
+        // Get badge info to send notification
+        const badge = allBadges.find(b => b.id === badgeId);
+        if (badge) {
+          await supabase.from('notifications').insert({
+            user_id: managingUserId,
+            type: 'system',
+            title: 'Novo Selo Conquistado!',
+            message: `Você recebeu o selo ${badge.name} do @UNNAsocialappoficial!`,
+            data: { badge_id: badgeId }
+          });
+        }
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: 'Erro ao alterar selo do usuário: ' + err.message });
     }
   };
 
@@ -279,8 +447,8 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                 <ShieldCheck size={22} color={accent} />
               </View>
               <View>
-                <Text style={[styles.title, { color: textPrimary }]}>Painel Administrativo</Text>
-                <Text style={[styles.subtitle, { color: textSecondary }]}>Controle geral do UNNA Social</Text>
+                <Text style={[styles.title, { color: textPrimary }]}>{t('auto.s0462a551', 'Painel Administrativo')}</Text>
+                <Text style={[styles.subtitle, { color: textSecondary }]}>{t('auto.s203d5391', 'Controle geral do UNNA Social')}</Text>
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
@@ -289,31 +457,41 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
           </View>
 
           {/* GLASS SEGMENTED TAB SELECTOR */}
-          <View style={[styles.tabBar, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-            <TouchableOpacity 
-              style={[styles.tabButton, activeTab === 'verification' && { borderBottomColor: accent }]}
-              onPress={() => setActiveTab('verification')}
-            >
-              <Text style={[styles.tabText, { color: activeTab === 'verification' ? textPrimary : textSecondary, fontWeight: activeTab === 'verification' ? '800' : '500' }]}>
-                Verificações
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.tabButton, activeTab === 'categories' && { borderBottomColor: accent }]}
-              onPress={() => setActiveTab('categories')}
-            >
-              <Text style={[styles.tabText, { color: activeTab === 'categories' ? textPrimary : textSecondary, fontWeight: activeTab === 'categories' ? '800' : '500' }]}>
-                Categorias & Sub
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.tabButton, activeTab === 'notifications' && { borderBottomColor: accent }]}
-              onPress={() => setActiveTab('notifications')}
-            >
-              <Text style={[styles.tabText, { color: activeTab === 'notifications' ? textPrimary : textSecondary, fontWeight: activeTab === 'notifications' ? '800' : '500' }]}>
-                Notificações
-              </Text>
-            </TouchableOpacity>
+          <View style={[styles.tabBar, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', paddingHorizontal: 0 }]}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
+              <TouchableOpacity 
+                style={[styles.tabButton, activeTab === 'verification' && { borderBottomColor: accent }]}
+                onPress={() => setActiveTab('verification')}
+              >
+                <Text style={[styles.tabText, { color: activeTab === 'verification' ? textPrimary : textSecondary, fontWeight: activeTab === 'verification' ? '800' : '500' }]}>
+                  Usuários
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.tabButton, activeTab === 'badges' && { borderBottomColor: accent }]}
+                onPress={() => setActiveTab('badges')}
+              >
+                <Text style={[styles.tabText, { color: activeTab === 'badges' ? textPrimary : textSecondary, fontWeight: activeTab === 'badges' ? '800' : '500' }]}>
+                  Selos
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.tabButton, activeTab === 'categories' && { borderBottomColor: accent }]}
+                onPress={() => setActiveTab('categories')}
+              >
+                <Text style={[styles.tabText, { color: activeTab === 'categories' ? textPrimary : textSecondary, fontWeight: activeTab === 'categories' ? '800' : '500' }]}>
+                  Categorias & Sub
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.tabButton, activeTab === 'notifications' && { borderBottomColor: accent }]}
+                onPress={() => setActiveTab('notifications')}
+              >
+                <Text style={[styles.tabText, { color: activeTab === 'notifications' ? textPrimary : textSecondary, fontWeight: activeTab === 'notifications' ? '800' : '500' }]}>
+                  Notificações
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
 
           {/* TAB 1: USER VERIFICATIONS */}
@@ -324,7 +502,7 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                   <Search size={20} color={textSecondary} />
                   <TextInput
                     style={[styles.input, { color: textPrimary }]}
-                    placeholder="Nome ou @username..."
+                    placeholder={t('auto.s81ca4deb', 'Nome ou @username...')}
                     placeholderTextColor={textSecondary}
                     value={search}
                     onChangeText={setSearch}
@@ -341,14 +519,14 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                   style={[styles.searchBtn, { backgroundColor: accent }]}
                   onPress={() => searchUsers(search)}
                 >
-                  <Text style={styles.searchBtnText}>Buscar</Text>
+                  <Text style={styles.searchBtnText}>{t('auto.s113f7428', 'Buscar')}</Text>
                 </TouchableOpacity>
               </View>
 
               {loading ? (
                 <View style={styles.loaderContainer}>
                   <ActivityIndicator size="large" color={accent} />
-                  <Text style={[styles.loaderText, { color: textSecondary }]}>Buscando usuários...</Text>
+                  <Text style={[styles.loaderText, { color: textSecondary }]}>{t('auto.s1c7e930e', 'Buscando usuários...')}</Text>
                 </View>
               ) : (
                 <FlatList
@@ -357,47 +535,105 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                   contentContainerStyle={styles.listContent}
                   showsVerticalScrollIndicator={false}
                   renderItem={({ item }) => (
-                    <View style={[styles.userCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
-                      <View style={styles.userMainInfo}>
-                        {item.avatar_url ? (
-                          <Image 
-                            source={{ uri: item.avatar_url }} 
-                            style={[styles.avatar, { borderColor: item.is_verified ? accent : 'transparent' }]} 
-                          />
-                        ) : (
-                          <View style={[styles.avatarPlaceholder, { backgroundColor: accent }]}>
-                            <Text style={styles.avatarText}>
-                              {item.username?.charAt(0).toUpperCase() || item.full_name?.charAt(0).toUpperCase() || 'U'}
-                            </Text>
+                      <View>
+                        <View style={[styles.userCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderBottomWidth: managingUserId === item.id ? 0 : 1, flexDirection: 'column', padding: 14, gap: 12 }]}>
+                          {/* TOP ROW: Avatar + Name */}
+                          <View style={styles.userMainInfo}>
+                            {item.avatar_url ? (
+                              <Image 
+                                source={{ uri: item.avatar_url }} 
+                                style={[styles.avatar, { borderColor: item.is_verified ? accent : 'transparent' }]} 
+                              />
+                            ) : (
+                              <View style={[styles.avatarPlaceholder, { backgroundColor: accent }]}>
+                                <Text style={styles.avatarText}>
+                                  {item.username?.charAt(0).toUpperCase() || item.full_name?.charAt(0).toUpperCase() || 'U'}
+                                </Text>
+                              </View>
+                            )}
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <Text style={[styles.userName, { color: textPrimary, flexShrink: 1 }]} numberOfLines={1}>{item.full_name}</Text>
+                                {item.is_verified && (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: accent + '20', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 }}>
+                                    <Sparkles size={10} color={accent} fill={accent} />
+                                    <Text style={{ color: accent, fontSize: 10, fontWeight: '700' }}>{t('auto.se0b3f379', 'Verificado')}</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={[styles.userHandle, { color: textSecondary }]}>@{item.username}</Text>
+                            </View>
+                          </View>
+
+                          {/* BOTTOM ROW: Action Buttons */}
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {/* Selos Button */}
+                            <TouchableOpacity 
+                              onPress={() => managingUserId === item.id ? setManagingUserId(null) : openManageBadges(item.id)}
+                              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: managingUserId === item.id ? accent + '25' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'), borderWidth: 1, borderColor: managingUserId === item.id ? accent + '50' : 'transparent' }}
+                            >
+                              <Text style={{ fontSize: 15 }}>{t('auto.s7ee2594b', '🎖️')}</Text>
+                              <Text style={{ color: managingUserId === item.id ? accent : textPrimary, fontSize: 13, fontWeight: '700' }}>
+                                {managingUserId === item.id ? 'Fechar Selos' : 'Selos'}
+                              </Text>
+                            </TouchableOpacity>
+
+                            {/* Verificar Button */}
+                            <TouchableOpacity 
+                              onPress={() => toggleVerification(item.id, item.is_verified)}
+                              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: item.is_verified ? accent + '20' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'), borderWidth: 1, borderColor: item.is_verified ? accent + '50' : 'transparent' }}
+                            >
+                              <Sparkles size={14} color={item.is_verified ? accent : textSecondary} fill={item.is_verified ? accent : 'none'} />
+                              <Text style={{ color: item.is_verified ? accent : textSecondary, fontSize: 13, fontWeight: '700' }}>
+                                {item.is_verified ? 'Verificado' : 'Verificar'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                        
+                        {/* Manage Badges Inline Panel */}
+                        {managingUserId === item.id && (
+                          <View style={{ backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.02)', padding: 15, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, marginBottom: 12, borderWidth: 1, borderTopWidth: 0, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }}>
+                            <Text style={{ color: textPrimary, fontWeight: '700', marginBottom: 12, fontSize: 14 }}>🎖️ Atribuir Selos ({allBadges.length})</Text>
+                            {loadingUserBadges ? (
+                              <ActivityIndicator color={accent} style={{ marginVertical: 10 }} />
+                            ) : (
+                              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                                {allBadges.length === 0 ? (
+                                  <Text style={{ color: textSecondary, fontSize: 13 }}>{t('auto.sa5d2e75a', 'Nenhum selo criado ainda. Vá à aba "Selos" para criar.')}</Text>
+                                ) : (
+                                  allBadges.map(badge => {
+                                    const isActive = userBadges.has(badge.id);
+                                    return (
+                                      <TouchableOpacity
+                                        key={badge.id}
+                                        onPress={() => toggleUserBadge(badge.id)}
+                                        style={{
+                                          flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 20,
+                                          borderWidth: 1.5,
+                                          borderColor: isActive ? accent : (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'),
+                                          backgroundColor: isActive ? accent + '15' : 'transparent',
+                                          gap: 6, minHeight: 42
+                                        }}
+                                      >
+                                        <Text style={{ fontSize: 18 }}>{badge.icon}</Text>
+                                        <Text style={{ color: isActive ? accent : textPrimary, fontSize: 13, fontWeight: isActive ? '800' : '500' }}>{badge.name}</Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })
+                                )}
+                              </View>
+                            )}
                           </View>
                         )}
-                        <View style={styles.textContainer}>
-                          <View style={styles.nameRow}>
-                            <Text style={[styles.userName, { color: textPrimary }]} numberOfLines={1}>{item.full_name}</Text>
-                            {item.is_verified && <Sparkles size={14} color={accent} fill={accent} />}
-                          </View>
-                          <Text style={[styles.userHandle, { color: textSecondary }]}>@{item.username}</Text>
-                        </View>
                       </View>
-                      
-                      <View style={styles.switchWrapper}>
-                        <Text style={[styles.switchLabel, { color: item.is_verified ? accent : textSecondary }]}>
-                          {item.is_verified ? 'Verificado' : 'Oferecer'}
-                        </Text>
-                        <Switch
-                          value={item.is_verified}
-                          onValueChange={() => toggleVerification(item.id, item.is_verified)}
-                          trackColor={{ false: '#767577', true: accent }}
-                          thumbColor={Platform.OS === 'android' ? (item.is_verified ? '#fff' : '#f4f3f4') : ''}
-                        />
-                      </View>
-                    </View>
+
                   )}
                   ListEmptyComponent={
                     <View style={styles.emptyState}>
                       <UserSearch size={60} color={textSecondary} strokeWidth={1} />
-                      <Text style={[styles.emptyText, { color: textPrimary }]}>Nenhum usuário encontrado</Text>
-                      <Text style={[styles.emptySubtext, { color: textSecondary }]}>Tente pesquisar por outro nome ou termo.</Text>
+                      <Text style={[styles.emptyText, { color: textPrimary }]}>{t('auto.s6d277ec2', 'Nenhum usuário encontrado')}</Text>
+                      <Text style={[styles.emptySubtext, { color: textSecondary }]}>{t('auto.s843a23fc', 'Tente pesquisar por outro nome ou termo.')}</Text>
                     </View>
                   }
                 />
@@ -405,7 +641,131 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
             </View>
           )}
 
-          {/* TAB 2: CATEGORY & SUBCATEGORY CONSOLE */}
+          {/* TAB 2: BADGES CONSOLE */}
+          {activeTab === 'badges' && (
+            <View style={{ flex: 1 }}>
+              <View style={styles.catHeader}>
+                <Text style={[styles.catSectionTitle, { color: textPrimary }]}>Selos Cadastrados ({allBadges.length})</Text>
+                <TouchableOpacity 
+                  style={[styles.addCatBtn, { backgroundColor: accent }]}
+                  onPress={() => {
+                    setEditingBadge(null);
+                    setBadgeName('');
+                    setBadgeDesc('');
+                    setBadgeIcon('✨');
+                    setBadgeCategory('social');
+                    setShowBadgeForm(true);
+                  }}
+                >
+                  <Text style={styles.addCatBtnText}>{t('auto.s5841cb58', '+ Novo Selo')}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* DYNAMIC EDIT/CREATE OVERLAY CARD */}
+              {showBadgeForm && (
+                <View style={[styles.catFormCard, { backgroundColor: backgroundSecondary, borderColor: accent + '33' }]}>
+                  <Text style={[styles.formTitle, { color: textPrimary }]}>
+                    {editingBadge ? '✏️ Editar Selo' : '🎖️ Novo Selo'}
+                  </Text>
+                  
+                  <View style={styles.formRow}>
+                    <TextInput 
+                      style={[styles.formInput, { color: textPrimary, flex: 2 }]} 
+                      placeholder={t('auto.se0c52dbe', 'Nome do Selo (ex: Rei do Rolê)')}
+                      placeholderTextColor={textSecondary}
+                      value={badgeName}
+                      onChangeText={setBadgeName}
+                    />
+                    <TextInput 
+                      style={[styles.formInput, { color: textPrimary, flex: 1, textAlign: 'center' }]} 
+                      placeholder={t('auto.s68305e25', 'Emoji')}
+                      placeholderTextColor={textSecondary}
+                      value={badgeIcon}
+                      onChangeText={setBadgeIcon}
+                    />
+                  </View>
+                  
+                  <TextInput 
+                    style={[styles.formInput, { color: textPrimary, marginTop: 10 }]} 
+                    placeholder={t('auto.s940fc7a4', 'Descrição breve...')}
+                    placeholderTextColor={textSecondary}
+                    value={badgeDesc}
+                    onChangeText={setBadgeDesc}
+                  />
+
+                  <View style={styles.formActions}>
+                    <TouchableOpacity 
+                      style={[styles.formCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]} 
+                      onPress={() => { setShowBadgeForm(false); setEditingBadge(null); }}
+                    >
+                      <Text style={[styles.formActionText, { color: textSecondary }]}>{t('auto.s847607d7', 'Cancelar')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.formSaveBtn, { backgroundColor: accent }]} 
+                      onPress={handleSaveBadge}
+                    >
+                      <Text style={[styles.formActionText, { color: '#fff' }]}>{t('auto.s5adb6496', 'Salvar Selo')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {loadingBadges ? (
+                <View style={styles.loaderContainer}>
+                  <ActivityIndicator size="large" color={accent} />
+                  <Text style={[styles.loaderText, { color: textSecondary }]}>{t('auto.s5f188ae0', 'Carregando selos...')}</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={allBadges}
+                  keyExtractor={item => item.id}
+                  contentContainerStyle={styles.listContent}
+                  showsVerticalScrollIndicator={false}
+                  renderItem={({ item }) => (
+                    <View style={[styles.catCard, { backgroundColor: backgroundSecondary, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', flexDirection: 'row', alignItems: 'center' }]}>
+                      <View style={[styles.catIconBg, { backgroundColor: accent + '22', width: 48, height: 48, borderRadius: 24 }]}>
+                        <Text style={{ fontSize: 24 }}>{item.icon}</Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={[styles.catName, { color: textPrimary }]}>{item.name}</Text>
+                        <Text style={[styles.catSubtext, { color: textSecondary }]}>{item.description || 'Sem descrição'}</Text>
+                      </View>
+                      
+                      {/* Edit / Delete Buttons */}
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <TouchableOpacity 
+                          onPress={() => {
+                            setEditingBadge(item);
+                            setBadgeName(item.name);
+                            setBadgeDesc(item.description || '');
+                            setBadgeIcon(item.icon);
+                            setBadgeCategory(item.category || 'social');
+                            setShowBadgeForm(true);
+                          }}
+                          style={[styles.actionIconBtn, { backgroundColor: 'rgba(255,255,255,0.05)' }]}
+                        >
+                          <Text style={{ fontSize: 13 }}>{t('auto.s94c3103e', '✏️')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          onPress={() => handleDeleteBadge(item.id)}
+                          style={[styles.actionIconBtn, { backgroundColor: 'rgba(255,59,48,0.1)' }]}
+                        >
+                          <Text style={{ fontSize: 13 }}>❌</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.emptyState}>
+                      <Text style={[styles.emptyText, { color: textPrimary }]}>{t('auto.sec0f26c8', 'Nenhum selo criado')}</Text>
+                    </View>
+                  }
+                />
+              )}
+            </View>
+          )}
+
+          {/* TAB 3: CATEGORY & SUBCATEGORY CONSOLE */}
           {activeTab === 'categories' && (
             <View style={{ flex: 1 }}>
               <View style={styles.catHeader}>
@@ -421,7 +781,7 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                     setShowCategoryForm(true);
                   }}
                 >
-                  <Text style={styles.addCatBtnText}>+ Nova Categoria</Text>
+                  <Text style={styles.addCatBtnText}>{t('auto.s5bb63ed1', '+ Nova Categoria')}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -435,21 +795,21 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                   <View style={styles.formRow}>
                     <TextInput 
                       style={[styles.formInput, { color: textPrimary, flex: 2 }]} 
-                      placeholder="Nome da Categoria (ex: Teatro)"
+                      placeholder={t('auto.s331c4fa2', 'Nome da Categoria (ex: Teatro)')}
                       placeholderTextColor={textSecondary}
                       value={catName}
                       onChangeText={setCatName}
                     />
                     <TextInput 
                       style={[styles.formInput, { color: textPrimary, flex: 1, textAlign: 'center' }]} 
-                      placeholder="Emoji (ex: 🎭)"
+                      placeholder={t('auto.sf41940b4', 'Emoji (ex: 🎭)')}
                       placeholderTextColor={textSecondary}
                       value={catIcon}
                       onChangeText={setCatIcon}
                     />
                     <TextInput 
                       style={[styles.formInput, { color: textPrimary, flex: 0.8, textAlign: 'center' }]} 
-                      placeholder="Ordem"
+                      placeholder={t('auto.saad2aa39', 'Ordem')}
                       placeholderTextColor={textSecondary}
                       value={catOrder}
                       onChangeText={order => setCatOrder(order.replace(/[^0-9]/g, ''))}
@@ -459,7 +819,7 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                   
                   {/* PRESET COLOR SELECTOR */}
                   <View style={styles.colorSelectorContainer}>
-                    <Text style={[styles.colorLabel, { color: textSecondary }]}>Cor Temática da Categoria:</Text>
+                    <Text style={[styles.colorLabel, { color: textSecondary }]}>{t('auto.sef2c3fad', 'Cor Temática da Categoria:')}</Text>
                     <View style={styles.colorsRow}>
                       {PRESET_COLORS.map(color => {
                         const isSelected = catColor === color;
@@ -487,13 +847,13 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                       style={[styles.formCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]} 
                       onPress={() => { setShowCategoryForm(false); setEditingCategory(null); }}
                     >
-                      <Text style={[styles.formActionText, { color: textSecondary }]}>Cancelar</Text>
+                      <Text style={[styles.formActionText, { color: textSecondary }]}>{t('auto.s847607d7', 'Cancelar')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity 
                       style={[styles.formSaveBtn, { backgroundColor: accent }]} 
                       onPress={handleSaveCategory}
                     >
-                      <Text style={[styles.formActionText, { color: '#fff' }]}>Salvar</Text>
+                      <Text style={[styles.formActionText, { color: '#fff' }]}>{t('auto.seb7a0fed', 'Salvar')}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -543,7 +903,7 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                               }}
                               style={[styles.actionIconBtn, { backgroundColor: 'rgba(255,255,255,0.05)' }]}
                             >
-                              <Text style={{ fontSize: 13 }}>✏️</Text>
+                              <Text style={{ fontSize: 13 }}>{t('auto.s94c3103e', '✏️')}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity 
                               onPress={() => handleDeleteCategory(item.id)}
@@ -584,7 +944,7 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                                 </View>
                               ))}
                               {(!item.subcategories || item.subcategories.length === 0) && (
-                                <Text style={[styles.emptySubsText, { color: textSecondary }]}>Nenhuma subcategoria ainda.</Text>
+                                <Text style={[styles.emptySubsText, { color: textSecondary }]}>{t('auto.s294a4f21', 'Nenhuma subcategoria ainda.')}</Text>
                               )}
                             </View>
                             
@@ -592,7 +952,7 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                             <View style={styles.addSubWrapper}>
                               <TextInput 
                                 style={[styles.addSubInput, { color: textPrimary, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} 
-                                placeholder="Nova subcategoria (ex: Stand Up)..."
+                                placeholder={t('auto.s1feae47d', 'Nova subcategoria (ex: Stand Up)...')}
                                 placeholderTextColor={textSecondary}
                                 value={newSubcategoryNames[item.id] || ''}
                                 onChangeText={text => setNewSubcategoryNames(prev => ({ ...prev, [item.id]: text }))}
@@ -618,7 +978,7 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
           {activeTab === 'notifications' && (
             <View style={{ flex: 1, paddingHorizontal: 20 }}>
               <View style={{ marginVertical: 15 }}>
-                <Text style={[styles.catSectionTitle, { color: textPrimary }]}>Mensagens Automáticas</Text>
+                <Text style={[styles.catSectionTitle, { color: textPrimary }]}>{t('auto.sce465e0f', 'Mensagens Automáticas')}</Text>
                 <Text style={{ color: textSecondary, fontSize: 13, marginTop: 4 }}>
                   Personalize os textos que o app dispara sozinho. Você pode usar tags como [NOME], [EVENTO], [CATEGORIA] e [DIA_SEMANA].
                 </Text>
@@ -632,19 +992,19 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                   </Text>
                   
                   <View style={{ gap: 10, marginTop: 10 }}>
-                    <Text style={{ color: textSecondary, fontSize: 12, fontWeight: '700' }}>TÍTULO DA NOTIFICAÇÃO</Text>
+                    <Text style={{ color: textSecondary, fontSize: 12, fontWeight: '700' }}>{t('auto.sad5bedca', 'TÍTULO DA NOTIFICAÇÃO')}</Text>
                     <TextInput 
                       style={[styles.formInput, { color: textPrimary, paddingVertical: 12 }]} 
-                      placeholder="Ex: Nova presença confirmada!"
+                      placeholder={t('auto.sae5a9284', 'Ex: Nova presença confirmada!')}
                       placeholderTextColor={textSecondary}
                       value={templateTitle}
                       onChangeText={setTemplateTitle}
                     />
                     
-                    <Text style={{ color: textSecondary, fontSize: 12, fontWeight: '700', marginTop: 10 }}>MENSAGEM (CORPO)</Text>
+                    <Text style={{ color: textSecondary, fontSize: 12, fontWeight: '700', marginTop: 10 }}>{t('auto.s97553041', 'MENSAGEM (CORPO)')}</Text>
                     <TextInput 
                       style={[styles.formInput, { color: textPrimary, minHeight: 80, textAlignVertical: 'top' }]} 
-                      placeholder="Ex: Ei [NOME], partiu [EVENTO]?"
+                      placeholder={t('auto.s346f77dd', 'Ex: Ei [NOME], partiu [EVENTO]?')}
                       placeholderTextColor={textSecondary}
                       value={templateBody}
                       onChangeText={setTemplateBody}
@@ -657,13 +1017,13 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                       style={[styles.formCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]} 
                       onPress={() => setEditingTemplate(null)}
                     >
-                      <Text style={[styles.formActionText, { color: textSecondary }]}>Cancelar</Text>
+                      <Text style={[styles.formActionText, { color: textSecondary }]}>{t('auto.s847607d7', 'Cancelar')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity 
                       style={[styles.formSaveBtn, { backgroundColor: accent }]} 
                       onPress={handleSaveTemplate}
                     >
-                      <Text style={[styles.formActionText, { color: '#fff' }]}>Salvar Texto</Text>
+                      <Text style={[styles.formActionText, { color: '#fff' }]}>{t('auto.s326057a0', 'Salvar Texto')}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -672,11 +1032,11 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
               {loadingTemplates ? (
                 <View style={styles.loaderContainer}>
                   <ActivityIndicator size="large" color={accent} />
-                  <Text style={[styles.loaderText, { color: textSecondary }]}>Carregando mensagens...</Text>
+                  <Text style={[styles.loaderText, { color: textSecondary }]}>{t('auto.s923b5fe9', 'Carregando mensagens...')}</Text>
                 </View>
               ) : templates.length === 0 ? (
                 <View style={styles.emptyContent}>
-                  <Text style={[styles.emptyTitle, { color: textPrimary }]}>Tabela Não Encontrada</Text>
+                  <Text style={[styles.emptyTitle, { color: textPrimary }]}>{t('auto.s2bf4173e', 'Tabela Não Encontrada')}</Text>
                   <Text style={[styles.emptySubtitle, { color: textSecondary, textAlign: 'center' }]}>
                     Por favor, rode o script SQL '20260522_notification_templates.sql' no Supabase primeiro.
                   </Text>
@@ -693,9 +1053,9 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                         <Text style={[styles.catName, { color: textPrimary, fontSize: 16 }]}>
                           {item.id === 'event_presence' ? '🎉 Presença no seu Evento' : item.id === 'event_friend_presence' ? '👀 Amigo vai ao Evento (FOMO)' : item.id === 'smart_recommendation' ? '🔥 Recomendação Semanal' : item.id}
                         </Text>
-                        <Text style={{ color: textSecondary, fontSize: 13, marginTop: 8, fontWeight: '700' }}>Título Atual:</Text>
+                        <Text style={{ color: textSecondary, fontSize: 13, marginTop: 8, fontWeight: '700' }}>{t('auto.sa16ead69', 'Título Atual:')}</Text>
                         <Text style={{ color: textPrimary, fontSize: 14 }}>{item.title_template}</Text>
-                        <Text style={{ color: textSecondary, fontSize: 13, marginTop: 8, fontWeight: '700' }}>Mensagem Atual:</Text>
+                        <Text style={{ color: textSecondary, fontSize: 13, marginTop: 8, fontWeight: '700' }}>{t('auto.s4a66afe0', 'Mensagem Atual:')}</Text>
                         <Text style={{ color: textPrimary, fontSize: 14 }}>{item.body_template}</Text>
                       </View>
                       
@@ -707,7 +1067,7 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
                         }}
                         style={[styles.actionIconBtn, { backgroundColor: accent + '20', height: 44, width: 44, alignSelf: 'flex-start' }]}
                       >
-                        <Text style={{ fontSize: 18 }}>✏️</Text>
+                        <Text style={{ fontSize: 18 }}>{t('auto.s94c3103e', '✏️')}</Text>
                       </TouchableOpacity>
                     </View>
                   )}

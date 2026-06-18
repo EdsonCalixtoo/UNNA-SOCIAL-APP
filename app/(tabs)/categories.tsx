@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Dimensions, RefreshControl, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { Search, Sparkles, ChevronRight, Filter } from 'lucide-react-native';
+import { Search, Sparkles, ChevronRight, Filter, Trophy } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -20,6 +21,7 @@ import Animated, {
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
 import { useUI } from '@/contexts/UIContext';
+import { useLanguage } from '@/lib/i18n';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = (width - s(48)) / 2;
@@ -44,7 +46,7 @@ const GRADIENTS = [
   ['#FF6B35', '#ff3d00'],
 ];
 
-const CategoryCard = React.memo(({ item, index, handleCategoryPress }: { item: Category; index: number; handleCategoryPress: (c: Category) => void }) => {
+const CategoryCard = React.memo(({ item, index, handleCategoryPress, t }: { item: Category; index: number; handleCategoryPress: (c: Category) => void; t: any }) => {
   const gradient = GRADIENTS[index % GRADIENTS.length];
 
   return (
@@ -71,7 +73,7 @@ const CategoryCard = React.memo(({ item, index, handleCategoryPress }: { item: C
         </View>
 
         <View style={styles.cardFooter}>
-          <Text style={styles.categoryName} numberOfLines={2}>{item.name}</Text>
+          <Text style={styles.categoryName} numberOfLines={2}>{t(`dbCategories.${item.name}`, item.name)}</Text>
           <ChevronRight size={16} color="rgba(255,255,255,0.6)" />
         </View>
       </LinearGradient>
@@ -79,9 +81,9 @@ const CategoryCard = React.memo(({ item, index, handleCategoryPress }: { item: C
   );
 }, (prevProps, nextProps) => prevProps.item.id === nextProps.item.id);
 
-const SearchResultItem = React.memo(({ item, index, handleCategoryPress, handleSubcategoryPress, isDark, backgroundSecondary, accent, textPrimary, textSecondary }: any) => {
+const SearchResultItem = React.memo(({ item, index, handleCategoryPress, handleSubcategoryPress, isDark, backgroundSecondary, accent, textPrimary, textSecondary, t }: any) => {
   if (item.type === 'category') {
-    return <CategoryCard item={item} index={index} handleCategoryPress={handleCategoryPress} />;
+    return <CategoryCard item={item} index={index} handleCategoryPress={handleCategoryPress} t={t} />;
   }
 
   return (
@@ -94,8 +96,8 @@ const SearchResultItem = React.memo(({ item, index, handleCategoryPress, handleS
         <Text style={styles.subcategoryIcon}>{item.parentCategory.icon}</Text>
       </View>
       <View style={styles.subcategoryInfo}>
-        <Text style={[styles.subcategoryNameResult, { color: textPrimary }]}>{item.name}</Text>
-        <Text style={[styles.subcategoryParentName, { color: textSecondary }]}>em {item.parentCategory.name}</Text>
+        <Text style={[styles.subcategoryNameResult, { color: textPrimary }]}>{t(`dbCategories.${item.name}`, item.name)}</Text>
+        <Text style={[styles.subcategoryParentName, { color: textSecondary }]}>{t('categories.in', 'em')} {t(`dbCategories.${item.parentCategory.name}`, item.parentCategory.name)}</Text>
       </View>
       <ChevronRight size={18} color={textSecondary} />
     </TouchableOpacity>
@@ -106,6 +108,7 @@ export default function Categories() {
   const insets = useSafeAreaInsets();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
   const { hideTabBar, showTabBar } = useUI();
+  const { t } = useLanguage();
   
   const scrollY = useSharedValue(0);
   const headerTranslateY = useSharedValue(0);
@@ -145,6 +148,7 @@ export default function Categories() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const router = useRouter();
+
 
   useEffect(() => {
     showTabBar();
@@ -269,7 +273,7 @@ export default function Categories() {
           <Search size={18} color={isSearchFocused ? accent : textSecondary} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: textPrimary, fontSize: ms(14) }]}
-            placeholder="O que você está procurando?"
+            placeholder={t('categories.searchPlaceholder', 'O que você está procurando?')}
             placeholderTextColor={textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -293,6 +297,7 @@ export default function Categories() {
             accent={accent}
             textPrimary={textPrimary}
             textSecondary={textSecondary}
+            t={t}
           />
         )}
         numColumns={debouncedQuery.trim() === '' ? 2 : 1}
@@ -317,13 +322,20 @@ export default function Categories() {
         maxToRenderPerBatch={10}
         windowSize={5}
         removeClippedSubviews={Platform.OS === 'android'}
+        ListHeaderComponent={
+          debouncedQuery.trim() === '' ? (
+            <View style={{ marginBottom: 16 }}>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
             <Search size={48} color={isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"} />
-            <Text style={[styles.emptyText, { color: textSecondary }]}>Nenhuma categoria encontrada</Text>
+            <Text style={[styles.emptyText, { color: textSecondary }]}>{t('categories.notFound', 'Nenhuma categoria encontrada')}</Text>
           </View>
         )}
       />
+
     </View>
   );
 }

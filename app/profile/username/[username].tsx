@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 type TabType = 'created' | 'participating';
 
 export default function UserProfileByUsername() {
+  const { t } = useLanguage();
   const { user: currentUser } = useAuth();
   const router = useRouter();
   const { username } = useLocalSearchParams<{ username: string }>();
@@ -252,7 +254,7 @@ export default function UserProfileByUsername() {
               >
                 <Calendar size={24} color="#00d9ff" />
                 <Text style={styles.statValue}>{eventsCount}</Text>
-                <Text style={styles.statLabel}>Eventos</Text>
+                <Text style={styles.statLabel}>{t('auto.s23d50281', 'Eventos')}</Text>
               </LinearGradient>
             </View>
 
@@ -266,7 +268,7 @@ export default function UserProfileByUsername() {
               >
                 <Users size={24} color="#ff1493" />
                 <Text style={styles.statValue}>{followersCount}</Text>
-                <Text style={styles.statLabel}>Seguidores</Text>
+                <Text style={styles.statLabel}>{t('auto.sa9184d83', 'Seguidores')}</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -280,7 +282,7 @@ export default function UserProfileByUsername() {
               >
                 <TrendingUp size={24} color="#34C759" />
                 <Text style={styles.statValue}>{followingCount}</Text>
-                <Text style={styles.statLabel}>Seguindo</Text>
+                <Text style={styles.statLabel}>{t('auto.s2ff5d35c', 'Seguindo')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -381,7 +383,7 @@ export default function UserProfileByUsername() {
                       ) : (
                         <>
                           <DollarSign size={18} color="#8E8E93" />
-                          <Text style={styles.freeText}>Gratuito</Text>
+                          <Text style={styles.freeText}>{t('auto.sb461d3af', 'Gratuito')}</Text>
                         </>
                       )}
                     </View>

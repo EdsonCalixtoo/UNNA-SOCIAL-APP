@@ -4,6 +4,7 @@ import { Search, SlidersHorizontal, Map as MapIcon, Layers, Zap } from 'lucide-r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/lib/i18n';
 import { hapticFeedback } from '@/utils/haptics';
 
 interface MapHeaderProps {
@@ -39,6 +40,7 @@ const MapHeader = ({
 }: MapHeaderProps) => {
   const insets = useSafeAreaInsets();
   const { textPrimary, textSecondary, accent, backgroundSecondary, isDark } = useTheme();
+  const { t } = useLanguage();
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -67,7 +69,7 @@ const MapHeader = ({
             <Search size={18} color={textSecondary} />
             <TextInput
               style={[styles.input, { color: textPrimary }]}
-              placeholder="Explorar UNИA..."
+              placeholder={t('map.searchPlaceholder', 'O que você está procurando?')}
               placeholderTextColor={textSecondary}
               value={searchQuery}
               onChangeText={onSearchChange}
@@ -110,7 +112,7 @@ const MapHeader = ({
               <Animated.View style={[styles.pulseDot, { transform: [{ scale: pulseAnim }] }]} />
               <View style={styles.dot} />
             </View>
-            <Text style={styles.liveText}>AO VIVO</Text>
+            <Text style={styles.liveText}>{t('map.liveOnly', 'AO VIVO')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -125,7 +127,7 @@ const MapHeader = ({
               trendingOnly && { backgroundColor: 'rgba(255, 20, 147, 0.15)', borderColor: '#ff1493', borderWidth: 1 }
             ]}
           >
-            <Text style={[styles.trendingText, trendingOnly && { color: '#ff1493' }]}>🔥 Bombando</Text>
+            <Text style={[styles.trendingText, trendingOnly && { color: '#ff1493' }]}>🔥 {t('map.trending', 'Bombando')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -135,7 +137,7 @@ const MapHeader = ({
               showHeatmap && { backgroundColor: 'rgba(0, 217, 255, 0.15)', borderColor: accent, borderWidth: 1 }
             ]}
           >
-            <Text style={[styles.trendingText, showHeatmap && { color: accent }]}>✨ Calor</Text>
+            <Text style={[styles.trendingText, showHeatmap && { color: accent }]}>✨ {t('map.heatmap', 'Calor')}</Text>
           </TouchableOpacity>
 
           <View style={styles.vDivider} />
@@ -154,7 +156,7 @@ const MapHeader = ({
               { backgroundColor: backgroundSecondary }
             ]}
           >
-            <Text style={[styles.chipText, { color: (!selectedCategory && !trendingOnly && !liveOnly) ? accent : textPrimary }]}>🌍 Todos</Text>
+            <Text style={[styles.chipText, { color: (!selectedCategory && !trendingOnly && !liveOnly) ? accent : textPrimary }]}>🌍 {t('common.filter', 'Todos')}</Text>
           </TouchableOpacity>
 
           {categories.map((cat) => (

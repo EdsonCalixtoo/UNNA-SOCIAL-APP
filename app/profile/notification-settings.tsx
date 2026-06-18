@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +10,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function NotificationSettings() {
+  const { t } = useLanguage();
   const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -109,13 +111,13 @@ export default function NotificationSettings() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft size={24} color={textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: textPrimary }]}>Notificações</Text>
+        <Text style={[styles.headerTitle, { color: textPrimary }]}>{t('auto.sc5786b62', 'Notificações')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textSecondary }]}>MENSAGENS E INTERAÇÕES</Text>
+          <Text style={[styles.sectionTitle, { color: textSecondary }]}>{t('auto.sd6243858', 'MENSAGENS E INTERAÇÕES')}</Text>
           
           <SettingItem 
             icon={MessageCircle}
@@ -155,7 +157,7 @@ export default function NotificationSettings() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textSecondary }]}>EVENTOS</Text>
+          <Text style={[styles.sectionTitle, { color: textSecondary }]}>{t('auto.s4a9702f7', 'EVENTOS')}</Text>
           
           <SettingItem 
             icon={Calendar}

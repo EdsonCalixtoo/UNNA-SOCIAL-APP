@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -8,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { BlurView } from 'expo-blur';
 
 export default function ScannerScreen() {
+  const { t } = useLanguage();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -30,9 +32,9 @@ export default function ScannerScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.container}>
-        <Text style={styles.message}>Precisamos da sua permissão para usar a câmera e ler os QR Codes dos clientes.</Text>
+        <Text style={styles.message}>{t('auto.sdbc1af06', 'Precisamos da sua permissão para usar a câmera e ler os QR Codes dos clientes.')}</Text>
         <TouchableOpacity style={styles.btn} onPress={requestPermission}>
-          <Text style={styles.btnText}>Conceder Permissão</Text>
+          <Text style={styles.btnText}>{t('auto.scd47622f', 'Conceder Permissão')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.btn, { backgroundColor: '#333', marginTop: 10 }]} onPress={() => router.back()}>
           <Text style={styles.btnText}>Voltar</Text>
@@ -121,13 +123,13 @@ export default function ScannerScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.title}>Escanear Cupom</Text>
+        <Text style={styles.title}>{t('auto.s296d9493', 'Escanear Cupom')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
       <View style={styles.overlay}>
         <View style={styles.scanArea} />
-        <Text style={styles.scanText}>Posicione o QR Code do cliente no centro</Text>
+        <Text style={styles.scanText}>{t('auto.s434befc7', 'Posicione o QR Code do cliente no centro')}</Text>
       </View>
 
       {scanned && (
@@ -140,11 +142,11 @@ export default function ScannerScreen() {
               <Text style={styles.resultMessage}>{message}</Text>
               
               <TouchableOpacity style={styles.btn} onPress={() => setScanned(false)}>
-                <Text style={styles.btnText}>Ler Novo Cupom</Text>
+                <Text style={styles.btnText}>{t('auto.sde5d9096', 'Ler Novo Cupom')}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity style={[styles.btn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#fff', marginTop: 10 }]} onPress={() => router.back()}>
-                <Text style={styles.btnText}>Voltar ao Perfil</Text>
+                <Text style={styles.btnText}>{t('auto.s1b714bbb', 'Voltar ao Perfil')}</Text>
               </TouchableOpacity>
             </View>
           )}

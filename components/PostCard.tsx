@@ -1,7 +1,9 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, Dimensions } from 'react-native';
+
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { Heart, MessageCircle as MessageIcon, Calendar, Sparkles, MoreHorizontal, Share2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useState } from 'react';
 import MediaCarousel from './MediaCarousel';
 import { s, vs, ms } from '@/utils/responsive';
 import Animated, { 
@@ -9,6 +11,9 @@ import Animated, {
   useAnimatedStyle, 
   withSpring, 
   withTiming,
+  withRepeat,
+  withSequence,
+  interpolate,
   LinearTransition,
   FadeInDown
 } from 'react-native-reanimated';
@@ -23,7 +28,7 @@ interface PostCardProps {
   isVisible?: boolean;
 }
 
-export default function PostCard({ post, onLike, isVisible = true }: PostCardProps) {
+export default React.memo(function PostCard({ post, onLike, isVisible = true }: PostCardProps) {
   const router = useRouter();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, accent, isDark } = useTheme();
   
@@ -45,6 +50,33 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
     transform: [{ scale: likeScale.value }],
   }));
 
+  const officialPulse = useSharedValue(1);
+  const isOfficial = post?.profiles?.username === 'unnasocialappoficial';
+
+  React.useEffect(() => {
+    if (isOfficial) {
+      officialPulse.value = withRepeat(
+        withSequence(withTiming(1.02, { duration: 1000 }), withTiming(1, { duration: 1000 })),
+        -1,
+        true
+      );
+    }
+  }, [isOfficial]);
+
+  const officialAnimStyle = useAnimatedStyle(() => {
+    if (!isOfficial) return {};
+    return {
+      transform: [{ scale: officialPulse.value }],
+      shadowColor: accent,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: interpolate(officialPulse.value, [1, 1.02], [0.3, 0.8]),
+      shadowRadius: 8,
+      elevation: interpolate(officialPulse.value, [1, 1.02], [2, 6]),
+      borderColor: accent,
+      borderWidth: 1.5,
+    };
+  });
+
   const handleFullScreenChange = (visible: boolean) => {
     if (visible) {
       contentTranslateY.value = withTiming(vs(100), { duration: 300 });
@@ -55,12 +87,21 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
     }
   };
 
+  const isLikingRef = React.useRef(false);
+
   const handleLikePress = () => {
+    if (isLikingRef.current) return;
+    isLikingRef.current = true;
+    
     hapticFeedback.light();
     onLike(post.id, post.is_liked || false);
     likeScale.value = withSpring(1.5, { damping: 2, stiffness: 200 }, () => {
       likeScale.value = withSpring(1, { damping: 10, stiffness: 100 });
     });
+    
+    setTimeout(() => {
+      isLikingRef.current = false;
+    }, 500);
   };
 
   const hasMedia = (post.image_urls && post.image_urls.length > 0) || post.image_url;
@@ -74,7 +115,8 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
         { 
           backgroundColor: backgroundSecondary, 
           borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' 
-        }
+        },
+        officialAnimStyle
       ]}
     >
       {/* ── HEADER ── */}
@@ -84,6 +126,7 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
             <Image
               source={{ uri: post.profiles.avatar_url }}
               style={[styles.avatar, { borderColor: accent }]}
+              transition={200}
             />
           ) : (
             <View style={[styles.avatarPlaceholder, { backgroundColor: accent }]}>
@@ -127,6 +170,11 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
             borderRadius={0}
             isVisible={isVisible}
             onFullScreenChange={handleFullScreenChange}
+            onDoublePress={() => {
+              if (!post.is_liked) {
+                handleLikePress();
+              }
+            }}
           />
         </View>
       )}
@@ -194,7 +242,7 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
       </Animated.View>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

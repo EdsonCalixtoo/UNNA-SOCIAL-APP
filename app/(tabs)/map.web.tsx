@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n';
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Image, Dimensions, Platform, ScrollView, Linking, Alert, GestureResponderEvent, Modal, Animated } from 'react-native';
 import Reanimated, { 
@@ -89,6 +90,7 @@ const EventMarker = ({ event, markerColor, onPress }: { event: any; markerColor:
 };
 
 export default function Map() {
+  const { t } = useLanguage();
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -499,7 +501,7 @@ export default function Map() {
     <ScrollView style={styles.webContainer}>
       <View style={styles.webMapPlaceholder}>
         <MapPin size={64} color="#00d9ff" />
-        <Text style={styles.webMapTitle}>Eventos por Localização</Text>
+        <Text style={styles.webMapTitle}>{t('auto.s6f834809', 'Eventos por Localização')}</Text>
         <Text style={styles.webMapText}>
           O mapa interativo está disponível no aplicativo móvel com geolocalização em tempo real.
         </Text>
@@ -670,8 +672,8 @@ export default function Map() {
           }}
           activeOpacity={0.8}
         >
-          <Text style={styles.filterButtonFloatingIcon}>⚙️</Text>
-          <Text style={styles.filterButtonFloatingText}>Filtros</Text>
+          <Text style={styles.filterButtonFloatingIcon}>{t('auto.s5a244941', '⚙️')}</Text>
+          <Text style={styles.filterButtonFloatingText}>{t('auto.s57aacc00', 'Filtros')}</Text>
         </TouchableOpacity>
 
         {/* Modal de Filtro */}
@@ -685,7 +687,7 @@ export default function Map() {
             <View style={styles.filterModalContainer}>
               {/* Header */}
               <View style={styles.filterModalHeader}>
-                <Text style={styles.filterModalTitle}>Filtrar Eventos</Text>
+                <Text style={styles.filterModalTitle}>{t('auto.s232c770c', 'Filtrar Eventos')}</Text>
                 <TouchableOpacity
                   style={styles.filterModalClose}
                   onPress={() => setShowFilterModal(false)}
@@ -711,7 +713,7 @@ export default function Map() {
                   }}
                 >
                   <View style={styles.filterModalOptionContent}>
-                    <Text style={styles.filterModalOptionIcon}>🌍</Text>
+                    <Text style={styles.filterModalOptionIcon}>{t('auto.sb60e8108', '🌍')}</Text>
                     <Text style={[
                       styles.filterModalOptionText,
                       selectedCategory === null && styles.filterModalOptionTextActive
@@ -763,7 +765,7 @@ export default function Map() {
                     setShowFilterModal(false);
                   }}
                 >
-                  <Text style={styles.filterModalClearButtonText}>Limpar Filtros</Text>
+                  <Text style={styles.filterModalClearButtonText}>{t('auto.sced62bfa', 'Limpar Filtros')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -863,10 +865,10 @@ export default function Map() {
                     }}
                   >
                     <Navigation2 size={18} color="#fff" />
-                    <Text style={styles.navButtonText}>Ir até o local</Text>
+                    <Text style={styles.navButtonText}>{t('auto.s8d063779', 'Ir até o local')}</Text>
                   </TouchableOpacity>
                   <View style={styles.viewEventBadge}>
-                    <Text style={styles.viewEventBadgeText}>Toque para ver mais</Text>
+                    <Text style={styles.viewEventBadgeText}>{t('auto.s6af05f8f', 'Toque para ver mais')}</Text>
                   </View>
                 </View>
               </View>
@@ -888,7 +890,7 @@ export default function Map() {
         colors={['rgba(45, 45, 45, 0.95)', 'transparent']}
         style={styles.header}
       >
-        <Text style={styles.headerTitle}>Mapa de Eventos</Text>
+        <Text style={styles.headerTitle}>{t('auto.s845eebda', 'Mapa de Eventos')}</Text>
         <Text style={styles.headerSubtitle}>{events.length} eventos disponíveis</Text>
       </LinearGradient>
 
