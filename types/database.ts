@@ -101,6 +101,7 @@ export interface Story {
   media_url: string;
   media_type: 'image' | 'video';
   thumbnail_url?: string;
+  stickers?: any[];
   created_at: string;
   expires_at: string;
   profiles?: Profile;

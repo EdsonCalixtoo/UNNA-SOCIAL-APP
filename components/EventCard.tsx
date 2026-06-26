@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, Alert, Share, Modal } from 'react-native';
 import { Image } from 'expo-image';
-import { MoreVertical, Heart, MessageCircle, MapPin, Sparkles, Users, Tag } from 'lucide-react-native';
+import { MoreVertical, Heart, MessageCircle, MapPin, Sparkles, Users, Tag, Share2, Flag, Trash2, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
@@ -12,6 +12,8 @@ import { hapticFeedback } from '@/utils/haptics';
 import { soundService } from '@/utils/soundService';
 import { mapService } from '@/services/mapService';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -37,10 +39,13 @@ function formatRelativeTime(dateStr: string): string {
 
 export default React.memo(function EventCard({ event, onPress, isVisible = true, onLike, onParticipantsPress, onCommentPress }: EventCardProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const { isDark, accent, textPrimary, textSecondary } = useTheme();
   
   const likeScale = useSharedValue(1);
   const [distanceKm, setDistanceKm] = useState<string | null>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const isOwner = user?.id === (event?.creator_id || event?.user_id);
 
   useEffect(() => {
     // Calculate distance
@@ -79,6 +84,112 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
   };
 
   const isPublication = event?.type === 'publication' || !event?.event_date || !event?.event_time;
+  
+  const handleMorePress = () => {
+    setShowMoreMenu(true);
+    hapticFeedback.light();
+  };
+
+  const handleShare = async () => {
+    setShowMoreMenu(false);
+    try {
+      await Share.share({
+        message: `Confira este post no UNNA: https://unna.com/event/${event.id}`
+      });
+    } catch(e) {}
+  };
+
+  const handleReport = async () => {
+    setShowMoreMenu(false);
+    
+    if (!user?.id) {
+       Alert.alert('Erro', 'Você precisa estar logado para denunciar.');
+       return;
+    }
+    
+    try {
+        // 1. Inserir na tabela reports
+        await supabase.from('reports').insert({
+          reporter_id: user.id,
+          reason: 'Denunciado pelo botão do Feed',
+          status: 'pending',
+          target_type: isPublication ? 'post' : 'event',
+          target_id: event.id,
+        });
+
+        // 2. Enviar DM para o unnasocialappoficial
+        const OFFICIAL_ID = 'c8d0f737-f17b-4d2d-97f8-ff3e75a9c116';
+        
+        const { data: myConvs } = await supabase
+          .from('conversation_participants')
+          .select('conversation_id')
+          .eq('profile_id', user.id);
+          
+        let targetConvId = null;
+        
+        if (myConvs && myConvs.length > 0) {
+          const convIds = myConvs.map(c => c.conversation_id);
+          const { data: officialConvs } = await supabase
+            .from('conversation_participants')
+            .select('conversation_id')
+            .eq('profile_id', OFFICIAL_ID)
+            .in('conversation_id', convIds);
+            
+          if (officialConvs && officialConvs.length > 0) {
+            targetConvId = officialConvs[0].conversation_id;
+          }
+        }
+
+        if (!targetConvId) {
+          const { data: newConv } = await supabase
+            .from('conversations')
+            .insert({ type: 'direct' })
+            .select()
+            .single();
+            
+          if (newConv) {
+            targetConvId = newConv.id;
+            await supabase.from('conversation_participants').insert([
+              { conversation_id: targetConvId, profile_id: user.id },
+              { conversation_id: targetConvId, profile_id: OFFICIAL_ID }
+            ]);
+          }
+        }
+
+        if (targetConvId) {
+          await supabase.from('messages').insert({
+            conversation_id: targetConvId,
+            sender_id: user.id,
+            content: `🚨 NOVA DENÚNCIA 🚨\n\nTipo: ${isPublication ? 'Post' : 'Evento'}\nID: ${event.id}\nAutor do Post: @${username}\n\nPor favor, verifiquem este conteúdo.`,
+            read: false,
+            delivered: false
+          });
+        }
+        
+        Alert.alert('Sucesso', 'Sua denúncia foi enviada diretamente para a equipe UNNA por mensagem e será analisada.');
+    } catch(error) {
+        console.log('[handleReport] Erro:', error);
+        Alert.alert('Erro', 'Não foi possível processar a denúncia no momento.');
+    }
+  };
+
+  const handleDelete = () => {
+    setShowMoreMenu(false);
+    setTimeout(() => {
+      Alert.alert('Excluir Publicação?', 'Tem certeza que deseja apagar? Essa ação é irreversível.', [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Excluir', 
+          style: 'destructive', 
+          onPress: async () => {
+            const table = isPublication ? 'posts' : 'events';
+            await supabase.from(table).delete().eq('id', event.id);
+            Alert.alert('Sucesso', 'Conteúdo excluído. Atualize o feed.');
+          }
+        }
+      ]);
+    }, 500);
+  };
   
 
   // Base details
@@ -228,7 +339,7 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
           <Text style={styles.subtitle} numberOfLines={1}>@{username} • {timeAgo}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.moreBtn}>
+        <TouchableOpacity style={styles.moreBtn} onPress={handleMorePress}>
           <MoreVertical size={20} color={textPrimary} />
         </TouchableOpacity>
       </View>
@@ -342,6 +453,53 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
         </TouchableOpacity>
 
       </View>
+
+      {/* Action Sheet Modal */}
+      <Modal
+        visible={showMoreMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMoreMenu(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowMoreMenu(false)}>
+          <View style={[styles.bottomSheet, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={[styles.sheetTitle, { color: textPrimary }]}>Opções da Publicação</Text>
+            
+            <TouchableOpacity style={styles.sheetAction} activeOpacity={0.7} onPress={handleShare}>
+              <View style={[styles.sheetIconCircle, { backgroundColor: 'rgba(0, 217, 255, 0.1)' }]}>
+                <Share2 size={22} color="#00d9ff" />
+              </View>
+              <Text style={[styles.sheetActionText, { color: textPrimary }]}>Compartilhar link</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sheetAction} activeOpacity={0.7} onPress={handleReport}>
+              <View style={[styles.sheetIconCircle, { backgroundColor: 'rgba(255, 149, 0, 0.1)' }]}>
+                <Flag size={22} color="#FF9500" />
+              </View>
+              <Text style={[styles.sheetActionText, { color: textPrimary }]}>Denunciar conteúdo</Text>
+            </TouchableOpacity>
+
+            {isOwner && (
+              <TouchableOpacity style={styles.sheetAction} activeOpacity={0.7} onPress={handleDelete}>
+                <View style={[styles.sheetIconCircle, { backgroundColor: 'rgba(255, 59, 48, 0.1)' }]}>
+                  <Trash2 size={22} color="#FF3B30" />
+                </View>
+                <Text style={[styles.sheetActionText, { color: '#FF3B30', fontFamily: 'Inter-Bold' }]}>Excluir publicação</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity 
+              style={[styles.sheetCancelBtn, { backgroundColor: isDark ? '#333' : '#F2F2F7' }]} 
+              activeOpacity={0.7} 
+              onPress={() => setShowMoreMenu(false)}
+            >
+              <Text style={[styles.sheetCancelText, { color: textPrimary }]}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
     </Animated.View>
   );
 });
@@ -366,6 +524,64 @@ const styles = StyleSheet.create({
   avatarWrap: {
     position: 'relative',
     marginRight: s(12),
+  },
+  participantAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  bottomSheet: {
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(150,150,150,0.3)',
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-Bold',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  sheetAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    gap: 16,
+  },
+  sheetIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sheetActionText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+  },
+  sheetCancelBtn: {
+    marginTop: 20,
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  sheetCancelText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
   },
   avatar: {
     width: ms(48),

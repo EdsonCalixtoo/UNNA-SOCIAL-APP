@@ -42,18 +42,18 @@ export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarP
   const { isDark, accent } = useTheme();
   const insets = useSafeAreaInsets();
 
+  const containerStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: tabBarOffset.value }],
+    };
+  });
+
   const focusedOptions = descriptors[state.routes[state.index].key].options;
 
   // Se a tela ativa pede para esconder a tab bar
   if ((focusedOptions.tabBarStyle as any)?.display === 'none') {
     return null;
   }
-
-  const containerStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: tabBarOffset.value }],
-    };
-  });
 
   return (
     <Animated.View 

@@ -55,18 +55,8 @@ export default function StoriesBar() {
 
   const loadLives = async () => {
     try {
-      const { data, error } = await supabase
-        .from('live_streams')
-        .select(`
-          *,
-          profiles:user_id (id, username, avatar_url)
-        `)
-        .eq('is_active', true)
-        .order('started_at', { ascending: false });
-
-      if (!error && data) {
-        setActiveLives(data);
-      }
+      // Temporarily hiding active lives until the feature is implemented
+      setActiveLives([]);
     } catch (err) {
       console.warn('Erro ao carregar lives:', err);
     }

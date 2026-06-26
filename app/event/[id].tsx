@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { 
   Calendar, Clock, MapPin, ArrowLeft,
   MessageCircle, Edit3, Share2, Navigation2,
-  ChevronRight, Users, Trash2, Flag, Ticket, Scan
+  ChevronRight, Users, Trash2, Flag, Ticket, Scan, X
 } from 'lucide-react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { useAuth } from '@/contexts/AuthContext';
@@ -811,29 +811,52 @@ export default function EventDetails() {
           {/* FOOTER TOTALMENTE INTEGRADO E ANIMADO */}
           {/* Fica fora do panelStyle para ancorar na base da tela, mas usa bottomBarStyle para afundar junto com o painel */}
           <Animated.View style={[styles.bottomBar, bottomBarStyle, { backgroundColor: backgroundPrimary, borderTopColor: 'rgba(150,150,150,0.1)' }]}>
-            {user?.id === event.creator_id ? (
-              <>
-                <TouchableOpacity onPress={() => router.push(`/event/${id}/chat`)} style={[styles.mainBtn, { backgroundColor: accent }]}>
-                  <MessageCircle size={20} color="#fff" />
-                  <Text style={[styles.btnText, { color: '#fff' }]}>{t('events.eventChat', 'Chat do Evento')}</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TouchableOpacity onPress={handleRSVP} style={[styles.mainBtn, { backgroundColor: rsvpStatus === 'going' ? '#34C759' : accent }]}>
-                  {event.type === 'event' ? <Users size={20} color="#fff" /> : <MessageCircle size={20} color="#fff" />}
-                  <Text style={styles.btnText}>
-                    {rsvpStatus === 'going' 
-                      ? (event.type === 'event' ? 'Confirmado' : 'Tenho Interesse') 
-                      : (event.type === 'event' ? 'Confirmar Presença' : 'Tenho Interesse')}
-                  </Text>
-                </TouchableOpacity>
-                
-                {/* Ticket modal button removed per user request */}
+            {(() => {
+              const checkIsFinished = () => {
+                if (!event?.event_date || !event?.event_time) return false;
+                const [year, month, day] = (event.event_date as string).split('-').map(Number);
+                const timeString = event.end_time || event.event_time;
+                const [hour, min] = (timeString as string).split(':').map(Number);
+                const eventDateTime = new Date(year, month - 1, day, hour, min);
+                if (!event.end_time) eventDateTime.setHours(eventDateTime.getHours() + 2);
+                return new Date() > eventDateTime;
+              };
+              const isFinished = checkIsFinished();
 
-                <TouchableOpacity style={styles.chatBtn} onPress={() => router.push(`/event/${id}/chat`)}><MessageCircle size={24} color={accent} /></TouchableOpacity>
-              </>
-            )}
+              if (user?.id === event.creator_id) {
+                return (
+                  <TouchableOpacity onPress={() => router.push(`/event/${id}/chat`)} style={[styles.mainBtn, { backgroundColor: accent }]}>
+                    <MessageCircle size={20} color="#fff" />
+                    <Text style={[styles.btnText, { color: '#fff' }]}>{t('events.eventChat', 'Chat do Evento')}</Text>
+                  </TouchableOpacity>
+                );
+              }
+
+              return (
+                <>
+                  <TouchableOpacity 
+                    onPress={isFinished ? undefined : handleRSVP} 
+                    style={[styles.mainBtn, { backgroundColor: isFinished ? (isDark ? '#333' : '#e0e0e0') : (rsvpStatus === 'going' ? '#34C759' : accent) }]}
+                    activeOpacity={isFinished ? 1 : 0.7}
+                  >
+                    {isFinished ? (
+                      <X size={20} color={isDark ? '#888' : '#666'} />
+                    ) : (
+                      event.type === 'event' ? <Users size={20} color="#fff" /> : <MessageCircle size={20} color="#fff" />
+                    )}
+                    <Text style={[styles.btnText, isFinished && { color: isDark ? '#888' : '#666' }]}>
+                      {isFinished 
+                        ? (event.type === 'event' ? 'Evento Encerrado' : 'Encerrado')
+                        : (rsvpStatus === 'going' 
+                          ? (event.type === 'event' ? 'Confirmado' : 'Tenho Interesse') 
+                          : (event.type === 'event' ? 'Confirmar Presença' : 'Tenho Interesse'))}
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={styles.chatBtn} onPress={() => router.push(`/event/${id}/chat`)}><MessageCircle size={24} color={accent} /></TouchableOpacity>
+                </>
+              );
+            })()}
           </Animated.View>
         </View>
 

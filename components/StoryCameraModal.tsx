@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
+  Alert,
 } from 'react-native';
 import { CameraView, useCameraPermissions, useMicrophonePermissions, CameraType, FlashMode } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -113,10 +114,7 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
 
   const handlePress = useCallback(() => {
     if (mode === 'live') {
-      onClose();
-      // Gerar um ID único para a live
-      const liveID = `live_${Date.now()}`;
-      router.push(`/live/broadcaster?liveID=${liveID}`);
+      Alert.alert('Em breve', 'O recurso de Lives estará disponível numa próxima atualização!');
       return;
     }
     if (!isHoldingRef.current) {

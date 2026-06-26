@@ -9,7 +9,6 @@ import {
   Switch, 
   ActivityIndicator, 
   Alert, 
-  Image, 
   Platform, 
   KeyboardAvoidingView,
   Dimensions,
@@ -18,6 +17,7 @@ import {
   FlatList,
   SafeAreaView
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { s, vs, ms } from '@/utils/responsive';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
@@ -47,7 +47,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { uploadFile } from '@/lib/storage';
 import { processMedia } from '@/lib/mediaOptimizer';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Video, ResizeMode } from 'expo-av';
 import { BlurView } from 'expo-blur';
@@ -88,6 +88,35 @@ export default function CreateEvent() {
   const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams();
+  
+  const initialType = Array.isArray(params.initialType) ? params.initialType[0] : params.initialType;
+  const initialTitle = Array.isArray(params.initialTitle) ? params.initialTitle[0] : params.initialTitle;
+  const initialDescription = Array.isArray(params.initialDescription) ? params.initialDescription[0] : params.initialDescription;
+  const initialImage = Array.isArray(params.initialImage) ? params.initialImage[0] : params.initialImage;
+  const initialPoster = Array.isArray(params.initialPoster) ? params.initialPoster[0] : params.initialPoster;
+  const initialMediaType = Array.isArray(params.initialMediaType) ? params.initialMediaType[0] : params.initialMediaType;
+
+  useEffect(() => {
+    import('expo-av').then(({ Audio }) => {
+      Audio.setAudioModeAsync({ playsInSilentModeIOS: true }).catch(console.warn);
+    });
+    
+    if (initialType) {
+      setContentType(initialType === 'publication' ? 'publication' : 'event');
+      // Pula a etapa 0 já que o tipo já foi escolhido
+      setCurrentStep(1);
+    }
+    if (initialTitle) {
+      setTitle(initialTitle);
+    }
+    if (initialDescription) {
+      setDescription(initialDescription);
+    }
+    if (initialImage) {
+      setMediaFiles([{ uri: initialImage, type: (initialMediaType as any) || 'image', poster: initialPoster }]);
+    }
+  }, [initialType, initialTitle, initialDescription, initialImage, initialMediaType, initialPoster]);
   
   const [currentStep, setCurrentStep] = useState(0);
   const [contentType, setContentType] = useState<'event' | 'publication'>('event');
@@ -98,7 +127,7 @@ export default function CreateEvent() {
   // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [mediaFiles, setMediaFiles] = useState<{ uri: string; type: 'image' | 'video' }[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<{ uri: string; type: 'image' | 'video'; poster?: string }[]>([]);
   const [showCamera, setShowCamera] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [capturedMedia, setCapturedMedia] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
@@ -449,8 +478,18 @@ export default function CreateEvent() {
                   {/* Capa Principal */}
                   <View style={[styles.heroPreviewItem, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
                     {mediaFiles[0].type === 'video' ? 
-                      <Video source={{ uri: mediaFiles[0].uri }} style={styles.heroMediaPreview} resizeMode={ResizeMode.COVER} isLooping shouldPlay isMuted /> : 
-                      <Image source={{ uri: mediaFiles[0].uri }} style={styles.heroMediaPreview} />
+                      <Video 
+                        source={{ uri: mediaFiles[0].uri }} 
+                        style={styles.heroMediaPreview} 
+                        resizeMode={ResizeMode.COVER} 
+                        isLooping 
+                        shouldPlay 
+                        isMuted 
+                        usePoster={!!mediaFiles[0].poster}
+                        posterSource={mediaFiles[0].poster ? { uri: mediaFiles[0].poster } : undefined}
+                        posterStyle={{ width: '100%', height: '100%', resizeMode: 'cover' }}
+                      /> : 
+                      <Image source={{ uri: mediaFiles[0].uri }} style={styles.heroMediaPreview} contentFit="cover" transition={200} />
                     }
                     <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.heroOverlay}>
                       <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>{t('createEvent.mainCover', t('createEvent.mainCover', 'Capa Principal'))}</Text>
@@ -463,7 +502,7 @@ export default function CreateEvent() {
                     <View style={styles.mediaGrid}>
                       {mediaFiles.slice(1).map((media, index) => (
                         <View key={index + 1} style={[styles.mediaItem, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-                          {media.type === 'video' ? <Video source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode={ResizeMode.COVER} isLooping shouldPlay isMuted /> : <Image source={{ uri: media.uri }} style={styles.mediaPreview} />}
+                          {media.type === 'video' ? <Video source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode={ResizeMode.COVER} isLooping shouldPlay isMuted /> : <Image source={{ uri: media.uri }} style={styles.mediaPreview} contentFit="cover" transition={200} />}
                           <TouchableOpacity style={styles.removeMediaBtn} onPress={() => removeMedia(index + 1)}><X size={16} color="#fff" /></TouchableOpacity>
                         </View>
                       ))}

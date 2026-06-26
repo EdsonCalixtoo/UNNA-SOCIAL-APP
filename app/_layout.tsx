@@ -131,7 +131,7 @@ function MainAppContent() {
       <Stack 
         screenOptions={{ 
           headerShown: false,
-          animation: 'none',
+          animation: 'slide_from_right',
         }}
       >
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />

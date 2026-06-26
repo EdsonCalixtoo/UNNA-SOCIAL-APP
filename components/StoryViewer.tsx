@@ -40,6 +40,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { notifyStoryLike, notifyMessageRecipient } from '@/lib/notifications';
 import { ActionFeedback } from './ActionFeedback';
 import PremiumConfirmationModal from './PremiumConfirmationModal';
+import StoryInteractiveOverlays from './StoryInteractiveOverlays';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -135,6 +136,13 @@ const StoryImageRenderer = memo(({
         <View style={st.loadingBox}>
           <ActivityIndicator size="large" color="#fff" />
         </View>
+      )}
+      {item.stickers && item.stickers.length > 0 && (
+        <StoryInteractiveOverlays 
+          storyId={item.id} 
+          stickers={item.stickers} 
+          onPause={(paused) => {}} // Could be wired later
+        />
       )}
     </View>
   );

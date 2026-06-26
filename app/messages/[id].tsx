@@ -63,6 +63,29 @@ interface OtherUser {
   avatar_url?: string;
 }
 
+const WaveBar = ({ index, meteringShared, color }: { index: number, meteringShared: any, color: string }) => {
+  const animatedStyle = useAnimatedStyle(() => {
+    // We do NOT use withTiming here because the array shifts, so the value at this index changes rapidly.
+    // Animating it would cause a morphing lag effect.
+    const h = meteringShared.value[index] || 4;
+    return {
+      height: h
+    };
+  });
+  return <Animated.View style={[{ width: 3, backgroundColor: color, borderRadius: 1.5, marginHorizontal: 1.5 }, animatedStyle]} />;
+}
+
+const LiveWaveform = ({ meteringShared }: { meteringShared: any }) => {
+  const color = '#00a884'; // WhatsApp green style
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', height: 32, overflow: 'hidden' }}>
+      {Array.from({ length: 30 }).map((_, i) => (
+         <WaveBar key={i} index={i} meteringShared={meteringShared} color={color} />
+      ))}
+    </View>
+  );
+};
+
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { backgroundPrimary, backgroundSecondary, textPrimary, textSecondary, isDark, accent } = useTheme();
@@ -117,6 +140,8 @@ export default function ChatScreen() {
   const [isRecordingLocked, setIsRecordingLocked] = useState(false);
   const [contactInfoVisible, setContactInfoVisible] = useState(false);
   const [fullscreenMessage, setFullscreenMessage] = useState<any | null>(null);
+  
+  const meteringShared = useSharedValue<number[]>(Array(30).fill(4));
   
   // New States for Contact Info
   const [isSearchingMessages, setIsSearchingMessages] = useState(false);
@@ -1443,9 +1468,29 @@ export default function ChatScreen() {
       });
 
       console.log('[Audio] Preparing new recording...');
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      const { recording } = await Audio.Recording.createAsync({
+        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        isMeteringEnabled: true,
+      });
+      
+      // Update the waveform in real time based on volume
+      recording.setOnRecordingStatusUpdate((status) => {
+        if (status.metering !== undefined) {
+          // Metering is typically between -160 and 0. Let's cap at -60 for better visual range
+          const raw = status.metering;
+          const normalized = Math.max(0, Math.min(1, (raw + 60) / 60)); 
+          const mappedHeight = 4 + (normalized * 24); // Height between 4 and 28
+          
+          const next = [...meteringShared.value, mappedHeight];
+          if (next.length > 30) {
+             meteringShared.value = next.slice(next.length - 30);
+          } else {
+             meteringShared.value = next;
+          }
+        }
+      });
+      
+      recording.setProgressUpdateInterval(50);
       
       // Se o usuário soltou o botão enquanto a gravação estava sendo preparada:
       if (!isPressingMicRef.current) {
@@ -1492,6 +1537,7 @@ export default function ChatScreen() {
       setIsRecording(false);
       setIsRecordingLocked(false);
       setRecordingDuration(0);
+      meteringShared.value = Array(30).fill(4);
 
       // Descartamos se cancelado explicitamente ou se a gravação foi um toque muito acidental (< 500ms)
       if (cancel || actualDuration < 500) {
@@ -2146,7 +2192,7 @@ export default function ChatScreen() {
                                   value={currentPosition}
                                   minimumTrackTintColor="transparent"
                                   maximumTrackTintColor="transparent"
-                                  thumbTintColor="#53bdeb"
+                                  thumbTintColor="transparent"
                                   onSlidingStart={handleSlidingStart}
                                   onValueChange={handleValueChange}
                                   onSlidingComplete={seekAudio}
@@ -2302,6 +2348,9 @@ export default function ChatScreen() {
                   <Text style={[styles.recordingText, { color: isDark ? '#fff' : '#000', flex: 0 }]}>
                     {formatDuration(recordingDuration)}
                   </Text>
+                  
+                  {/* REAL TIME WAVEFORM */}
+                  <LiveWaveform meteringShared={meteringShared} />
                 </View>
 
                 {!isRecordingLocked && (

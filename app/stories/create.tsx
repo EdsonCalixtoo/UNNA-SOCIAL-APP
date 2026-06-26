@@ -43,7 +43,7 @@ export default function CreateStoryScreen() {
     }
   };
 
-  const handleSave = async (finalUri: string) => {
+  const handleSave = async (finalUri: string, stickers?: any[]) => {
     if (!user) return;
     setLoading(true);
     setShowEditor(false);
@@ -63,17 +63,36 @@ export default function CreateStoryScreen() {
         thumbnailUrl = await uploadFile(optimizedMedia.thumbnailUri, thumbName, 'image/webp');
       }
       
-      const { error: dbError } = await supabase
+      const { data: storyData, error: dbError } = await supabase
         .from('stories')
         .insert({
           user_id: user.id,
           media_url: publicUrl,
           media_type: type,
           thumbnail_url: thumbnailUrl,
+          stickers: stickers || [],
           expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        });
+        })
+        .select()
+        .single();
 
       if (dbError) throw dbError;
+
+      // Disparar notificações para usuários mencionados
+      if (stickers && stickers.length > 0) {
+        const mentions = stickers.filter(s => s.tag_type === 'person' && s.tagged_user_id);
+        if (mentions.length > 0) {
+          const notifications = mentions.map(m => ({
+            user_id: m.tagged_user_id,
+            type: 'story_mention',
+            title: 'Nova Menção no Story',
+            message: `@${user.user_metadata?.username || 'Alguém'} mencionou você em um story`,
+            data: { story_id: storyData?.id, url: `/stories/${storyData?.id}` },
+            read: false,
+          }));
+          await supabase.from('notifications').insert(notifications);
+        }
+      }
 
       setFeedback({
         visible: true,
