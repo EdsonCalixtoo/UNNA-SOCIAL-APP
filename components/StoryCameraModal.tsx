@@ -208,11 +208,15 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
               {/* Seletor Story / Live */}
               <View style={st.modeSelector}>
                 <TouchableOpacity onPress={() => setMode('story')}>
-                  <Text style={[st.modeText, mode === 'story' && st.modeTextActive]}>STORY</Text>
+                  <Text style={[st.modeText, mode === 'story' && st.modeTextActive]}>
+                    {usageType === 'event' ? 'MEMÓRIA' : 'STORY'}
+                  </Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setMode('live')}>
-                  <Text style={[st.modeText, mode === 'live' && st.modeTextActive]}>AO VIVO</Text>
-                </TouchableOpacity>
+                {usageType !== 'event' && (
+                  <TouchableOpacity onPress={() => setMode('live')}>
+                    <Text style={[st.modeText, mode === 'live' && st.modeTextActive]}>AO VIVO</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               <View style={st.bottomRow}>

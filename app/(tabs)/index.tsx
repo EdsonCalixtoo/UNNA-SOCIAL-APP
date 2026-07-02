@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, Image, Modal, ScrollView, Platform, Dimensions, AppState } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, Image, Modal, ScrollView, Platform, Dimensions, AppState, TextInput } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -11,7 +11,7 @@ import EventCard from '@/components/EventCard';
 import { EventCardSkeleton } from '@/components/Skeleton';
 import { EventParticipantsModal } from '@/components/EventParticipantsModal';
 import CommentsModal from '@/components/CommentsModal';
-import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle, MapPin } from 'lucide-react-native';
+import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle, MapPin, Search } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +32,8 @@ import { useUI } from '@/contexts/UIContext';
 import { notifyEventLike } from '@/lib/notifications';
 import { mapService } from '@/services/mapService';
 import LottieView from 'lottie-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { soundService } from '@/utils/soundService';
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any) as any;
 
@@ -51,6 +53,7 @@ interface ExtendedPost {
     username: string;
     full_name: string;
     avatar_url?: string;
+    is_verified?: boolean;
   };
   events?: {
     id: string;
@@ -88,6 +91,7 @@ interface ExtendedPost {
       username: string;
       full_name: string;
       avatar_url?: string;
+      is_verified?: boolean;
       bio?: string;
       is_private?: boolean;
       primary_color?: string;
@@ -127,6 +131,26 @@ export default function Feed() {
   const [appState, setAppState] = useState(AppState.currentState);
   const [userLoc, setUserLoc] = useState<{ latitude: number; longitude: number } | null>(null);
   const [searchRadius, setSearchRadius] = useState<number>(0);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchWidth = useSharedValue(0);
+
+  const toggleSearch = () => {
+    if (searchExpanded) {
+      searchWidth.value = withTiming(0, { duration: 300 });
+      setTimeout(() => setSearchExpanded(false), 300);
+      setSearchQuery('');
+    } else {
+      setSearchExpanded(true);
+      searchWidth.value = withTiming(width - s(140), { duration: 300 });
+    }
+  };
+
+  const searchAnimatedStyle = useAnimatedStyle(() => ({
+    width: searchWidth.value,
+    opacity: searchWidth.value > 10 ? 1 : 0,
+    overflow: 'hidden'
+  }));
 
   // Pagination state
   const [page, setPage] = useState(0);
@@ -395,14 +419,14 @@ export default function Feed() {
         .select(`
           *,
           likes:post_likes(count),
-          profiles:user_id (id, username, full_name, avatar_url),
+          profiles:user_id (id, username, full_name, avatar_url, is_verified),
           events:event_id (
             id, title, description, image_url, image_urls, media_types, event_date, event_time, 
             location_name, latitude, longitude, max_participants, is_paid, price, 
             category_id, subcategory_id, created_at,
             categories:category_id (name, icon),
             subcategories:subcategory_id (name),
-            profiles:creator_id (id, username, full_name, avatar_url),
+            profiles:creator_id (id, username, full_name, avatar_url, is_verified),
             likes:event_likes(count),
             comments:event_comments(count),
             participants:event_participants(count)
@@ -422,7 +446,7 @@ export default function Feed() {
           participants:event_participants(count),
           categories:category_id (name, icon),
           subcategories:subcategory_id (name),
-          profiles:creator_id (id, username, full_name, avatar_url)
+          profiles:creator_id (id, username, full_name, avatar_url, is_verified)
         `)
         .eq('type', 'event')
         .gte('event_date', new Date().toISOString().split('T')[0])
@@ -581,6 +605,7 @@ export default function Feed() {
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    soundService.play('pop');
     setPage(0);
     loadPosts(0, true);
   };
@@ -689,6 +714,22 @@ export default function Feed() {
     );
   };
 
+  const filteredPosts = useMemo(() => {
+    if (!searchQuery) return posts;
+    const lowerQuery = searchQuery.toLowerCase();
+    return posts.filter((post: any) => {
+      const isEvent = !!post.events;
+      const target = isEvent ? post.events : post;
+      
+      const titleMatch = target.title?.toLowerCase().includes(lowerQuery);
+      const descMatch = target.description?.toLowerCase().includes(lowerQuery);
+      const locMatch = target.location_name?.toLowerCase().includes(lowerQuery);
+      const categoryMatch = target.categories?.name?.toLowerCase().includes(lowerQuery);
+      
+      return titleMatch || descMatch || locMatch || categoryMatch;
+    });
+  }, [posts, searchQuery]);
+
   return (
     <PageTransition>
       <View style={[styles.container, { backgroundColor: backgroundPrimary }]}>
@@ -705,51 +746,77 @@ export default function Feed() {
         }
       ]}>
         <View style={styles.headerLeft}>
-          <Image
-            source={require('@/assets/images/icone.jpg')}
-            style={styles.logoImage}
-          />
-          <Text style={[styles.logo, { color: textPrimary }]} numberOfLines={1}>U<Text style={styles.logoSpecial}>N</Text><Text style={styles.logoPink}>И</Text>A</Text>
+          {!searchExpanded && (
+            <>
+              <Image
+                source={require('@/assets/images/icone.jpg')}
+                style={styles.logoImage}
+              />
+              <Text style={[styles.logo, { color: textPrimary }]} numberOfLines={1}>U<Text style={styles.logoSpecial}>N</Text><Text style={styles.logoPink}>И</Text>A</Text>
+            </>
+          )}
         </View>
         <View style={styles.headerRight}>
+          <Animated.View style={[searchAnimatedStyle, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderRadius: 20, height: 36, justifyContent: 'center', marginRight: 8 }]}>
+            <TextInput
+              placeholder="Buscar..."
+              placeholderTextColor={textSecondary}
+              style={{ color: textPrimary, paddingHorizontal: 16, height: '100%', fontFamily: 'Inter-Medium', fontSize: 14 }}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus={searchExpanded}
+            />
+          </Animated.View>
+
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}
-            onPress={() => router.push('/messages')}
+            onPress={toggleSearch}
           >
-            <MessageCircle size={18} color={accent} />
-            {unreadMessagesCount > 0 && (
-              <View style={[styles.notificationBadge, { backgroundColor: accent }]}>
-                <Text style={styles.notificationBadgeText}>{unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}</Text>
-              </View>
-            )}
+            {searchExpanded ? <X size={18} color={accent} /> : <Search size={18} color={accent} />}
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}
-            onPress={() => router.push('/notifications')}
-          >
-            <Bell size={18} color={accent} />
-            {unreadCount > 0 && (
-              <View style={[styles.notificationBadge, { backgroundColor: accent }]}>
-                <Text style={styles.notificationBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, (selectedCategories.length > 0 || dateFilter !== 'all') && styles.filterButtonActive, { backgroundColor: (selectedCategories.length > 0 || dateFilter !== 'all') ? accent : (isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)'), borderColor: accent }]}
-            onPress={() => setShowFilters(true)}
-          >
-            <Filter size={18} color={(selectedCategories.length > 0 || dateFilter !== 'all') ? '#fff' : accent} />
-            {(selectedCategories.length > 0 || dateFilter !== 'all') && (
-              <View style={styles.filterBadge} />
-            )}
-          </TouchableOpacity>
+          
+          {!searchExpanded && (
+            <>
+              <TouchableOpacity
+                style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}
+                onPress={() => router.push('/messages')}
+              >
+                <MessageCircle size={18} color={accent} />
+                {unreadMessagesCount > 0 && (
+                  <View style={[styles.notificationBadge, { backgroundColor: accent }]}>
+                    <Text style={styles.notificationBadgeText}>{unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)' }]}
+                onPress={() => router.push('/notifications')}
+              >
+                <Bell size={18} color={accent} />
+                {unreadCount > 0 && (
+                  <View style={[styles.notificationBadge, { backgroundColor: accent }]}>
+                    <Text style={styles.notificationBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.filterButton, (selectedCategories.length > 0 || dateFilter !== 'all') && styles.filterButtonActive, { backgroundColor: (selectedCategories.length > 0 || dateFilter !== 'all') ? accent : (isDark ? 'rgba(0, 217, 255, 0.08)' : 'rgba(0, 217, 255, 0.12)'), borderColor: accent }]}
+                onPress={() => setShowFilters(true)}
+              >
+                <Filter size={18} color={(selectedCategories.length > 0 || dateFilter !== 'all') ? '#fff' : accent} />
+                {(selectedCategories.length > 0 || dateFilter !== 'all') && (
+                  <View style={styles.filterBadge} />
+                )}
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </Animated.View>
 
       {/* @ts-ignore - Reanimated drops FlashList typings */}
       <AnimatedFlashList
         ref={listRef as any}
-        data={posts}
+        data={filteredPosts}
         keyExtractor={(item: any) => item.id}
         estimatedItemSize={500}
         onEndReached={handleLoadMore}
@@ -773,14 +840,20 @@ export default function Feed() {
         viewabilityConfig={viewabilityConfig}
         ListEmptyComponent={
           loading ? (
-            <View style={styles.loadingContainer}>
+            <View style={{ width: '100%' }}>
               <EventCardSkeleton />
               <EventCardSkeleton />
               <EventCardSkeleton />
             </View>
           ) : (
-            <View style={styles.emptyContainer}>
-              <Text style={[styles.emptyText, { color: textSecondary }]}>{t('feed.noPosts', 'Nenhum post encontrado.')}</Text>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingTop: 120 }}>
+              <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+                <Search size={32} color={accent} opacity={0.7} />
+              </View>
+              <Text style={{ color: textPrimary, fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 8 }}>Vazio por aqui</Text>
+              <Text style={{ color: textSecondary, fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
+                {t('feed.noPosts', 'Ajuste seus filtros ou procure em outras categorias para descobrir eventos incríveis.')}
+              </Text>
             </View>
           )
         }
@@ -797,10 +870,24 @@ export default function Feed() {
           styles.listContent, 
           { 
             paddingTop: HEADER_HEIGHT,
-            paddingBottom: vs(100)
+            paddingBottom: vs(120) // Aumentado para o fade
           }
         ]}
         showsVerticalScrollIndicator={false}
+      />
+      
+      {/* Invisible Fade na parte inferior da lista */}
+      <LinearGradient
+        colors={[isDark ? 'rgba(28,28,30,0)' : 'rgba(255,255,255,0)', backgroundPrimary]}
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: vs(100),
+          pointerEvents: 'none',
+          zIndex: 10
+        }}
       />
 
         {showConfetti && (

@@ -3,7 +3,7 @@
     "name": "UNNA Social App",
     "slug": "bolt-expo-starter",
     "scheme": "unna-social-app",
-    "version": "3.0.8",
+    "version": "3.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "splash": {
@@ -61,7 +61,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.unna.socialapp",
-      "buildNumber": "30",
+      "buildNumber": "31",
       "associatedDomains": [
         "applinks:unnasocialapp.com"
       ],
@@ -97,7 +97,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "com.bolt.starter",
-      "versionCode": 30,
+      "versionCode": 31,
       "intentFilters": [
         {
           "action": "VIEW",

@@ -9,12 +9,16 @@ interface CachedVideoProps extends VideoProps {
   fallbackUri?: string;
 }
 
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+
 /**
- * Componente de vídeo que utiliza o sistema de cache para carregamento instantâneo.
+ * Componente de vídeo que utiliza o sistema de cache para carregamento instantâneo
+ * e fade-in suave (Autoplay Cinemático).
  */
 export default function CachedVideo({ source, ...props }: CachedVideoProps) {
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const opacity = useSharedValue(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -41,6 +45,10 @@ export default function CachedVideo({ source, ...props }: CachedVideoProps) {
     };
   }, [source.uri]);
 
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
   if (!videoUri) {
     return (
       <View style={[props.style, styles.loadingContainer]}>
@@ -50,10 +58,17 @@ export default function CachedVideo({ source, ...props }: CachedVideoProps) {
   }
 
   return (
-    <Video
-      {...props}
-      source={{ uri: videoUri }}
-    />
+    <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
+      <Video
+        {...props}
+        source={{ uri: videoUri }}
+        onLoad={(status) => {
+          opacity.value = withTiming(1, { duration: 800 });
+          if (props.onLoad) props.onLoad(status);
+        }}
+        style={[StyleSheet.absoluteFill, props.style]}
+      />
+    </Animated.View>
   );
 }
 

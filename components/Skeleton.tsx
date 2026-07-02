@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef } from 'react';
-import { View, Animated, StyleSheet, ViewStyle, DimensionValue } from 'react-native';
+import { View, Animated, StyleSheet, ViewStyle, DimensionValue, Dimensions } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 
 interface SkeletonProps {
@@ -48,8 +48,10 @@ export function Skeleton({ width, height, borderRadius = 8, style }: SkeletonPro
 }
 
 export function EventCardSkeleton() {
+  const { isDark } = useTheme();
+  const { width } = Dimensions.get('window');
   return (
-    <View style={{ padding: 20, gap: 15, width: '100%' }}>
+    <View style={{ width: width - 32, padding: 16, marginHorizontal: 16, marginVertical: 12, gap: 12, borderRadius: 36, backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 5 }}>
       <Skeleton width="100%" height={200} borderRadius={28} />
       <View style={{ flexDirection: 'row', gap: 15, alignItems: 'center' }}>
         <Skeleton width={50} height={50} borderRadius={25} />

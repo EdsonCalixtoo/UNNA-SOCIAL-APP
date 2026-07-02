@@ -19,7 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Send, Paperclip, Play, Clock, MoreVertical, ShieldAlert, UserX, X } from 'lucide-react-native';
+import { ArrowLeft, Send, Paperclip, Play, Clock, MoreVertical, ShieldAlert, UserX, X, Sparkles } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -40,6 +40,7 @@ interface Message {
     username: string;
     full_name: string;
     avatar_url?: string;
+    is_verified?: boolean;
   };
 }
 
@@ -131,6 +132,7 @@ const MessageItem = memo(({
             <Text style={[styles.senderName, { color: accent }]}>
               {message.profiles?.full_name || 'Usuário'}
             </Text>
+            {message.profiles?.is_verified && <Sparkles size={11} color="#FF1493" fill="#FF1493" style={{ marginLeft: 4 }} />}
             <TouchableOpacity onPress={() => onReportUser(message.sender_id, message.profiles?.full_name || 'Usuário')}>
               <ShieldAlert size={12} color={textSecondary} style={{ marginLeft: 6 }} />
             </TouchableOpacity>
@@ -211,7 +213,7 @@ export default function EventChat() {
         async (payload) => {
           const { data: newMsg } = await supabase
             .from('messages')
-            .select('*, profiles:sender_id(username, full_name, avatar_url)')
+            .select('*, profiles:sender_id(username, full_name, avatar_url, is_verified)')
             .eq('id', payload.new.id)
             .single();
 
@@ -272,7 +274,7 @@ export default function EventChat() {
 
   const loadMessages = async (convId: string) => {
     try {
-      const { data, error } = await supabase.from('messages').select('*, profiles:sender_id(username, full_name, avatar_url)').eq('conversation_id', convId).order('created_at', { ascending: true });
+      const { data, error } = await supabase.from('messages').select('*, profiles:sender_id(username, full_name, avatar_url, is_verified)').eq('conversation_id', convId).order('created_at', { ascending: true });
       if (error) throw error;
       setMessages(data || []);
       scrollToBottom();

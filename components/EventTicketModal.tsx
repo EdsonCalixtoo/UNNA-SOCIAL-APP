@@ -101,9 +101,13 @@ export const EventTicketModal = ({ visible, onClose, event, user }: EventTicketM
             </View>
 
             <View style={styles.dividerContainer}>
-              <View style={[styles.dividerDot, { left: -10, backgroundColor: isDark ? '#1a1a1a' : '#f0f0f0' }]} />
-              <View style={[styles.dividerLine, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
-              <View style={[styles.dividerDot, { right: -10, backgroundColor: isDark ? '#1a1a1a' : '#f0f0f0' }]} />
+              <View style={[styles.dividerDot, { left: -15, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(20,20,20,0.95)' }]} />
+              
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', overflow: 'hidden', paddingHorizontal: 20 }}>
+                 <View style={[styles.dividerLine, { borderColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)', borderWidth: 1.5, borderStyle: 'dashed' }]} />
+              </View>
+              
+              <View style={[styles.dividerDot, { right: -15, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(20,20,20,0.95)' }]} />
             </View>
 
             {/* QR Code Section */}
@@ -125,8 +129,19 @@ export const EventTicketModal = ({ visible, onClose, event, user }: EventTicketM
                   </View>
                 )}
               </View>
-              <Text style={[styles.ticketId, { color: textSecondary }]}>{ticketId}</Text>
-              <Text style={[styles.userName, { color: textPrimary }]}>{user.full_name || user.username}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', width: '100%', paddingHorizontal: 20 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.ticketId, { color: textSecondary }]}>{ticketId}</Text>
+                  <Text style={[styles.userName, { color: textPrimary }]}>{user.full_name || user.username}</Text>
+                </View>
+                
+                {/* Barcode físico style */}
+                <View style={{ flexDirection: 'row', height: 35, alignItems: 'center' }}>
+                  {[3,1,2,1,1,3,2,1,4,1,2,2,1,3,1,1,2,4,1,2,3,1].map((w, index) => (
+                    <View key={index} style={{ width: w, height: '100%', backgroundColor: isDark ? '#fff' : '#000', marginLeft: w === 1 ? 2 : 1.5 }} />
+                  ))}
+                </View>
+              </View>
             </View>
 
           </View>

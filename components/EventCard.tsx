@@ -1,19 +1,22 @@
-
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, Alert, Share, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, Alert, Share, Modal, ActivityIndicator, FlatList } from 'react-native';
 import { Image } from 'expo-image';
-import { MoreVertical, Heart, MessageCircle, MapPin, Sparkles, Users, Tag, Share2, Flag, Trash2, X } from 'lucide-react-native';
+import { MoreVertical, MessageCircle, MapPin, Sparkles, Users, Tag, Share2, Flag, Trash2, X } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { HeartBurst } from '@/components/HeartBurst';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
+import { BlurView } from 'expo-blur';
 import { s, vs, ms } from '@/utils/responsive';
 import MediaCarousel from './MediaCarousel';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, withRepeat, withSequence, interpolate } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, withRepeat, withSequence, interpolate, withDelay } from 'react-native-reanimated';
 import { hapticFeedback } from '@/utils/haptics';
 import { soundService } from '@/utils/soundService';
 import { mapService } from '@/services/mapService';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { Pressable } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -43,9 +46,34 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
   const { isDark, accent, textPrimary, textSecondary } = useTheme();
   
   const likeScale = useSharedValue(1);
+  const bigHeartScale = useSharedValue(0);
+  const bigHeartOpacity = useSharedValue(0);
   const [distanceKm, setDistanceKm] = useState<string | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [recentLikers, setRecentLikers] = useState<string[]>([]);
+  const [showLikersModal, setShowLikersModal] = useState(false);
+  const [fullLikers, setFullLikers] = useState<any[]>([]);
+  const [loadingLikers, setLoadingLikers] = useState(false);
   const isOwner = user?.id === (event?.creator_id || event?.user_id);
+  const isPublication = event?.type === 'publication' || !event?.event_date || !event?.event_time;
+
+  useEffect(() => {
+    if ((event.likes_count && event.likes_count > 0) || event.is_liked) {
+      const fetchLikers = async () => {
+        const table = isPublication ? 'post_likes' : 'event_likes';
+        const col = isPublication ? 'post_id' : 'event_id';
+        const { data } = await supabase
+          .from(table)
+          .select(`profiles (avatar_url)`)
+          .eq(col, event.id)
+          .limit(3);
+        if (data) {
+          setRecentLikers(data.map((d: any) => d.profiles?.avatar_url).filter(Boolean));
+        }
+      };
+      fetchLikers();
+    }
+  }, [event.id, event.likes_count, event.is_liked, isPublication]);
 
   useEffect(() => {
     // Calculate distance
@@ -74,17 +102,53 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
     transform: [{ scale: likeScale.value }],
   }));
 
+  const bigHeartAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: bigHeartScale.value }],
+    opacity: bigHeartOpacity.value
+  }));
+
+  const [showBurst, setShowBurst] = useState(false);
+
   const handleLikePress = () => {
+    // Animação de pulsar
+    likeScale.value = withSequence(
+      withSpring(1.4, { damping: 10, stiffness: 200 }),
+      withSpring(1)
+    );
+    // Vibe
     hapticFeedback.light();
     soundService.play('pop');
-    onLike && onLike(event.id, event.is_liked);
-    likeScale.value = withSpring(1.5, { damping: 2, stiffness: 200 }, () => {
-      likeScale.value = withSpring(1, { damping: 10, stiffness: 100 });
-    });
+    
+    if (onLike) {
+      onLike(event.id, event.is_liked);
+    }
   };
 
-  const isPublication = event?.type === 'publication' || !event?.event_date || !event?.event_time;
-  
+  const handleDoubleTapLike = () => {
+    // 1. Play big heart animation
+    bigHeartScale.value = 0;
+    bigHeartOpacity.value = 1;
+    bigHeartScale.value = withSequence(
+      withSpring(1.2, { damping: 10, stiffness: 150 }),
+      withDelay(400, withTiming(0, { duration: 300 }))
+    );
+    bigHeartOpacity.value = withSequence(
+      withTiming(1, { duration: 100 }),
+      withDelay(400, withTiming(0, { duration: 300 }))
+    );
+    
+    // Confetti Particles
+    setShowBurst(true);
+
+    // 2. Haptic
+    hapticFeedback.heavy();
+
+    // 3. Ensure it is liked
+    if (!event.is_liked && onLike) {
+      onLike(event.id, false);
+    }
+  };
+
   const handleMorePress = () => {
     setShowMoreMenu(true);
     hapticFeedback.light();
@@ -189,6 +253,55 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
         }
       ]);
     }, 500);
+  };
+
+  const openLikersModal = async () => {
+    setShowLikersModal(true);
+    setLoadingLikers(true);
+    const table = isPublication ? 'post_likes' : 'event_likes';
+    const col = isPublication ? 'post_id' : 'event_id';
+    const { data } = await supabase
+      .from(table)
+      .select(`profiles (id, username, full_name, avatar_url)`)
+      .eq(col, event.id)
+      .order('created_at', { ascending: false });
+      
+    // Fetch who the current user is following to show correct button state
+    let followingSet = new Set();
+    if (user?.id) {
+      const { data: followingData } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id);
+      followingSet = new Set((followingData || []).map(f => f.following_id));
+    }
+    
+    if (data) {
+      setFullLikers(data.map((d: any) => ({
+        ...d.profiles,
+        is_following: followingSet.has(d.profiles.id)
+      })).filter(Boolean));
+    }
+    setLoadingLikers(false);
+  };
+  
+  const handleToggleFollow = async (targetUserId: string, isFollowing: boolean) => {
+    if (!user) return;
+    
+    // Optimistic update
+    setFullLikers(prev => prev.map(p => p.id === targetUserId ? { ...p, is_following: !isFollowing } : p));
+    hapticFeedback.selection();
+    
+    try {
+      if (isFollowing) {
+        await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetUserId);
+      } else {
+        await supabase.from('follows').insert({ follower_id: user.id, following_id: targetUserId });
+      }
+    } catch (e) {
+      // Revert if failed
+      setFullLikers(prev => prev.map(p => p.id === targetUserId ? { ...p, is_following: isFollowing } : p));
+    }
   };
   
 
@@ -304,6 +417,7 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
         backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', 
         borderWidth: eventStatus !== 'none' || isOfficial ? 2 : 1, 
         borderColor: isOfficial ? accent : getBorderColor(),
+        shadowColor: eventStatus !== 'none' ? getBorderColor() : (isDark ? accent : 'rgba(0,0,0,0.3)'),
         overflow: 'hidden'
       },
       animatedGlowStyle,
@@ -324,8 +438,15 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
                <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{fullName.charAt(0).toUpperCase()}</Text>
             </View>
           )}
-          {/* Pink Status Dot */}
-          <View style={styles.statusDot} />
+          {/* Pink Status Dot — hidden when verified badge is shown */}
+          {!event.profiles?.is_verified && <View style={styles.statusDot} />}
+          
+          {/* Verified Badge on Avatar */}
+          {event.profiles?.is_verified && (
+            <View style={[styles.statusDot, { backgroundColor: '#FF1493', top: undefined, bottom: -2, right: -4, width: ms(16), height: ms(16), borderRadius: ms(8), justifyContent: 'center', alignItems: 'center' }]}>
+              <Sparkles size={8} color="#FFF" fill="#FFF" />
+            </View>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.headerTextWrap} activeOpacity={0.8} onPress={() => {
@@ -371,14 +492,23 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
               isVisible={isVisible}
               eventId={event.id}
               onPress={handlePress}
+              onDoublePress={handleDoubleTapLike}
             />
+
+            {/* Big Heart Overlay */}
+            <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 999 }]} pointerEvents="none">
+               <Animated.View style={bigHeartAnimStyle}>
+                 <Ionicons name="heart" size={120} color="#fff" style={{ textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: { width: 0, height: 4 }, textShadowRadius: 10 }} />
+               </Animated.View>
+               {showBurst && <HeartBurst onComplete={() => setShowBurst(false)} />}
+            </View>
             
             {/* Date Badge */}
             {!isPublication && eventMonth && (
-              <View style={[styles.dateBadge, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.8)' }]}>
+              <BlurView intensity={80} tint={isDark ? "dark" : "light"} style={[styles.dateBadge, { overflow: 'hidden', backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.4)' }]}>
                 <Text style={[styles.dateBadgeDay, { color: isDark ? '#00D9FF' : '#00b8d4' }]}>{eventDay}</Text>
                 <Text style={[styles.dateBadgeMonth, { color: isDark ? '#FFF' : '#333' }]}>{eventMonth}</Text>
-              </View>
+              </BlurView>
             )}
 
             {/* Top Left Badges */}
@@ -386,8 +516,9 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
 
               {/* Live/Soon/Upcoming/Finished Badge */}
               {eventStatus !== 'none' && (
-                <View style={[styles.liveBadge, { 
-                  backgroundColor: eventStatus === 'live' ? 'rgba(0,230,118,0.9)' : eventStatus === 'soon' ? 'rgba(255,215,0,0.9)' : eventStatus === 'upcoming' ? 'rgba(157,78,221,0.9)' : 'rgba(255,59,48,0.9)', 
+                <BlurView intensity={50} tint="dark" style={[styles.liveBadge, { 
+                  overflow: 'hidden',
+                  backgroundColor: eventStatus === 'live' ? 'rgba(0,230,118,0.6)' : eventStatus === 'soon' ? 'rgba(255,215,0,0.6)' : eventStatus === 'upcoming' ? 'rgba(157,78,221,0.6)' : 'rgba(255,59,48,0.6)', 
                   borderColor: eventStatus === 'live' ? '#00E676' : eventStatus === 'soon' ? '#FFD700' : eventStatus === 'upcoming' ? '#9D4EDD' : '#FF3B30' 
                 }]}>
                   {(eventStatus === 'live' || eventStatus === 'soon' || eventStatus === 'upcoming') && <View style={[styles.liveDot, { backgroundColor: eventStatus === 'soon' ? '#333' : '#FFF' }]} />}
@@ -397,21 +528,21 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
                      eventStatus === 'upcoming' ? `FALTAM ${timeUntilStart.toUpperCase()}` : 
                      'FINALIZADO'}
                   </Text>
-                </View>
+                </BlurView>
               )}
             </View>
 
             {/* Top Right Badges */}
             {event.categories?.name && (
               <View style={[styles.badgesTopRight]}>
-                <View style={[styles.categoryBadge, { borderColor: event.categories.color ? event.categories.color + '50' : accent + '50', backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+                <BlurView intensity={70} tint="dark" style={[styles.categoryBadge, { overflow: 'hidden', borderColor: event.categories.color ? event.categories.color + '50' : accent + '50', backgroundColor: 'rgba(0,0,0,0.4)' }]}>
                   {event.categories.icon ? (
                     <Text style={{ fontSize: 12, marginRight: 4 }}>{event.categories.icon}</Text>
                   ) : (
                     <Tag size={12} color={event.categories.color || accent} style={{ marginRight: 4 }} />
                   )}
                   <Text style={[styles.categoryBadgeText, { color: event.categories.color || accent }]}>{event.categories.name}</Text>
-                </View>
+                </BlurView>
               </View>
             )}
 
@@ -425,34 +556,134 @@ export default React.memo(function EventCard({ event, onPress, isVisible = true,
       <View style={styles.footer}>
         
         {/* Like Pill */}
-        <TouchableOpacity style={[styles.pill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]} onPress={handleLikePress} activeOpacity={0.7}>
-          <Animated.View style={likeAnimStyle}>
-            <Heart size={18} color={event.is_liked ? "#FF1493" : "#FF69B4"} fill={event.is_liked ? "#FF1493" : "none"} />
-          </Animated.View>
-          <Text style={[styles.pillText, { color: textPrimary }]}>{event.likes_count || 0}</Text>
-        </TouchableOpacity>
+        <View style={[styles.pill, { flex: recentLikers.length > 0 ? 1.2 : 1, paddingHorizontal: 0, paddingVertical: 0, gap: 0 }]}>
+          <TouchableOpacity activeOpacity={0.7} onPress={handleLikePress} hitSlop={{ top: 15, bottom: 15, left: 15, right: 10 }} style={{ paddingLeft: 14, paddingRight: 4, paddingVertical: vs(10), justifyContent: 'center' }}>
+            <Animated.View style={likeAnimStyle}>
+              <Ionicons name={event.is_liked ? "heart" : "heart-outline"} size={22} color={event.is_liked ? "#FF1493" : textPrimary} />
+            </Animated.View>
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7} onPress={openLikersModal} hitSlop={{ top: 10, bottom: 10, right: 10 }} style={{ flex: 1, paddingLeft: 2, paddingRight: 12, paddingVertical: vs(10), flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
+            <Text style={[styles.pillText, { color: textPrimary }]} numberOfLines={1}>{event.likes_count || 0}</Text>
+            {recentLikers.length > 0 && (
+              <View style={{ flexDirection: 'row', marginLeft: 4 }}>
+                {recentLikers.slice(0, 2).map((url, i) => (
+                  <Image 
+                    key={i} 
+                    source={{ uri: url }} 
+                    style={{ 
+                      width: 18, 
+                      height: 18, 
+                      borderRadius: 9, 
+                      borderWidth: 1.5, 
+                      borderColor: isDark ? '#1C1C1E' : '#FFF', 
+                      marginLeft: i > 0 ? -6 : 0 
+                    }} 
+                  />
+                ))}
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* Comments Pill */}
-        <TouchableOpacity style={[styles.pill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]} onPress={() => onCommentPress && onCommentPress(event.id)} activeOpacity={0.7}>
+        <Pressable 
+          style={({ pressed }) => [
+            styles.pill, 
+            { backgroundColor: pressed ? (isDark ? 'rgba(160, 32, 240, 0.15)' : 'rgba(160, 32, 240, 0.1)') : (isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)') }
+          ]} 
+          onPress={() => onCommentPress && onCommentPress(event.id)}
+        >
           <MessageCircle size={18} color="#A020F0" fill="none" />
           <Text style={[styles.pillText, { color: textPrimary }]}>{event.comments_count || 0}</Text>
-        </TouchableOpacity>
+        </Pressable>
 
         {/* Participants Pill */}
-        <TouchableOpacity style={[styles.pill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]} onPress={() => onParticipantsPress && onParticipantsPress(event.id)} activeOpacity={0.7}>
+        <Pressable 
+          style={({ pressed }) => [
+            styles.pill, 
+            { backgroundColor: pressed ? (isDark ? 'rgba(0, 230, 184, 0.15)' : 'rgba(0, 230, 184, 0.1)') : (isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)') }
+          ]} 
+          onPress={() => onParticipantsPress && onParticipantsPress(event.id)}
+        >
           <Users size={18} color="#00E6B8" fill="none" />
           <Text style={[styles.pillText, { color: textPrimary }]}>{event.participants_count || 0}</Text>
-        </TouchableOpacity>
+        </Pressable>
 
         {/* Distance / Location Pill */}
-        <TouchableOpacity style={[styles.pill, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]} activeOpacity={0.7}>
+        <Pressable 
+          style={({ pressed }) => [
+            styles.pill, 
+            { backgroundColor: pressed ? (isDark ? 'rgba(255, 215, 0, 0.15)' : 'rgba(255, 215, 0, 0.1)') : (isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)') }
+          ]}
+        >
           <MapPin size={18} color="#FFD700" fill="none" />
           <Text style={[styles.pillText, { color: textPrimary }]}>
              {distanceKm ? distanceKm : (event.location_name ? event.location_name.split(',')[0] : 'Local')}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
 
       </View>
+
+      {/* Modal de Curtidas (Likers) */}
+      <Modal visible={showLikersModal} transparent animationType="slide" onRequestClose={() => setShowLikersModal(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowLikersModal(false)} />
+          <View style={[styles.bottomSheet, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', maxHeight: '80%' }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={[styles.sheetTitle, { color: textPrimary }]}>Curtidas</Text>
+            
+            {loadingLikers ? (
+              <ActivityIndicator color={accent} style={{ marginVertical: 40 }} />
+            ) : (
+              <FlatList
+                data={fullLikers}
+                keyExtractor={(item, index) => item?.id || index.toString()}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, justifyContent: 'space-between' }}>
+                    <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }} onPress={() => {
+                      setShowLikersModal(false);
+                      router.push(`/profile/${item.id}`);
+                    }}>
+                      <Image 
+                        source={{ uri: item.avatar_url || `https://ui-avatars.com/api/?name=${item.username || 'U'}&background=333&color=fff` }} 
+                        style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#333' }}
+                      />
+                      <View style={{ marginLeft: 12, flex: 1, paddingRight: 10 }}>
+                        <Text style={{ color: textPrimary, fontSize: 16, fontWeight: 'bold' }} numberOfLines={1}>{item.username}</Text>
+                        <Text style={{ color: textSecondary, fontSize: 14 }} numberOfLines={1}>{item.full_name || ''}</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {user?.id !== item.id && (
+                      <TouchableOpacity
+                        style={{
+                          backgroundColor: item.is_following ? (isDark ? '#333' : '#E0E0E0') : accent,
+                          paddingHorizontal: 16,
+                          paddingVertical: 8,
+                          borderRadius: 16,
+                          minWidth: 90,
+                          alignItems: 'center'
+                        }}
+                        onPress={() => handleToggleFollow(item.id, item.is_following)}
+                      >
+                        <Text style={{ 
+                          color: item.is_following ? textPrimary : '#fff', 
+                          fontWeight: 'bold', 
+                          fontSize: 14 
+                        }}>
+                          {item.is_following ? 'Seguindo' : 'Seguir'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                ListEmptyComponent={<Text style={{ color: textSecondary, textAlign: 'center', marginVertical: 20 }}>Ninguém curtiu ainda.</Text>}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Action Sheet Modal */}
       <Modal
@@ -551,8 +782,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sheetTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-Bold',
+    fontSize: 20,
+    fontWeight: '900',
+    fontFamily: 'Inter-Black',
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -605,10 +837,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   fullName: {
-    fontFamily: 'Inter-Bold',
-    fontSize: ms(15),
+    fontFamily: 'Inter-Black',
+    fontWeight: '900',
+    fontSize: ms(16),
     color: '#FFFFFF',
-    letterSpacing: 0.5,
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontFamily: 'Inter-Medium',
@@ -623,9 +856,11 @@ const styles = StyleSheet.create({
     marginBottom: vs(16),
   },
   contentTitle: {
-    fontFamily: 'Inter-Bold',
-    fontSize: ms(16),
+    fontFamily: 'Inter-Black',
+    fontWeight: '900',
+    fontSize: ms(18),
     color: '#FFFFFF',
+    letterSpacing: -0.5,
     marginBottom: vs(4),
   },
   contentText: {

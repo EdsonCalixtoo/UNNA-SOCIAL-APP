@@ -21,7 +21,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Send, Check, CheckCheck, Mic, Play, Pause, Paperclip, Image as ImageIcon, Video as VideoIcon, Plus, Trash2, Crown, LogOut, Search, X, Camera, Link, Calendar, CornerUpLeft, Edit3, Star, Phone, Box, ChevronRight, HardDrive, Bell, Palette, Download, Clock, Lock } from 'lucide-react-native';
+import { ArrowLeft, Send, Check, CheckCheck, Mic, Play, Pause, Paperclip, Image as ImageIcon, Video as VideoIcon, Plus, Trash2, Crown, LogOut, Search, X, Camera, Link, Calendar, CornerUpLeft, Edit3, Star, Phone, Box, ChevronRight, HardDrive, Bell, Palette, Download, Clock, Lock, Sparkles } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { notifyMessageRecipient } from '@/lib/notifications';
 import { Audio, Video, ResizeMode } from 'expo-av';
@@ -32,9 +32,10 @@ import { decode } from 'base64-arraybuffer';
 import Slider from '@react-native-community/slider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence, withSpring } from 'react-native-reanimated';
 import { hapticFeedback } from '@/utils/haptics';
 import Skeleton from '@/components/Skeleton';
+import { ConfettiView } from '@/components/ConfettiView';
 import { useInAppNotification } from '@/contexts/InAppNotificationContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/lib/i18n';
@@ -152,6 +153,33 @@ export default function ChatScreen() {
   const [isChatLocked, setIsChatLocked] = useState(false);
   const [saveToPhotos, setSaveToPhotos] = useState(true);
   const [disappearingTimer, setDisappearingTimer] = useState(0);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [lastConfettiMessageId, setLastConfettiMessageId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.sender_id !== user?.id && lastMsg.id !== lastConfettiMessageId) {
+        let isText = false;
+        let text = '';
+        try {
+          const parsed = JSON.parse(lastMsg.content);
+          if (parsed.type === 'text' || parsed.type === 'reply') {
+            text = parsed.text || parsed.reply_to_text;
+            isText = true;
+          }
+        } catch {
+          text = lastMsg.content;
+          isText = true;
+        }
+        
+        if (isText && /parab[eé]ns|feliz|quebra tudo/i.test(text)) {
+          setShowConfetti(true);
+          setLastConfettiMessageId(lastMsg.id);
+        }
+      }
+    }
+  }, [messages, user?.id, lastConfettiMessageId]);
 
   const isSeekingRef = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -162,6 +190,14 @@ export default function ChatScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
   const isPressingMicRef = useRef(false);
   const pulseAnim = useSharedValue(1);
+  const inputRef = useRef<TextInput>(null);
+  const micDragX = useSharedValue(0);
+  const micAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: micDragX.value }]
+  }));
+  const slideTextOpacity = useAnimatedStyle(() => ({
+    opacity: Math.max(0, 1 - Math.abs(micDragX.value) / 40)
+  }));
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -1036,7 +1072,7 @@ export default function ChatScreen() {
         .from('messages')
         .select(`
           *,
-          sender:profiles(id, full_name, username, avatar_url),
+          sender:profiles(id, full_name, username, avatar_url, is_verified),
           reactions:message_reactions(*)
         `)
         .in('conversation_id', conversationIdsToFetch)
@@ -1456,6 +1492,7 @@ export default function ChatScreen() {
       const permission = await Audio.requestPermissionsAsync();
       if (!permission.granted) {
         Alert.alert('Permissão Negada', 'Precisamos de acesso ao microfone para gravar áudios.');
+        setIsRecording(false);
         return;
       }
 
@@ -1496,6 +1533,7 @@ export default function ChatScreen() {
       if (!isPressingMicRef.current) {
         console.log('[Audio] Botão solto antes da gravação iniciar, cancelando...');
         await recording.stopAndUnloadAsync().catch(() => {});
+        setIsRecording(false);
         return;
       }
 
@@ -1508,6 +1546,7 @@ export default function ChatScreen() {
       }, 1000);
     } catch (err) {
       console.error('Failed to start recording', err);
+      setIsRecording(false);
     }
   };
 
@@ -1564,22 +1603,30 @@ export default function ChatScreen() {
       onPanResponderGrant: () => {
         if (isRecordingLocked) return;
         cancelRecordingRef.current = false;
+        setIsRecording(true);
         startAudioRecording();
       },
       onPanResponderMove: (evt, gestureState) => {
-        if (isRecordingLocked) return;
+        if (isRecordingLocked || cancelRecordingRef.current) return;
         
+        if (gestureState.dx < 0) {
+          micDragX.value = gestureState.dx;
+        }
+
         // Se deslizar para cima mais de 50px, trava a gravação
         if (gestureState.dy < -50 && !cancelRecordingRef.current) {
           setIsRecordingLocked(true);
+          micDragX.value = withSpring(0);
         }
         // Se deslizar para a esquerda mais de 50px, cancela
         else if (gestureState.dx < -50 && !cancelRecordingRef.current) {
           cancelRecordingRef.current = true;
           stopAudioRecording(true);
+          micDragX.value = withSpring(0);
         }
       },
       onPanResponderRelease: () => {
+        micDragX.value = withSpring(0);
         if (isRecordingLocked) return; // Se travou, soltar o dedo não para a gravação
         
         if (!cancelRecordingRef.current) {
@@ -1587,6 +1634,7 @@ export default function ChatScreen() {
         }
       },
       onPanResponderTerminate: () => {
+        micDragX.value = withSpring(0);
         if (isRecordingLocked) return;
 
         if (!cancelRecordingRef.current) {
@@ -1879,6 +1927,8 @@ export default function ChatScreen() {
         backgroundColor="transparent"
         barStyle={isDark ? "light-content" : "dark-content"}
       />
+      
+      <ConfettiView visible={showConfetti} onComplete={() => setShowConfetti(false)} />
 
       <View style={[styles.header, { backgroundColor: isDark ? '#0b141a' : '#075e54', paddingTop: insets.top + 8 }]}>
           {isSearchingMessages ? (
@@ -1986,7 +2036,23 @@ export default function ChatScreen() {
           }).map((message, index, arr) => {
             const isMyMessage = message.sender_id === user?.id;
             const previousMessage = index > 0 ? arr[index - 1] : null;
+            const nextMessage = index < arr.length - 1 ? arr[index + 1] : null;
             const showDateDivider = shouldShowDateDivider(message, previousMessage);
+
+            const isPrevSameSender = previousMessage?.sender_id === message.sender_id && !showDateDivider;
+            const isNextSameSender = nextMessage?.sender_id === message.sender_id;
+
+            const groupedRadii = isMyMessage ? {
+              borderTopRightRadius: isPrevSameSender ? 6 : 20,
+              borderBottomRightRadius: isNextSameSender ? 6 : 20,
+              borderTopLeftRadius: 20,
+              borderBottomLeftRadius: 20,
+            } : {
+              borderTopLeftRadius: isPrevSameSender ? 6 : 20,
+              borderBottomLeftRadius: isNextSameSender ? 6 : 20,
+              borderTopRightRadius: 20,
+              borderBottomRightRadius: 20,
+            };
 
             return (
               <View key={message.id}>
@@ -2007,14 +2073,18 @@ export default function ChatScreen() {
                     delayLongPress={450}
                     style={({ pressed }) => [
                       styles.messageBubble,
+                      groupedRadii,
                       isMyMessage 
                         ? [styles.myMessageBubble, { backgroundColor: isDark ? '#005c4b' : '#dcf8c6' }] 
                         : [styles.otherMessageBubble, { backgroundColor: isDark ? '#202c33' : '#ffffff' }],
-                      pressed && { opacity: 0.85 }
+                      pressed && { transform: [{ scale: 0.98 }], opacity: 0.9 }
                     ]}
                   >
                   {conversation?.is_group && !isMyMessage && (
-                    <Text style={styles.senderName}>{message.sender?.full_name || 'Usuário'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                      <Text style={styles.senderName}>{message.sender?.full_name || 'Usuário'}</Text>
+                      {(message.sender as any)?.is_verified && <Sparkles size={10} color="#FF1493" fill="#FF1493" />}
+                    </View>
                   )}
                     {(() => {
                       try {
@@ -2272,13 +2342,20 @@ export default function ChatScreen() {
             );
           })}
           {isTyping && (
-            <View style={[styles.messageWrapper, styles.otherMessageWrapper]}>
-              <View style={[styles.messageBubble, styles.otherMessageBubble]}>
-                <Text style={[styles.messageText, styles.otherMessageText]}>
-                  ✍️ digitando...
-                </Text>
+            <Animated.View style={[styles.messageWrapper, styles.otherMessageWrapper]}>
+              <View style={[styles.messageBubble, styles.otherMessageBubble, { backgroundColor: isDark ? '#202c33' : '#ffffff', flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderBottomLeftRadius: 6, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomRightRadius: 20 }]}>
+                {otherUser?.avatar_url ? (
+                  <Image source={{ uri: otherUser.avatar_url }} style={{ width: 20, height: 20, borderRadius: 10, marginRight: 8 }} />
+                ) : (
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: accent, marginRight: 8, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 10 }}>{(otherUser?.full_name || 'U').charAt(0)}</Text>
+                  </View>
+                )}
+                <Animated.View style={[{ width: 6, height: 6, borderRadius: 3, backgroundColor: accent, marginRight: 4 }, pulseStyle]} />
+                <Animated.View style={[{ width: 6, height: 6, borderRadius: 3, backgroundColor: accent, marginRight: 4, opacity: 0.7 }, pulseStyle]} />
+                <Animated.View style={[{ width: 6, height: 6, borderRadius: 3, backgroundColor: accent, opacity: 0.4 }, pulseStyle]} />
               </View>
-            </View>
+            </Animated.View>
           )}
         </ScrollView>
       )}
@@ -2328,7 +2405,7 @@ export default function ChatScreen() {
         <View style={styles.whatsappInputRow}>
           <View style={[styles.whatsappInputPill, { backgroundColor: isDark ? '#2a3942' : '#ffffff' }]}>
             {!isRecording && (
-              <TouchableOpacity style={styles.whatsappEmojiBtn}>
+              <TouchableOpacity style={styles.whatsappEmojiBtn} onPress={() => inputRef.current?.focus()}>
                 <Text style={{ fontSize: 24, color: isDark ? '#8696a0' : '#8596a0' }}>{t('auto.s2a02eac3', '😀')}</Text>
               </TouchableOpacity>
             )}
@@ -2355,7 +2432,7 @@ export default function ChatScreen() {
 
                 {!isRecordingLocked && (
                   <View style={{flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', paddingRight: 4}}>
-                    <Animated.View style={{flexDirection: 'row', alignItems: 'center'}}>
+                    <Animated.View style={[{flexDirection: 'row', alignItems: 'center'}, slideTextOpacity]}>
                       <Text style={{color: isDark ? '#8696a0' : '#8596a0', fontSize: 13}}>
                         {'< Deslize para cancelar'}
                       </Text>
@@ -2365,6 +2442,7 @@ export default function ChatScreen() {
               </View>
             ) : (
               <TextInput
+                ref={inputRef}
                 style={[styles.input, { color: isDark ? '#fff' : '#000', flex: 1, backgroundColor: 'transparent' }]}
                 placeholder={t('messages.typeMessage', 'Mensagem')}
                 placeholderTextColor={isDark ? '#8696a0' : '#8596a0'}
@@ -2405,12 +2483,12 @@ export default function ChatScreen() {
               )}
             </TouchableOpacity>
           ) : (
-            <View
-              style={styles.whatsappSendCircle}
+            <Animated.View
+              style={[styles.whatsappSendCircle, micAnimatedStyle]}
               {...micPanResponder.panHandlers}
             >
               <Mic size={24} color="#fff" />
-            </View>
+            </Animated.View>
           )}
         </View>
       </View>

@@ -428,11 +428,20 @@ export default function ConversationsList() {
               onPress={() => router.push(`/messages/${item.id}?userId=${item.other_user.id}`)}
               activeOpacity={1}
             >
-              <View style={styles.avatarContainer}>
+              <View style={[
+                styles.avatarContainer,
+                !item.is_group && item.is_online && {
+                  shadowColor: '#00E676',
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.8,
+                  shadowRadius: 8,
+                  elevation: 8,
+                }
+              ]}>
                 {item.avatar_url ? (
-                  <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
+                  <Image source={{ uri: item.avatar_url }} style={[styles.avatar, !item.is_group && item.is_online && { borderWidth: 1.5, borderColor: '#00E676' }]} />
                 ) : (
-                  <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? '#1a1a1a' : '#e1e1e1' }]}>
+                  <View style={[styles.avatarPlaceholder, { backgroundColor: isDark ? '#1a1a1a' : '#e1e1e1' }, !item.is_group && item.is_online && { borderWidth: 1.5, borderColor: '#00E676' }]}>
                     <Text style={[styles.avatarText, { color: textSecondary }]}>
                       {(item.name || 'U').charAt(0).toUpperCase()}
                     </Text>

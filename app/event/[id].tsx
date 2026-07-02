@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { 
   Calendar, Clock, MapPin, ArrowLeft,
   MessageCircle, Edit3, Share2, Navigation2,
-  ChevronRight, Users, Trash2, Flag, Ticket, Scan, X
+  ChevronRight, Users, Trash2, Flag, Ticket, Scan, X, Sparkles
 } from 'lucide-react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,7 +28,7 @@ import { ActionFeedback } from '@/components/ActionFeedback';
 import { offlineService } from '@/services/offlineService';
 import Animated, { 
   useSharedValue, useAnimatedStyle, useAnimatedScrollHandler,
-  interpolate, Extrapolation, withSpring
+  interpolate, Extrapolation, withSpring, FadeIn, FadeOut
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -105,9 +105,18 @@ export default function EventDetails() {
   const [ticketModalVisible, setTicketModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [activeTab, setActiveTab] = useState(0); // 0 = Sobre, 1 = Comunidade
 
   const translateY = useSharedValue(SNAP_MIDDLE); // Começa no meio, com o botão visível
   const scrollY = useSharedValue(0);
+
+  const tabIndicatorStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ 
+        translateX: withSpring(activeTab * ((SCREEN_WIDTH - 48 - 8) / 2), { damping: 20, stiffness: 200 }) 
+      }]
+    };
+  });
 
   useEffect(() => { 
     loadEvent(); 
@@ -144,7 +153,7 @@ export default function EventDetails() {
     try {
       const { data, error } = await supabase.from('events').select(`
         *, categories:category_id (name, icon),
-        profiles:creator_id (id, username, full_name, avatar_url)
+        profiles:creator_id (id, username, full_name, avatar_url, is_verified)
       `).eq('id', id).maybeSingle();
       
       if (error) throw error;
@@ -647,14 +656,36 @@ export default function EventDetails() {
                         </View>
                       )}
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.name, { color: textPrimary }]}>{event.profiles?.full_name || event.profiles?.username}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={[styles.name, { color: textPrimary }]}>{event.profiles?.full_name || event.profiles?.username}</Text>
+                          {event.profiles?.is_verified && <Sparkles size={13} color="#FF1493" fill="#FF1493" />}
+                        </View>
                         <Text style={[styles.sub, { color: textSecondary }]}>{isPublication ? 'Autor' : 'Organizador'}</Text>
                       </View>
                       <ChevronRight size={20} color={textSecondary} />
                     </View>
                   </MemoizedCard>
 
-                  {event.type === 'event' && (
+                  {/* SLIDING TABS (Fase 5) */}
+                  <View style={{ flexDirection: 'row', backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderRadius: 16, padding: 4, marginBottom: 24, position: 'relative' }}>
+                    {/* Animated Indicator */}
+                    <Animated.View style={[
+                      { position: 'absolute', top: 4, bottom: 4, left: 4, width: (SCREEN_WIDTH - 48 - 8) / 2, backgroundColor: backgroundPrimary, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+                      tabIndicatorStyle
+                    ]} />
+                    
+                    <TouchableOpacity style={{ flex: 1, paddingVertical: 12, alignItems: 'center', zIndex: 2 }} onPress={() => setActiveTab(0)}>
+                      <Text style={{ color: activeTab === 0 ? textPrimary : textSecondary, fontWeight: activeTab === 0 ? '800' : '600', fontSize: 14 }}>Sobre</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity style={{ flex: 1, paddingVertical: 12, alignItems: 'center', zIndex: 2 }} onPress={() => setActiveTab(1)}>
+                      <Text style={{ color: activeTab === 1 ? textPrimary : textSecondary, fontWeight: activeTab === 1 ? '800' : '600', fontSize: 14 }}>Comunidade</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {activeTab === 0 ? (
+                    <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)}>
+                      {event.type === 'event' && (
                     <MemoizedInfoGrid 
                       date={event.event_date} 
                       time={event.event_time}
@@ -785,25 +816,29 @@ export default function EventDetails() {
                     </MemoizedCard>
                   )}
 
-                  {!isPublication && (
-                    <EventPresenceList eventId={id as string} />
+                    <View style={styles.section}>
+                      <Text style={[styles.secTitle, { color: textPrimary }]}>
+                        {isPublication ? t('events.description', 'Descrição') : t('events.aboutEvent', 'Sobre o Evento')}
+                      </Text>
+                      <Text style={[styles.desc, { color: textSecondary }]} selectable>
+                        {event.description}
+                      </Text>
+                    </View>
+                    </Animated.View>
+                  ) : (
+                    <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)}>
+                      {!isPublication && (
+                        <EventPresenceList eventId={id as string} />
+                      )}
+                      
+                      {!isPublication && (
+                        <EventStoriesBar 
+                          eventId={id as string} 
+                          isParticipant={rsvpStatus === 'going' || user?.id === event.creator_id} 
+                        />
+                      )}
+                    </Animated.View>
                   )}
-                  
-                  {!isPublication && (
-                    <EventStoriesBar 
-                      eventId={id as string} 
-                      isParticipant={rsvpStatus === 'going'} 
-                    />
-                  )}
-
-                  <View style={styles.section}>
-                    <Text style={[styles.secTitle, { color: textPrimary }]}>
-                      {isPublication ? t('events.description', 'Descrição') : t('events.aboutEvent', 'Sobre o Evento')}
-                    </Text>
-                    <Text style={[styles.desc, { color: textSecondary }]} selectable>
-                      {event.description}
-                    </Text>
-                  </View>
                 </View>
               </Animated.ScrollView>
           </Animated.View>

@@ -711,24 +711,46 @@ export default function Profile() {
           {/* CONTENT AREA */}
           <View style={styles.listContainer}>
             {activeTab === 'posts' && (
-              <View style={styles.postsGrid}>
+              <View style={[styles.postsGrid, { flexDirection: 'row', flexWrap: 'nowrap', gap: 8, paddingHorizontal: 8 }]}>
                 {memories.length > 0 ? (
-                  memories.map((memory, idx) => (
-                    <TouchableOpacity
-                      key={memory.id}
-                      style={styles.postThumbnail}
-                      activeOpacity={0.9}
-                      onPress={() => {
-                        setSelectedMemoryIdx(idx);
-                        setIsMemoryViewerVisible(true);
-                      }}
-                    >
-                      <Image source={{ uri: memory.image_url }} style={styles.thumbnailImg} />
-                      <View style={styles.gridIconOverlay}>
-                        <Grid3X3 size={12} color="#FFF" />
-                      </View>
-                    </TouchableOpacity>
-                  ))
+                  <>
+                    <View style={{ flex: 1, gap: 8 }}>
+                      {memories.filter((_, i) => i % 2 === 0).map((memory, idx) => (
+                        <TouchableOpacity
+                          key={memory.id}
+                          style={[styles.postThumbnail, { width: '100%', height: idx % 2 === 0 ? vs(220) : vs(280) }]}
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            setSelectedMemoryIdx(memories.indexOf(memory));
+                            setIsMemoryViewerVisible(true);
+                          }}
+                        >
+                          <Image source={{ uri: memory.image_url }} style={styles.thumbnailImg} />
+                          <View style={styles.gridIconOverlay}>
+                            <Grid3X3 size={12} color="#FFF" />
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <View style={{ flex: 1, gap: 8, marginTop: vs(24) }}>
+                      {memories.filter((_, i) => i % 2 !== 0).map((memory, idx) => (
+                        <TouchableOpacity
+                          key={memory.id}
+                          style={[styles.postThumbnail, { width: '100%', height: idx % 2 === 0 ? vs(280) : vs(220) }]}
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            setSelectedMemoryIdx(memories.indexOf(memory));
+                            setIsMemoryViewerVisible(true);
+                          }}
+                        >
+                          <Image source={{ uri: memory.image_url }} style={styles.thumbnailImg} />
+                          <View style={styles.gridIconOverlay}>
+                            <Grid3X3 size={12} color="#FFF" />
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
                 ) : (
                   <View style={styles.emptyContent}>
                     <Heart size={48} color={textSecondary} strokeWidth={1} />
@@ -740,28 +762,54 @@ export default function Profile() {
             )}
 
             {activeTab === 'events' && (
-              <View style={styles.postsGrid}>
+              <View style={[styles.postsGrid, { flexDirection: 'row', flexWrap: 'nowrap', gap: 8, paddingHorizontal: 8 }]}>
                 {events.length > 0 ? (
-                  events.map(event => {
-                    const imageUri = event.image_urls?.[0] || event.image_url;
-                    return (
-                      <TouchableOpacity
-                        key={event.id}
-                        style={styles.postThumbnail}
-                        activeOpacity={0.9}
-                        onPress={() => router.push(`/event/${event.id}`)}
-                      >
-                        {imageUri ? (
-                          <Image source={{ uri: imageUri }} style={styles.thumbnailImg} />
-                        ) : (
-                          <View style={[styles.thumbnailImg, { backgroundColor: '#444' }]} />
-                        )}
-                        <View style={styles.gridIconOverlay}>
-                          <Calendar size={12} color="#FFF" />
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })
+                  <>
+                    <View style={{ flex: 1, gap: 8 }}>
+                      {events.filter((_, i) => i % 2 === 0).map((event, idx) => {
+                        const imageUri = event.image_urls?.[0] || event.image_url;
+                        return (
+                          <TouchableOpacity
+                            key={event.id}
+                            style={[styles.postThumbnail, { width: '100%', height: idx % 2 === 0 ? vs(280) : vs(220) }]}
+                            activeOpacity={0.9}
+                            onPress={() => router.push(`/event/${event.id}`)}
+                          >
+                            {imageUri ? (
+                              <Image source={{ uri: imageUri }} style={styles.thumbnailImg} />
+                            ) : (
+                              <View style={[styles.thumbnailImg, { backgroundColor: '#444' }]} />
+                            )}
+                            <View style={styles.gridIconOverlay}>
+                              <Calendar size={12} color="#FFF" />
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <View style={{ flex: 1, gap: 8, marginTop: vs(24) }}>
+                      {events.filter((_, i) => i % 2 !== 0).map((event, idx) => {
+                        const imageUri = event.image_urls?.[0] || event.image_url;
+                        return (
+                          <TouchableOpacity
+                            key={event.id}
+                            style={[styles.postThumbnail, { width: '100%', height: idx % 2 === 0 ? vs(220) : vs(280) }]}
+                            activeOpacity={0.9}
+                            onPress={() => router.push(`/event/${event.id}`)}
+                          >
+                            {imageUri ? (
+                              <Image source={{ uri: imageUri }} style={styles.thumbnailImg} />
+                            ) : (
+                              <View style={[styles.thumbnailImg, { backgroundColor: '#444' }]} />
+                            )}
+                            <View style={styles.gridIconOverlay}>
+                              <Calendar size={12} color="#FFF" />
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </>
                 ) : (
                   <View style={styles.emptyContent}>
                     <Calendar size={48} color={textSecondary} strokeWidth={1} />

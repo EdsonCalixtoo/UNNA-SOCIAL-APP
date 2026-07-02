@@ -97,21 +97,32 @@ export default function AnimatedSplashScreen() {
       {/* Logo central animado */}
       <Animated.View style={[styles.logoArea, containerStyle]}>
         {/* Texto UNNA estilizado */}
-        <View style={styles.brandRow}>
-          <Text style={styles.letterWhite}>U</Text>
-          <Text style={styles.letterPink}>N</Text>
-          <Text style={styles.letterCyan}>И</Text>
-          <Text style={styles.letterWhite}>A</Text>
-        </View>
+        <Animated.View style={[styles.brandRow, {
+          shadowColor: '#ff1493',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: dotOpacity1, // using dotOpacity as a generic pulse 0.2 to 1
+          shadowRadius: 20,
+          elevation: 10
+        }]}>
+          <Text style={[styles.letterWhite, { textShadowColor: '#fff', textShadowRadius: 10 }]}>U</Text>
+          <Text style={[styles.letterPink, { textShadowColor: '#ff1493', textShadowRadius: 15 }]}>N</Text>
+          <Text style={[styles.letterCyan, { textShadowColor: '#00d9ff', textShadowRadius: 15 }]}>И</Text>
+          <Text style={[styles.letterWhite, { textShadowColor: '#fff', textShadowRadius: 10 }]}>A</Text>
+        </Animated.View>
 
         {/* Subtítulo */}
-        <Text style={styles.tagline}>{t('auto.sab043598', 'SOCIAL · EVENTS · YOU')}</Text>
+        <Text style={[styles.tagline, { letterSpacing: 4, fontWeight: '900' }]}>{t('auto.sab043598', 'SOCIAL · EVENTS · YOU')}</Text>
       </Animated.View>
 
       {/* Barra de progresso + pontos */}
       <Animated.View style={[styles.loaderArea, { opacity: fadeIn }]}>
         <View style={styles.progressTrack}>
-          <Animated.View style={[styles.progressFill, progressStyle]}>
+          <Animated.View style={[styles.progressFill, progressStyle, {
+            shadowColor: '#00d9ff',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.8,
+            shadowRadius: 10
+          }]}>
             <LinearGradient
               colors={['#00d9ff', '#bf00ff', '#ff1493']}
               start={{ x: 0, y: 0 }}

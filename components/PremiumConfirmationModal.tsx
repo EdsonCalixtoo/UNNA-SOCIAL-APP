@@ -48,9 +48,9 @@ export default function PremiumConfirmationModal({
         <Animated.View 
           entering={FadeInUp.duration(400).springify().damping(20).stiffness(100)}
           exiting={FadeOutDown.duration(300)}
-          style={styles.modalContainer}
+          style={[styles.modalContainer, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}
         >
-          <BlurView intensity={Platform.OS === 'ios' ? 40 : 100} tint={isDark ? 'dark' : 'light'} style={styles.blurContent}>
+          <View style={styles.blurContent}>
             <View style={[styles.iconContainer, { backgroundColor: isDestructive ? 'rgba(255, 59, 48, 0.1)' : 'rgba(0, 217, 255, 0.1)' }]}>
               <AlertTriangle size={32} color={isDestructive ? '#FF3B30' : accent} />
             </View>
@@ -73,7 +73,7 @@ export default function PremiumConfirmationModal({
                 <Text style={[styles.btnText, { color: '#fff', fontWeight: '900' }]}>{confirmText}</Text>
               </TouchableOpacity>
             </View>
-          </BlurView>
+          </View>
         </Animated.View>
       </View>
     </Modal>

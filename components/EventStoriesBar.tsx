@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, 
-  TouchableOpacity, Image, ActivityIndicator 
+  TouchableOpacity, Image, ActivityIndicator,
+  Modal, Platform
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +18,8 @@ import { Alert } from 'react-native';
 import FullscreenMediaViewer from './FullscreenMediaViewer';
 import PremiumConfirmationModal from './PremiumConfirmationModal';
 import { ActionFeedback } from './ActionFeedback';
+import StoryCameraModal from './StoryCameraModal';
+import { Image as ImageIcon } from 'lucide-react-native';
 
 interface EventStory {
   id: string;
@@ -42,6 +45,8 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [storyToDelete, setStoryToDelete] = useState<EventStory | null>(null);
   const [feedback, setFeedback] = useState({ visible: false, type: 'success' as 'success' | 'error' | 'info', title: '', message: '' });
+  const [cameraVisible, setCameraVisible] = useState(false);
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
 
   useEffect(() => {
     loadStories();
@@ -68,61 +73,53 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
     setLoading(false);
   };
 
-  const handleAddStory = async () => {
+  const handleAddStory = () => {
     if (!isParticipant) return;
-    
-    Alert.alert(
-      t('common.addMemory', 'Adicionar Memória'),
-      t('common.chooseMediaDesc', 'Como deseja adicionar esta foto?'),
-      [
-        {
-          text: t('common.camera', 'Câmera'),
-          onPress: async () => {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
-            if (status !== 'granted') {
-              Alert.alert('Permissão', 'Precisamos de acesso à câmera.');
-              return;
-            }
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              quality: 0.7,
-              allowsEditing: true,
-              aspect: [9, 16]
-            });
-            if (!result.canceled) processImage(result.assets[0]);
-          }
-        },
-        {
-          text: t('common.gallery', 'Galeria'),
-          onPress: async () => {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              quality: 0.7,
-              allowsEditing: true,
-              aspect: [9, 16]
-            });
-            if (!result.canceled) processImage(result.assets[0]);
-          }
-        },
-        { text: t('common.cancel', 'Cancelar'), style: 'cancel' }
-      ]
-    );
+    setActionSheetVisible(true);
   };
 
-  const processImage = async (asset: any) => {
-    try {
+  const handleOpenGallery = async () => {
+    setActionSheetVisible(false);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      quality: 0.7,
+      allowsMultipleSelection: true,
+    });
+    if (!result.canceled && result.assets) {
       setUploading(true);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await Promise.all(result.assets.map(asset => processImage(asset, true)));
+      setUploading(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      loadStories();
+      setFeedback({
+        visible: true,
+        type: 'success',
+        title: 'Memórias Adicionadas!',
+        message: `${result.assets.length} arq(s) adicionados ao evento.`
+      });
+    }
+  };
 
-      const fileName = `event-stories/${eventId}/${user?.id}-${Date.now()}.jpg`;
-      const publicUrl = await uploadFile(asset.uri, fileName, 'image/jpeg');
+  const processImage = async (asset: any, skipFeedback = false) => {
+    try {
+      if (!skipFeedback) {
+        setUploading(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+
+      const isVideo = asset.type === 'video' || (asset.uri && asset.uri.toLowerCase().endsWith('.mp4'));
+      const extension = isVideo ? 'mp4' : 'jpg';
+      const mime = isVideo ? 'video/mp4' : 'image/jpeg';
+      
+      const fileName = `event-stories/${eventId}/${user?.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
+      const publicUrl = await uploadFile(asset.uri, fileName, mime);
 
       if (publicUrl) {
         const { error: storyError } = await supabase.from('event_stories').insert({
           event_id: eventId,
           user_id: user?.id,
           media_url: publicUrl,
-          media_type: 'image'
+          media_type: isVideo ? 'video' : 'image'
         });
 
         if (storyError) {
@@ -139,28 +136,34 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
         });
 
         if (postError) {
-          Alert.alert('Erro no Mural', 'A foto foi para o evento, mas não conseguimos salvar no seu Mural: ' + postError.message);
+          console.log('Erro no Mural:', postError.message);
         }
 
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        loadStories();
-        setFeedback({
-          visible: true,
-          type: 'success',
-          title: 'Memória Criada!',
-          message: 'Sua foto foi adicionada ao evento e ao seu mural. 📸'
-        });
+        if (!skipFeedback) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          loadStories();
+          setFeedback({
+            visible: true,
+            type: 'success',
+            title: 'Memória Criada!',
+            message: 'Sua mídia foi adicionada ao evento. 📸'
+          });
+        }
       }
     } catch (e: any) {
       console.error(e);
-      setFeedback({
-        visible: true,
-        type: 'error',
-        title: 'Ops!',
-        message: e.message || 'Erro ao processar imagem'
-      });
+      if (!skipFeedback) {
+        setFeedback({
+          visible: true,
+          type: 'error',
+          title: 'Ops!',
+          message: e.message || 'Erro ao processar imagem'
+        });
+      }
     } finally {
-      setUploading(false);
+      if (!skipFeedback) {
+        setUploading(false);
+      }
     }
   };
 
@@ -245,12 +248,14 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
         })}
       </ScrollView>
 
-      <FullscreenMediaViewer 
-        visible={isViewerVisible}
-        onClose={() => setIsViewerVisible(false)}
-        mediaUrls={stories.map(s => s.media_url)}
-        initialIndex={selectedIdx}
-      />
+      {isViewerVisible && (
+        <FullscreenMediaViewer 
+          visible={isViewerVisible}
+          onClose={() => setIsViewerVisible(false)}
+          stories={stories}
+          initialIndex={selectedIdx}
+        />
+      )}
 
       <PremiumConfirmationModal
         visible={deleteModalVisible}
@@ -266,6 +271,50 @@ export const EventStoriesBar = ({ eventId, isParticipant }: { eventId: string, i
         {...feedback} 
         onClose={() => setFeedback({ ...feedback, visible: false })} 
       />
+
+      {cameraVisible && (
+        <StoryCameraModal
+          visible={cameraVisible}
+          onClose={() => setCameraVisible(false)}
+          usageType="event"
+          onCapture={(uri, type) => {
+            setCameraVisible(false);
+            processImage({ uri, type });
+          }}
+        />
+      )}
+
+      {/* Action Sheet para Escolha de Mídia */}
+      <Modal visible={actionSheetVisible} transparent animationType="fade" onRequestClose={() => setActionSheetVisible(false)}>
+        <View style={styles.actionSheetOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setActionSheetVisible(false)} />
+          <View style={styles.actionSheetContainer}>
+            <View style={styles.actionSheetHandle} />
+            <Text style={styles.actionSheetTitle}>Adicionar Memória</Text>
+            <Text style={styles.actionSheetDesc}>Como deseja adicionar sua mídia?</Text>
+            
+            <View style={styles.actionSheetOptions}>
+              <TouchableOpacity style={styles.actionSheetBtn} onPress={() => { setActionSheetVisible(false); setCameraVisible(true); }}>
+                <View style={[styles.actionSheetIconWrapper, { backgroundColor: 'rgba(0, 217, 255, 0.15)' }]}>
+                  <Camera size={26} color="#00d9ff" />
+                </View>
+                <Text style={styles.actionSheetBtnText}>Câmera</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.actionSheetBtn} onPress={handleOpenGallery}>
+                <View style={[styles.actionSheetIconWrapper, { backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}>
+                  <ImageIcon size={26} color="#fff" />
+                </View>
+                <Text style={styles.actionSheetBtnText}>Galeria</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.actionSheetCancel} onPress={() => setActionSheetVisible(false)}>
+              <Text style={styles.actionSheetCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -300,5 +349,70 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
-  }
+  },
+  actionSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  actionSheetContainer: {
+    backgroundColor: '#111',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  actionSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  actionSheetTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  actionSheetDesc: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  actionSheetOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 24,
+  },
+  actionSheetBtn: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  actionSheetIconWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionSheetBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  actionSheetCancel: {
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+  },
+  actionSheetCancelText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
