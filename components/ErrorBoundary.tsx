@@ -96,11 +96,10 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   render() {
     if (this.state.hasError) {
-      const { t } = useLanguage();
-  return (
+      return (
         <View style={styles.container}>
           <View style={styles.errorContent}>
-            <Text style={styles.errorTitle}>{t('auto.sc8c05a29', '⚠️ Ops! Algo deu errado')}</Text>
+            <Text style={styles.errorTitle}>⚠️ Ops! Algo deu errado</Text>
             
             <ScrollView style={styles.errorScroll}>
               <Text style={styles.errorMessage}>
@@ -109,7 +108,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
               {this.state.error?.stack && (
                 <>
-                  <Text style={styles.stackLabel}>{t('auto.sd60f426e', 'Stack Trace:')}</Text>
+                  <Text style={styles.stackLabel}>Stack Trace:</Text>
                   <Text style={styles.stackTrace}>
                     {this.state.error.stack}
                   </Text>
@@ -118,7 +117,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
               {this.state.errorInfo?.componentStack && (
                 <>
-                  <Text style={styles.stackLabel}>{t('auto.s0fc2c7ef', 'Component Stack:')}</Text>
+                  <Text style={styles.stackLabel}>Component Stack:</Text>
                   <Text style={styles.stackTrace}>
                     {this.state.errorInfo.componentStack}
                   </Text>
@@ -127,7 +126,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
               {this.state.errorStack.length > 0 && (
                 <>
-                  <Text style={styles.historyLabel}>{t('auto.sd1e0fd6e', 'Histórico de Erros:')}</Text>
+                  <Text style={styles.historyLabel}>Histórico de Erros:</Text>
                   {this.state.errorStack.map((err, index) => (
                     <View key={index} style={styles.historyItem}>
                       <Text style={styles.historyTime}>{err.timestamp}</Text>
@@ -155,7 +154,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               }}
             >
               <RotateCcw size={20} color="#fff" />
-              <Text style={styles.resetButtonText}>{t('auto.scce3d253', 'Reiniciar Aplicativo')}</Text>
+              <Text style={styles.resetButtonText}>Reiniciar Aplicativo</Text>
             </TouchableOpacity>
           </View>
         </View>

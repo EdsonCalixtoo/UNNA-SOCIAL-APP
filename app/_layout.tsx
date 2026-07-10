@@ -153,6 +153,9 @@ export default function RootLayout() {
   useEffect(() => {
     // Inicialização básica
     mediaCacheService.init();
+    import('@/lib/database').then(({ initDatabase }) => {
+      initDatabase();
+    });
     if (Platform.OS === 'android') {
       NavigationBar.setBackgroundColorAsync('#00000000');
     }

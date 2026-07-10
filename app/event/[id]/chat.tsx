@@ -51,7 +51,8 @@ const MessageItem = memo(({
   textPrimary, 
   textSecondary, 
   backgroundSecondary,
-  onReportUser
+  onReportUser,
+  onAvatarPress
 }: { 
   message: Message, 
   isOwnMessage: boolean, 
@@ -59,7 +60,8 @@ const MessageItem = memo(({
   textPrimary: string, 
   textSecondary: string, 
   backgroundSecondary: string,
-  onReportUser: (userId: string, username: string) => void
+  onReportUser: (userId: string, username: string) => void,
+  onAvatarPress: (userId: string) => void
 }) => {
   let mediaContent = null;
   let textContent = message.content;
@@ -110,8 +112,10 @@ const MessageItem = memo(({
     >
       {!isOwnMessage && (
         <TouchableOpacity 
+          onPress={() => onAvatarPress(message.sender_id)}
           onLongPress={() => onReportUser(message.sender_id, message.profiles?.full_name || 'Usuário')}
           style={styles.avatarWrapper}
+          activeOpacity={0.7}
         >
           {message.profiles?.avatar_url ? (
             <Image source={{ uri: message.profiles.avatar_url }} style={styles.avatar} />
@@ -200,8 +204,13 @@ export default function EventChat() {
   useEffect(() => {
     if (!conversationId) return;
 
+    const channelName = `event-chat:${conversationId}`;
+    supabase.getChannels().forEach(c => {
+      if (c.topic === channelName) supabase.removeChannel(c);
+    });
+
     const channel = supabase
-      .channel(`event-chat:${conversationId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -507,7 +516,13 @@ export default function EventChat() {
             textPrimary={textPrimary}
             textSecondary={textSecondary}
             backgroundSecondary={backgroundSecondary}
-            onReportUser={handleReportUser}
+            onReportUser={(userId, username) => {
+              setReportingUserId(userId);
+              setReportingUsername(username);
+              setSelectedReportType('user');
+              setReportModalVisible(true);
+            }}
+            onAvatarPress={(userId) => router.push(`/profile/${userId}`)}
           />
         ))}
       </ScrollView>

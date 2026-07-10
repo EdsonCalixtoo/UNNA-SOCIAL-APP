@@ -293,10 +293,12 @@ export default function FullscreenMediaViewer({
               </TouchableOpacity>
               
               <View style={styles.headerActions}>
-                <TouchableOpacity style={styles.recapBtn} onPress={() => setIsPlayingRecap(!isPlayingRecap)}>
-                  {isPlayingRecap ? <Pause size={18} color="#000" fill="#000" /> : <Play size={18} color="#000" fill="#000" />}
-                  <Text style={styles.recapText}>{isPlayingRecap ? 'Pausar' : 'Recap'}</Text>
-                </TouchableOpacity>
+                {stories && stories.length > 0 && (
+                  <TouchableOpacity style={styles.recapBtn} onPress={() => setIsPlayingRecap(!isPlayingRecap)}>
+                    {isPlayingRecap ? <Pause size={18} color="#000" fill="#000" /> : <Play size={18} color="#000" fill="#000" />}
+                    <Text style={styles.recapText}>{isPlayingRecap ? 'Pausar' : 'Recap'}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 

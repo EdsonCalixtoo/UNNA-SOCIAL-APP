@@ -12,7 +12,7 @@ import { EventCardSkeleton } from '@/components/Skeleton';
 import { EventParticipantsModal } from '@/components/EventParticipantsModal';
 import CommentsModal from '@/components/CommentsModal';
 import { ListFilter as Filter, X, Calendar, ChevronRight, Bell, MessageCircle, MapPin, Search } from 'lucide-react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useScrollToTop } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -290,6 +290,13 @@ export default function Feed() {
       supabase.removeChannel(messagesSubscription);
     };
   }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUnreadNotifications();
+      loadUnreadMessages();
+    }, [user])
+  );
 
   const loadUnreadMessages = async () => {
     if (!user) return;
@@ -608,6 +615,8 @@ export default function Feed() {
     soundService.play('pop');
     setPage(0);
     loadPosts(0, true);
+    loadUnreadMessages();
+    loadUnreadNotifications();
   };
 
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {

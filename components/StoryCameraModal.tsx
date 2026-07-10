@@ -177,6 +177,7 @@ export default function StoryCameraModal({ visible, onClose, onCapture, usageTyp
               style={st.camera}
               facing={facing}
               flash={flash}
+              enableTorch={flash === 'on'}
               mode="video"
               onCameraReady={() => setCameraReady(true)}
             />

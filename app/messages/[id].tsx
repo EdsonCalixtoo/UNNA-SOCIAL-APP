@@ -30,7 +30,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import Slider from '@react-native-community/slider';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getMessagesLocally, saveMessagesLocally, getLatestMessageDateLocally } from '@/lib/database';
 import * as LocalAuthentication from 'expo-local-authentication';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence, withSpring } from 'react-native-reanimated';
 import { hapticFeedback } from '@/utils/haptics';
@@ -98,7 +98,7 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [otherUser, setOtherUser] = useState<OtherUser | null>(null);
   const [messageText, setMessageText] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [isOtherUserOnline, setIsOtherUserOnline] = useState(false);
   const [otherUserLastSeen, setOtherUserLastSeen] = useState<string | null>(null);
@@ -222,6 +222,18 @@ export default function ChatScreen() {
   }, [isRecording]);
 
   useEffect(() => {
+    const loadCache = async () => {
+      try {
+        const currentId = activeConversationId || conversationId as string;
+        if (!currentId) return;
+        const localMessages = await getMessagesLocally([currentId]);
+        if (localMessages && localMessages.length > 0) {
+          setMessages(prev => prev.length > 0 ? prev : localMessages);
+        }
+      } catch (e) {}
+    };
+    loadCache();
+
     loadOtherUser();
     loadMessages();
     loadChatSettings();
@@ -232,9 +244,14 @@ export default function ChatScreen() {
     setActiveConversation(currentId);
     
     console.log('Setting up subscription for conversation:', currentId);
+    
+    const channelName = `conversation:${currentId}`;
+    supabase.getChannels().forEach(c => {
+      if (c.topic === channelName) supabase.removeChannel(c);
+    });
 
     const channel = supabase
-      .channel(`conversation:${currentId}`, {
+      .channel(channelName, {
         config: {
           broadcast: { ack: true },
         },
@@ -260,7 +277,7 @@ export default function ChatScreen() {
                 merged.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
                 return merged;
               });
-              scrollToBottom();
+              scrollToBottom(true);
 
               // Se a mensagem for de outra pessoa e estamos na tela, marcamos como lida e entregue
               if (newMsg.sender_id !== user?.id) {
@@ -340,7 +357,12 @@ export default function ChatScreen() {
     const targetId = otherUser?.id;
     if (!targetId) return;
 
-    const presenceChannel = supabase.channel(`presence:${targetId}`);
+    const channelName = `presence:${targetId}`;
+    supabase.getChannels().forEach(c => {
+      if (c.topic === channelName) supabase.removeChannel(c);
+    });
+
+    const presenceChannel = supabase.channel(channelName);
     
     presenceChannel.on('postgres_changes', {
       event: '*',
@@ -389,7 +411,12 @@ export default function ChatScreen() {
       setIsTyping(false);
     };
 
-    const typingChannel = supabase.channel(`typing:${currentId}`);
+    const channelName = `typing:${currentId}`;
+    supabase.getChannels().forEach(c => {
+      if (c.topic === channelName) supabase.removeChannel(c);
+    });
+
+    const typingChannel = supabase.channel(channelName);
 
     typingChannel.on('postgres_changes', {
       event: '*',
@@ -425,6 +452,14 @@ export default function ChatScreen() {
   useEffect(() => {
     markMessagesAsRead();
   }, [messages, user?.id, conversationId, activeConversationId]);
+
+  // Manter cache local sincronizado
+  useEffect(() => {
+    const currentId = activeConversationId || conversationId as string;
+    if (currentId && messages.length > 0) {
+      saveMessagesLocally(messages).catch(() => {});
+    }
+  }, [messages, activeConversationId, conversationId]);
 
   const markMessagesAsRead = async () => {
     if (!conversationId || !user) return;
@@ -1039,30 +1074,41 @@ export default function ChatScreen() {
       let conversationIdsToFetch = [currentId];
 
       // Se for uma conversa 1:1, unificar todas as outras 1:1 com este participante histórico
-      if (!checkConv.is_group && otherUser?.id) {
-        const { data: myConvs } = await supabase
+      if (!checkConv.is_group) {
+        const { data: participants } = await supabase
           .from('conversation_participants')
-          .select('conversation_id')
-          .eq('user_id', user?.id);
-        const myConvIds = myConvs?.map(c => c.conversation_id) || [];
+          .select('user_id')
+          .eq('conversation_id', currentId)
+          .neq('user_id', user?.id)
+          .maybeSingle();
 
-        if (myConvIds.length > 0) {
-          const { data: commonConvs } = await supabase
+        const targetUserId = participants?.user_id || otherUser?.id;
+
+        if (targetUserId) {
+          const { data: myConvs } = await supabase
             .from('conversation_participants')
             .select('conversation_id')
-            .eq('user_id', otherUser.id)
-            .in('conversation_id', myConvIds);
-          const commonConvIds = commonConvs?.map(c => c.conversation_id) || [];
+            .eq('user_id', user?.id);
+          const myConvIds = myConvs?.map(c => c.conversation_id) || [];
 
-          if (commonConvIds.length > 0) {
-            const { data: realConvs } = await supabase
-              .from('conversations')
-              .select('id')
-              .eq('is_group', false)
-              .in('id', commonConvIds);
-            
-            if (realConvs && realConvs.length > 0) {
-              conversationIdsToFetch = realConvs.map(c => c.id);
+          if (myConvIds.length > 0) {
+            const { data: commonConvs } = await supabase
+              .from('conversation_participants')
+              .select('conversation_id')
+              .eq('user_id', targetUserId)
+              .in('conversation_id', myConvIds);
+            const commonConvIds = commonConvs?.map(c => c.conversation_id) || [];
+
+            if (commonConvIds.length > 0) {
+              const { data: realConvs } = await supabase
+                .from('conversations')
+                .select('id')
+                .eq('is_group', false)
+                .in('id', commonConvIds);
+              
+              if (realConvs && realConvs.length > 0) {
+                conversationIdsToFetch = realConvs.map(c => c.id);
+              }
             }
           }
         }
@@ -1080,12 +1126,22 @@ export default function ChatScreen() {
 
       if (error) throw error;
       setMessages(data || []);
+      
+      if (data && data.length > 0) {
+        saveMessagesLocally(data).catch(() => {});
+      }
 
       await supabase
         .from('messages')
-        .update({ read: true, delivered: true })
+        .update({ 
+          read: true, 
+          delivered: true,
+          read_at: new Date().toISOString(),
+          delivered_at: new Date().toISOString()
+        })
         .in('conversation_id', conversationIdsToFetch)
-        .neq('sender_id', user?.id);
+        .neq('sender_id', user?.id)
+        .eq('read', false);
 
       scrollToBottom();
     } catch (error) {
@@ -1095,9 +1151,9 @@ export default function ChatScreen() {
     }
   };
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (animated = false) => {
     setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
+      scrollViewRef.current?.scrollToEnd({ animated });
     }, 100);
   };
 
@@ -1237,7 +1293,7 @@ export default function ChatScreen() {
         );
       }
 
-      scrollToBottom();
+      scrollToBottom(true);
     } catch (error) {
       console.error('Error sending message:', error);
       setMessageText(content);
@@ -2022,7 +2078,7 @@ export default function ChatScreen() {
           contentContainerStyle={styles.messagesContent}
           keyboardShouldPersistTaps="handled"
           scrollEnabled={true}
-          onContentSizeChange={scrollToBottom}
+          onContentSizeChange={() => scrollToBottom(false)}
         >
           {messages.filter(msg => {
             if (!isSearchingMessages || !searchMessageQuery.trim()) return true;
@@ -3159,8 +3215,14 @@ export default function ChatScreen() {
               <Text style={{ fontSize: 32, color: isDark ? '#fff' : '#000', lineHeight: 32 }}>‹</Text>
             </TouchableOpacity>
             <Text style={{ fontSize: 17, fontWeight: '600', color: isDark ? '#fff' : '#000' }}>{t('auto.sbc3da4fb', 'Dados do contato')}</Text>
-            <TouchableOpacity style={{ padding: 8, marginRight: -8 }}>
-              <Text style={{ fontSize: 17, color: '#007AFF' }}>{t('auto.sef485eb6', 'Editar')}</Text>
+            <TouchableOpacity 
+              style={{ padding: 8, marginRight: -8 }}
+              onPress={() => {
+                setContactInfoVisible(false);
+                if (otherUser?.id) router.push(`/profile/${otherUser.id}`);
+              }}
+            >
+              <Text style={{ fontSize: 17, color: '#007AFF' }}>{t('auto.ver_perfil', 'Ver Perfil')}</Text>
             </TouchableOpacity>
           </View>
 

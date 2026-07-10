@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, TextInput, FlatList, RefreshControl, Alert, Animated as RNAnimated } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -43,6 +43,16 @@ export default function ConversationsList() {
   const [isSearching, setIsSearching] = useState(false);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [showArchived, setShowArchived] = useState(false);
+  const isNavigatingRef = useRef(false);
+
+  const handleConversationPress = (id: string, userId: string) => {
+    if (isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    router.push(`/messages/${id}?userId=${userId}`);
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 1000);
+  };
 
   useEffect(() => {
     loadConversations();
@@ -425,7 +435,7 @@ export default function ConversationsList() {
           >
             <TouchableOpacity
               style={[styles.conversationItem, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', backgroundColor: backgroundPrimary }]}
-              onPress={() => router.push(`/messages/${item.id}?userId=${item.other_user.id}`)}
+              onPress={() => handleConversationPress(item.id, item.other_user.id)}
               activeOpacity={1}
             >
               <View style={[
