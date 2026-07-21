@@ -100,12 +100,14 @@ export default function EditEvent() {
   };
   const [eventDate, setEventDate] = useState(() => getLocalDateString());
   const [eventTime, setEventTime] = useState('19:00');
+  const [eventEndTime, setEventEndTime] = useState('02:00');
   const [locationName, setLocationName] = useState('');
   const [locationNumber, setLocationNumber] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
   const [minAge, setMinAge] = useState('0');
   const [maxParticipants, setMaxParticipants] = useState('');
   const [showSubcatModal, setShowSubcatModal] = useState(false);
@@ -114,6 +116,7 @@ export default function EditEvent() {
   const [catSearch, setCatSearch] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [ticketUrl, setTicketUrl] = useState('');
 
@@ -134,6 +137,7 @@ export default function EditEvent() {
       setSelectedSubcategory(data.subcategory_id || '');
       setEventDate(data.event_date || getLocalDateString());
       setEventTime(data.event_time ? data.event_time.slice(0, 5) : '19:00');
+      setEventEndTime(data.end_time ? data.end_time.slice(0, 5) : '02:00');
       if (data.location_name && data.location_name.includes(',')) {
         const parts = data.location_name.split(',');
         setLocationName(parts[0].trim());
@@ -146,6 +150,7 @@ export default function EditEvent() {
       setLng(data.longitude);
       setIsPaid(data.is_paid);
       setPrice(data.price?.toString() || '0');
+      setMaxPrice(data.max_price?.toString() || '');
       setMinAge(data.min_age?.toString() || '0');
       setMaxParticipants(data.max_participants?.toString() || '0');
       setTicketUrl(data.ticket_url || '');
@@ -270,9 +275,11 @@ export default function EditEvent() {
         media_types: mediaTypes,
         event_date: contentType === 'event' ? eventDate : null, 
         event_time: contentType === 'event' ? eventTime : null, 
+        end_time: contentType === 'event' ? eventEndTime : null,
         location_name: locationName ? (locationNumber ? `${locationName}, ${locationNumber}` : locationName) : null,
         is_paid: isPaid, 
         price: parseFloat(price) || 0, 
+        max_price: maxPrice ? parseFloat(maxPrice) : null,
         min_age: parseInt(minAge) || 0, 
         max_participants: parseInt(maxParticipants) || 0,
         category_id: selectedCategory, 
@@ -480,21 +487,30 @@ export default function EditEvent() {
                 )}
               </View>
 
-              <View style={[styles.row, { marginTop: 24 }]}>
-                <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderWidth: 1 }]} onPress={() => setShowDatePicker(true)}>
+              <View style={{ marginTop: 24, gap: 12 }}>
+                <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderWidth: 1, width: '100%' }]} onPress={() => setShowDatePicker(true)}>
                   <Calendar size={20} color="#ff1493" />
                   <View>
-                    <Text style={{ fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>{t('auto.se44f9e34', 'DATA')}</Text>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: textPrimary, marginTop: 2 }}>{new Date(eventDate).toLocaleDateString('pt-BR')}</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: textSecondary, letterSpacing: 1 }}>{t('auto.se44f9e34', 'DATA')}</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: textPrimary, marginTop: 2 }}>{new Date(Platform.OS === 'ios' ? eventDate + 'T00:00:00' : eventDate).toLocaleDateString('pt-BR')}</Text>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderWidth: 1 }]} onPress={() => setShowTimePicker(true)}>
-                  <Clock size={20} color={accent} />
-                  <View>
-                    <Text style={{ fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>{t('auto.sf5c5b428', 'HORA')}</Text>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: textPrimary, marginTop: 2 }}>{eventTime}</Text>
-                  </View>
-                </TouchableOpacity>
+                <View style={styles.row}>
+                  <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderWidth: 1 }]} onPress={() => setShowTimePicker(true)}>
+                    <Clock size={20} color={accent} />
+                    <View>
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: textSecondary, letterSpacing: 1 }}>{t('auto.sf5c5b428', 'INÍCIO')}</Text>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: textPrimary, marginTop: 2 }}>{eventTime}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.glassButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderWidth: 1 }]} onPress={() => setShowEndTimePicker(true)}>
+                    <Clock size={20} color="#ff3b30" />
+                    <View>
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: textSecondary, letterSpacing: 1 }}>{t('auto.s_fim', 'FIM')}</Text>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: textPrimary, marginTop: 2 }}>{eventEndTime}</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
               </View>
             </Animated.View>
           )}
@@ -509,10 +525,16 @@ export default function EditEvent() {
                 <Switch value={isPaid} onValueChange={setIsPaid} trackColor={{ true: accent }} />
               </View>
               {isPaid && (
-                <Animated.View entering={FadeInRight} style={[styles.priceBox, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)', borderWidth: 1 }]}>
-                  <Text style={{ color: accent, fontSize: 24, fontWeight: '900', marginRight: 12 }}>{t('auto.s2b416a58', 'R$')}</Text>
-                  <TextInput style={{ color: textPrimary, fontSize: 32, flex: 1, fontWeight: '900' }} keyboardType="numeric" value={price} onChangeText={setPrice} />
-                </Animated.View>
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                  <Animated.View entering={FadeInRight} style={[styles.priceBox, { flex: 1, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)', borderWidth: 1, marginTop: 0 }]}>
+                    <Text style={{ color: accent, fontSize: 16, fontWeight: '900', marginRight: 8 }}>MÍN</Text>
+                    <TextInput style={{ color: textPrimary, fontSize: 24, flex: 1, fontWeight: '900' }} keyboardType="numeric" value={price} onChangeText={setPrice} placeholder="0" placeholderTextColor={textSecondary} />
+                  </Animated.View>
+                  <Animated.View entering={FadeInRight} style={[styles.priceBox, { flex: 1, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)', borderWidth: 1, marginTop: 0 }]}>
+                    <Text style={{ color: accent, fontSize: 16, fontWeight: '900', marginRight: 8 }}>MÁX</Text>
+                    <TextInput style={{ color: textPrimary, fontSize: 24, flex: 1, fontWeight: '900' }} keyboardType="numeric" value={maxPrice} onChangeText={setMaxPrice} placeholder="Opcional" placeholderTextColor={textSecondary} />
+                  </Animated.View>
+                </View>
               )}
               <View style={{ width: '100%', marginTop: 20 }}>
                 <Text style={[styles.label, { color: accent, marginBottom: 8 }]}>{t('auto.sc34dc273', 'LINK PARA COMPRA DE INGRESSOS (OPCIONAL)')}</Text>
@@ -677,6 +699,49 @@ export default function EditEvent() {
             onChange={(e, d) => {
               setShowTimePicker(false);
               if (d) setEventTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+            }}
+          />
+        )
+      )}
+
+      {Platform.OS === 'ios' ? (
+        <Modal visible={showEndTimePicker} transparent animationType="slide">
+          <View style={styles.pickerModalContainer}>
+            <View style={[styles.pickerSheet, { backgroundColor: backgroundSecondary }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <TouchableOpacity onPress={() => setShowEndTimePicker(false)}>
+                  <Text style={{ color: textSecondary, fontSize: 16, fontWeight: '600' }}>{t('auto.s847607d7', 'Cancelar')}</Text>
+                </TouchableOpacity>
+                <Text style={{ color: textPrimary, fontSize: 18, fontWeight: '800' }}>{t('auto.shorariofim', 'Horário de Término')}</Text>
+                <TouchableOpacity onPress={() => setShowEndTimePicker(false)}>
+                  <Text style={{ color: accent, fontSize: 16, fontWeight: '700' }}>{t('auto.s8487931b', 'Confirmar')}</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={new Date(`${eventDate}T${eventEndTime}`)}
+                mode="time"
+                display="spinner"
+                is24Hour
+                textColor={textPrimary}
+                onChange={(e, d) => {
+                  if (d) {
+                    setEventEndTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+                  }
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : (
+        showEndTimePicker && (
+          <DateTimePicker
+            value={new Date(`${eventDate}T${eventEndTime}`)}
+            mode="time"
+            display="default"
+            is24Hour
+            onChange={(e, d) => {
+              setShowEndTimePicker(false);
+              if (d) setEventEndTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
             }}
           />
         )

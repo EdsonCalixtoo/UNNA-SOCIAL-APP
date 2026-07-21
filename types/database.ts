@@ -59,6 +59,7 @@ export interface Event {
   max_participants: number;
   is_paid: boolean;
   price: number;
+  max_price?: number;
   category_id?: string;
   subcategory_id?: string;
   media_type?: 'image' | 'video';

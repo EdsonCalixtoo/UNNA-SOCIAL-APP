@@ -11,7 +11,9 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { PushNotificationProvider } from '@/contexts/PushNotificationContext';
 import { LanguageProvider, useLanguage } from '@/lib/i18n';
-import { View, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Platform, Alert, Modal, Text, TouchableOpacity } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { DownloadCloud, Sparkles } from 'lucide-react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { Audio } from 'expo-av';
@@ -33,6 +35,7 @@ Audio.setAudioModeAsync({
 import { PresenceProvider } from '@/contexts/PresenceContext';
 import AnimatedSplashScreen from '@/components/AnimatedSplashScreen';
 import { mediaCacheService } from '@/services/mediaCacheService';
+import * as Updates from 'expo-updates';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
@@ -103,7 +106,36 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 function MainAppContent() {
-  const { isDark, backgroundPrimary } = useTheme();
+  const { isDark, backgroundPrimary, textPrimary, textSecondary } = useTheme();
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  useEffect(() => {
+    if (!__DEV__) {
+      const checkUpdate = async () => {
+        try {
+          const update = await Updates.checkForUpdateAsync();
+          if (update.isAvailable) {
+             setUpdateAvailable(true);
+          }
+        } catch (error) {
+          console.log('Error checking for updates:', error);
+        }
+      };
+      checkUpdate();
+    }
+  }, []);
+
+  const handleUpdate = async () => {
+    setIsUpdating(true);
+    try {
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+    } catch(e) {
+      setIsUpdating(false);
+      Alert.alert('Erro', 'Falha ao baixar a atualização.');
+    }
+  };
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -143,9 +175,56 @@ function MainAppContent() {
 
       </Stack>
       <StatusBar style={isDark ? "light" : "dark"} translucent />
+
+      {updateAvailable && (
+        <Modal transparent visible animationType="fade">
+          <BlurView intensity={isDark ? 60 : 80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.2)' }}>
+              <View style={{ width: '100%', maxWidth: 340, backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderRadius: 32, padding: 32, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.3, shadowRadius: 30, elevation: 20 }}>
+                <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: 'rgba(255, 20, 147, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 24 }}>
+                  <DownloadCloud size={44} color="#ff1493" />
+                  <View style={{ position: 'absolute', top: -5, right: -5 }}>
+                    <Sparkles size={24} color="#34C759" />
+                  </View>
+                </View>
+
+                <Text style={{ fontSize: 24, fontWeight: '900', color: textPrimary, marginBottom: 12, textAlign: 'center', letterSpacing: -0.5 }}>Nova Atualização</Text>
+                <Text style={{ fontSize: 16, color: textSecondary, textAlign: 'center', marginBottom: 32, lineHeight: 24 }}>Há uma nova versão do aplicativo repleta de novidades e melhorias de performance. Atualize agora para aproveitar!</Text>
+                
+                <TouchableOpacity 
+                  onPress={handleUpdate}
+                  disabled={isUpdating}
+                  style={{ backgroundColor: '#ff1493', width: '100%', paddingVertical: 18, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10, marginBottom: 12 }}
+                >
+                  {isUpdating ? (
+                    <>
+                      <ActivityIndicator color="#fff" />
+                      <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900' }}>Atualizando...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <DownloadCloud size={20} color="#fff" />
+                      <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900' }}>Atualizar Agora</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  onPress={() => setUpdateAvailable(false)}
+                  disabled={isUpdating}
+                  style={{ paddingVertical: 16, width: '100%', alignItems: 'center' }}
+                >
+                  <Text style={{ color: textSecondary, fontSize: 15, fontWeight: '700' }}>Lembrar mais tarde</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </BlurView>
+        </Modal>
+      )}
     </View>
   );
 }
+
 
 export default function RootLayout() {
   useFrameworkReady();

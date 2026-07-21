@@ -248,7 +248,7 @@ export default function EventDetails() {
     const scale = interpolate(scrollY.value, [-100, 0], [1.3, 1], Extrapolation.CLAMP);
     return {
       transform: [{ translateY }, { scale }],
-    };
+    } as any;
   });
 
   const headerBackgroundStyle = useAnimatedStyle(() => {
@@ -322,6 +322,9 @@ export default function EventDetails() {
           </TouchableOpacity>
           {user?.id === event.creator_id && (
             <>
+              <TouchableOpacity style={[styles.glassBtn, { backgroundColor: '#FF3B30', marginLeft: 8 }]} onPress={() => setDeleteModalVisible(true)}>
+                <Trash2 size={20} color="#fff" />
+              </TouchableOpacity>
               <TouchableOpacity style={[styles.glassBtn, { backgroundColor: accent, marginLeft: 8 }]} onPress={() => router.push(`/event/edit/${id}`)}>
                 <Edit3 size={20} color="#fff" />
               </TouchableOpacity>
@@ -415,6 +418,19 @@ export default function EventDetails() {
                   <Text style={[styles.infoLabel, { color: textSecondary }]}>HORÁRIO</Text>
                 </View>
               </View>
+              {event.is_paid && (
+                <View style={styles.infoRow}>
+                  <Ticket size={24} color="#34C759" />
+                  <View>
+                    <Text style={[styles.infoVal, { color: textPrimary }]}>
+                      {event.max_price && event.max_price > event.price
+                        ? `R$ ${Number(event.price).toFixed(2).replace('.', ',')} - R$ ${Number(event.max_price).toFixed(2).replace('.', ',')}`
+                        : `R$ ${Number(event.price || 0).toFixed(2).replace('.', ',')}`}
+                    </Text>
+                    <Text style={[styles.infoLabel, { color: textSecondary }]}>VALOR DO INGRESSO</Text>
+                  </View>
+                </View>
+              )}
             </View>
           )}
 
@@ -423,31 +439,16 @@ export default function EventDetails() {
             <Text style={[styles.desc, { color: textSecondary }]} selectable>{event.description}</Text>
           </View>
 
-          {!isPublication && (
+          {!isPublication && event.ticket_url && (
             <View style={[styles.section, { borderBottomColor: isDark ? '#222' : '#eee' }]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <Text style={[styles.secTitle, { color: textPrimary, marginBottom: 0 }]}>Área VIP (Paquera)</Text>
-                {rsvpStatus === 'going' && <View style={styles.liveBadge}><Text style={styles.liveText}>LIBERADO</Text></View>}
-              </View>
-              
-              {rsvpStatus === 'going' ? (
-                <TouchableOpacity style={styles.matchBannerActive} onPress={() => router.push(`/event/${id}/match`)}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                    <View style={styles.heartCircle}><Heart size={24} color="#ff1493" fill="rgba(255, 20, 147, 0.2)" /></View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.matchBannerTitle}>Pronto para o Match?</Text>
-                      <Text style={styles.matchBannerSub}>Veja quem também vai e dê matches.</Text>
-                    </View>
-                    <ChevronRight size={24} color="#fff" />
-                  </View>
-                </TouchableOpacity>
-              ) : (
-                <View style={[styles.matchBannerLocked, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}>
-                  <Lock size={32} color={textSecondary} style={{ marginBottom: 12 }} />
-                  <Text style={[styles.matchBannerTitle, { color: textPrimary }]}>Área Trancada</Text>
-                  <Text style={[styles.matchBannerSub, { color: textSecondary, textAlign: 'center' }]}>Confirme presença para ver quem está solteiro(a).</Text>
-                </View>
-              )}
+              <Text style={[styles.secTitle, { color: textPrimary }]}>Ingressos</Text>
+              <TouchableOpacity 
+                style={[styles.uberBtn, { backgroundColor: accent }]}
+                onPress={() => Linking.openURL(event.ticket_url).catch(() => Alert.alert('Erro', 'Não foi possível abrir o link.'))}
+              >
+                <Ticket size={20} color="#fff" />
+                <Text style={styles.btnTextWhite}>Comprar Ingresso</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -483,10 +484,21 @@ export default function EventDetails() {
                     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     const label = encodeURIComponent(event.location_name || 'Evento');
                     const uberUrl = `uber://?action=setPickup&pickup=my_location&dropoff[latitude]=${event.latitude}&dropoff[longitude]=${event.longitude}&dropoff[nickname]=${label}`;
-                    const supported = await Linking.canOpenURL(uberUrl);
-                    if (supported) await Linking.openURL(uberUrl);
-                    else await Linking.openURL(`https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${event.latitude}&dropoff[longitude]=${event.longitude}&dropoff[nickname]=${label}`);
-                  } catch (e) { Alert.alert('Erro', 'Uber indisponível.'); }
+                    const webUrl = `https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${event.latitude}&dropoff[longitude]=${event.longitude}&dropoff[nickname]=${label}`;
+                    
+                    try {
+                      const supported = await Linking.canOpenURL(uberUrl);
+                      if (supported) {
+                        await Linking.openURL(uberUrl);
+                      } else {
+                        await Linking.openURL(webUrl);
+                      }
+                    } catch (err) {
+                      await Linking.openURL(webUrl);
+                    }
+                  } catch (e) { 
+                    Alert.alert('Erro', 'Uber indisponível.'); 
+                  }
                 }}
               >
                 <Car size={20} color="#fff" />
@@ -610,6 +622,8 @@ const styles = StyleSheet.create({
   mapContainer: { width: '100%', height: 180, borderRadius: 24, overflow: 'hidden', marginBottom: 20 },
   uberBtn: { backgroundColor: '#276EF1', flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 20, borderRadius: 24 },
   musicBanner: { backgroundColor: 'rgba(255, 20, 147, 0.08)', borderRadius: 28, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 16 },
+  musicBannerTitle: { fontSize: 18, fontWeight: '900', marginBottom: 4, color: '#ff1493' },
+  musicBannerSub: { fontSize: 14, fontWeight: '500', color: '#ff1493' },
   musicIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#ff1493', justifyContent: 'center', alignItems: 'center' },
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: Platform.OS === 'ios' ? 34 : 20, flexDirection: 'row', gap: 12, borderTopWidth: 1 },
   mainBtn: { flex: 1, height: 64, borderRadius: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },

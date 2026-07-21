@@ -1,8 +1,10 @@
 {
-  "extends": "expo/tsconfig.base.json",
+  "extends": "./node_modules/expo/tsconfig.base.json",
   "compilerOptions": {
     "strict": false,
+    "module": "esnext",
     "moduleResolution": "bundler",
+    "jsx": "react-native",
     "paths": {
       "@/*": [
         "./*"

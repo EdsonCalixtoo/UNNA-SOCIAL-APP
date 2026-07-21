@@ -48,7 +48,9 @@ export default function BusinessCreateEvent() {
   
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
   const [ticketUrl, setTicketUrl] = useState('');
+  const [minAge, setMinAge] = useState('0');
 
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
@@ -121,6 +123,8 @@ export default function BusinessCreateEvent() {
         location_name: locationName,
         is_paid: isPaid, 
         price: parseFloat(price) || 0, 
+        max_price: maxPrice ? parseFloat(maxPrice) : null,
+        min_age: parseInt(minAge) || 0,
         category_id: selectedCategory, 
         latitude: finalLat,
         longitude: finalLng,
@@ -280,14 +284,24 @@ export default function BusinessCreateEvent() {
               <Switch value={isPaid} onValueChange={setIsPaid} trackColor={{ true: accent }} />
             </View>
             {isPaid && (
-              <TextInput
-                style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary, marginBottom: 12 }]}
-                placeholder={t('auto.s3e571365', 'Preço (ex: 50.00)')}
-                placeholderTextColor={textSecondary}
-                keyboardType="numeric"
-                value={price}
-                onChangeText={setPrice}
-              />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary, marginBottom: 12 }]}
+                  placeholder={t('auto.s3e571365', 'Mínimo (ex: 30)')}
+                  placeholderTextColor={textSecondary}
+                  keyboardType="numeric"
+                  value={price}
+                  onChangeText={setPrice}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary, marginBottom: 12 }]}
+                  placeholder={t('auto.s_max_price', 'Máximo (Opcional)')}
+                  placeholderTextColor={textSecondary}
+                  keyboardType="numeric"
+                  value={maxPrice}
+                  onChangeText={setMaxPrice}
+                />
+              </View>
             )}
             <TextInput
               style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: textPrimary }]}

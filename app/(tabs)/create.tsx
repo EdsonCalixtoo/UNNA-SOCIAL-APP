@@ -149,6 +149,7 @@ export default function CreateEvent() {
   const [lng, setLng] = useState<number | null>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
   const [minAge, setMinAge] = useState('0');
   const [maxParticipants, setMaxParticipants] = useState('');
   const [showSubcatModal, setShowSubcatModal] = useState(false);
@@ -193,6 +194,7 @@ export default function CreateEvent() {
     setLng(null);
     setIsPaid(false);
     setPrice('');
+    setMaxPrice('');
     setMinAge('0');
     setMaxParticipants('');
     setCatSearch('');
@@ -350,6 +352,7 @@ export default function CreateEvent() {
         location_name: locationName ? (locationNumber ? `${locationName}, ${locationNumber}` : locationName) : null,
         is_paid: isPaid, 
         price: parseFloat(price) || 0, 
+        max_price: maxPrice ? parseFloat(maxPrice) : null,
         min_age: parseInt(minAge) || 0, 
         max_participants: parseInt(maxParticipants) || 0,
         category_id: selectedCategory, 
@@ -804,7 +807,18 @@ export default function CreateEvent() {
           {currentStep === 4 && (
             <Animated.View entering={FadeInRight} style={styles.stepContainer}>
               <View style={[styles.premiumCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><View><Text style={[styles.premiumTitle, { color: textPrimary }]}>{t('auto.sa98ee7e2', 'Evento Pago?')}</Text><Text style={[styles.premiumSub, { color: textSecondary }]}>{t('auto.s47954f49', 'Ative para cobrar ingressos')}</Text></View><Switch value={isPaid} onValueChange={setIsPaid} trackColor={{ false: isDark ? '#333' : '#ccc', true: accent }} thumbColor={isPaid ? '#fff' : '#f4f3f4'} /></View>
-              {isPaid && <View style={[styles.priceBox, { backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)' }]}><Text style={[styles.priceSymbol, { color: accent }]}>{t('auto.s2b416a58', 'R$')}</Text><TextInput style={[styles.priceInput, { color: textPrimary }]} keyboardType="numeric" placeholder={t('createEvent.placeholderPrice', '0,00')} placeholderTextColor={isDark ? '#444' : '#999'} value={price} onChangeText={setPrice} /></View>}
+              {isPaid && (
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                  <Animated.View entering={FadeInRight} style={[styles.priceBox, { flex: 1, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)', borderWidth: 1, marginTop: 0 }]}>
+                    <Text style={{ color: accent, fontSize: 16, fontWeight: '900', marginRight: 8 }}>MÍN</Text>
+                    <TextInput style={{ color: textPrimary, fontSize: 24, flex: 1, fontWeight: '900' }} keyboardType="numeric" value={price} onChangeText={setPrice} placeholder="0" placeholderTextColor={isDark ? '#444' : '#999'} />
+                  </Animated.View>
+                  <Animated.View entering={FadeInRight} style={[styles.priceBox, { flex: 1, backgroundColor: isDark ? 'rgba(0, 217, 255, 0.05)' : 'rgba(0, 217, 255, 0.08)', borderColor: isDark ? 'rgba(0, 217, 255, 0.2)' : 'rgba(0, 217, 255, 0.3)', borderWidth: 1, marginTop: 0 }]}>
+                    <Text style={{ color: accent, fontSize: 16, fontWeight: '900', marginRight: 8 }}>MÁX</Text>
+                    <TextInput style={{ color: textPrimary, fontSize: 24, flex: 1, fontWeight: '900' }} keyboardType="numeric" value={maxPrice} onChangeText={setMaxPrice} placeholder="Opcional" placeholderTextColor={isDark ? '#444' : '#999'} />
+                  </Animated.View>
+                </View>
+              )}
               <View style={styles.limitsRow}>
                 <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><Users size={20} color={accent} /><TextInput style={[styles.limitInput, { color: textPrimary }]} placeholder={t('createEvent.placeholderLimit', 'Limite')} keyboardType="numeric" value={maxParticipants} onChangeText={setMaxParticipants} /></View>
                 <View style={[styles.limitBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}><Info size={20} color="#ff1493" /><TextInput style={[styles.limitInput, { color: textPrimary }]} placeholder={t('createEvent.placeholderAge', 'Idade')} keyboardType="numeric" value={minAge} onChangeText={setMinAge} /></View>
