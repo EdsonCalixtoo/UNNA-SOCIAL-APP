@@ -380,6 +380,19 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
 
   const handleDeleteCategory = async (catId: string) => {
     try {
+      // Remove category reference from events to prevent foreign key violation
+      await supabase.from('events').update({ category_id: null }).eq('category_id', catId);
+
+      // Get subcategories of this category to also remove their references in events
+      const { data: subcats } = await supabase.from('subcategories').select('id').eq('category_id', catId);
+      if (subcats && subcats.length > 0) {
+        const subcatIds = subcats.map((s: any) => s.id);
+        await supabase.from('events').update({ subcategory_id: null }).in('subcategory_id', subcatIds);
+        
+        // Also delete subcategories to prevent any lingering references or constraints
+        await supabase.from('subcategories').delete().eq('category_id', catId);
+      }
+
       const { error } = await supabase
         .from('categories')
         .delete()
@@ -421,6 +434,9 @@ export default function AdminPanelModal({ visible, onClose }: AdminPanelModalPro
 
   const handleDeleteSubcategory = async (subId: string) => {
     try {
+      // Remove subcategory reference from events to prevent foreign key violation
+      await supabase.from('events').update({ subcategory_id: null }).eq('subcategory_id', subId);
+
       const { error } = await supabase
         .from('subcategories')
         .delete()
