@@ -9,8 +9,7 @@ import Animated, {
   useAnimatedStyle, 
   withSpring, 
   withTiming,
-  LinearTransition,
-  FadeInDown
+  withSequence,
 } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { hapticFeedback } from '@/utils/haptics';
@@ -58,17 +57,27 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
   const handleLikePress = () => {
     hapticFeedback.light();
     onLike(post.id, post.is_liked || false);
-    likeScale.value = withSpring(1.5, { damping: 2, stiffness: 200 }, () => {
-      likeScale.value = withSpring(1, { damping: 10, stiffness: 100 });
-    });
+    likeScale.value = withSequence(
+      withSpring(1.4, { damping: 8, stiffness: 200 }),
+      withSpring(1, { damping: 10, stiffness: 150 })
+    );
+  };
+
+  const handleDoubleTapLike = () => {
+    hapticFeedback.medium();
+    if (!post.is_liked) {
+      onLike(post.id, false);
+    }
+    likeScale.value = withSequence(
+      withSpring(1.4, { damping: 8, stiffness: 200 }),
+      withSpring(1, { damping: 10, stiffness: 150 })
+    );
   };
 
   const hasMedia = (post.image_urls && post.image_urls.length > 0) || post.image_url;
 
   return (
     <Animated.View 
-      layout={LinearTransition}
-      entering={FadeInDown.delay(50)}
       style={[
         styles.card, 
         { 
@@ -127,6 +136,7 @@ export default function PostCard({ post, onLike, isVisible = true }: PostCardPro
             borderRadius={0}
             isVisible={isVisible}
             onFullScreenChange={handleFullScreenChange}
+            onDoubleTap={handleDoubleTapLike}
           />
         </View>
       )}

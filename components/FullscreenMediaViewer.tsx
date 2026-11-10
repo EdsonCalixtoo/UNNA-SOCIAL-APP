@@ -64,10 +64,7 @@ export default function FullscreenMediaViewer({
   }, [visible, initialIndex]);
 
   const handleClose = () => {
-    'worklet';
-    opacity.value = withTiming(0, { duration: 200 }, () => {
-      runOnJS(onClose)();
-    });
+    onClose();
   };
 
   const gesture = Gesture.Pan()
@@ -86,7 +83,11 @@ export default function FullscreenMediaViewer({
     })
     .onEnd((event) => {
       if (Math.abs(event.translationY) > 150 || Math.abs(event.velocityY) > 1000) {
-        handleClose();
+        opacity.value = withTiming(0, { duration: 200 }, (finished) => {
+          if (finished) {
+            runOnJS(onClose)();
+          }
+        });
       } else {
         translateY.value = withSpring(0);
         opacity.value = withSpring(1);
@@ -108,6 +109,8 @@ export default function FullscreenMediaViewer({
     opacity: opacity.value,
   }));
 
+  if (!visible) return null;
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
       <GestureHandlerRootView style={[StyleSheet.absoluteFill, styles.rootContainer]}>
@@ -119,7 +122,7 @@ export default function FullscreenMediaViewer({
           <Animated.View style={[styles.container, animatedStyle]}>
             <TouchableOpacity 
               style={styles.closeBtn} 
-              onPress={() => handleClose()}
+              onPress={handleClose}
             >
               <X size={28} color="#fff" />
             </TouchableOpacity>
@@ -140,7 +143,7 @@ export default function FullscreenMediaViewer({
               }}
               showsHorizontalScrollIndicator={false}
               renderItem={({ item, index }) => {
-                const type = mediaTypes ? mediaTypes[index] : (item.toLowerCase().endsWith('.mp4') ? 'video' : 'image');
+                const type = mediaTypes && mediaTypes[index] ? mediaTypes[index] : (item && item.toLowerCase().endsWith('.mp4') ? 'video' : 'image');
                 return (
                   <View style={styles.mediaWrapper}>
                     {type === 'video' ? (

@@ -33,10 +33,11 @@ Audio.setAudioModeAsync({
 import { PresenceProvider } from '@/contexts/PresenceContext';
 import AnimatedSplashScreen from '@/components/AnimatedSplashScreen';
 import { mediaCacheService } from '@/services/mediaCacheService';
+import UpdateManager from '@/components/UpdateManager';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
-  const segments = useSegments();
+  const segments = useSegments() as string[];
   const router = useRouter();
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
 
@@ -159,6 +160,7 @@ export default function RootLayout() {
                     </PushNotificationProvider>
                   </InAppNotificationProvider>
                 </AuthGuard>
+                <UpdateManager />
               </UIProvider>
             </PresenceProvider>
           </AuthProvider>

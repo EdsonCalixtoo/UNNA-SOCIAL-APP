@@ -223,7 +223,12 @@ export default function CreateEvent() {
 
   const nextStep = () => {
     if (currentStep === 1 && mediaFiles.length === 0) return Alert.alert('Atenção', 'Escolha pelo menos uma imagem ou vídeo.');
-    if (currentStep === 2 && (!title || !selectedCategory)) return Alert.alert('Atenção', 'Dê um título e escolha uma categoria.');
+    if (currentStep === 2) {
+      if (!title || !selectedCategory) return Alert.alert('Atenção', 'Dê um título e escolha uma categoria.');
+      if (contentType === 'event' && subcategories.length > 0 && !selectedSubcategory) {
+        return Alert.alert('Atenção', 'Escolha uma subcategoria para o evento (ex: Corrida, Ciclismo, etc).');
+      }
+    }
     
     if (contentType === 'publication') {
       if (currentStep === 2) {

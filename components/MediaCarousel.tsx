@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -9,14 +9,21 @@ import {
   Platform 
 } from 'react-native';
 import { ResizeMode } from 'expo-av';
-import { Volume2, VolumeX } from 'lucide-react-native';
+import { Volume2, VolumeX, Heart } from 'lucide-react-native';
 import { s, vs, ms } from '@/utils/responsive';
 import { useTheme } from '@/contexts/ThemeContext';
 import FullscreenMediaViewer from './FullscreenMediaViewer';
 import CachedVideo from './CachedVideo';
 import { useIsFocused } from '@react-navigation/native';
 
-import Animated from 'react-native-reanimated';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withTiming,
+  withDelay,
+} from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -30,6 +37,7 @@ interface MediaCarouselProps {
   onFullScreenChange?: (visible: boolean) => void;
   eventId?: string;
   onPress?: () => void;
+  onDoubleTap?: () => void;
 }
 
 export default function MediaCarousel({ 
@@ -41,7 +49,8 @@ export default function MediaCarousel({
   isVisible = true,
   onFullScreenChange,
   eventId,
-  onPress
+  onPress,
+  onDoubleTap
 }: MediaCarouselProps) {
   const { accent } = useTheme();
   const isFocused = useIsFocused();
@@ -50,6 +59,37 @@ export default function MediaCarousel({
   const [fullScreenVisible, setFullScreenVisible] = useState(false);
   const [fullScreenIndex, setFullScreenIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const lastTapRef = useRef<number>(0);
+  const singleTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const heartScale = useSharedValue(0);
+  const heartOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    return () => {
+      if (singleTapTimeoutRef.current) {
+        clearTimeout(singleTapTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const triggerHeartAnimation = useCallback(() => {
+    heartScale.value = 0;
+    heartOpacity.value = 1;
+    heartScale.value = withSequence(
+      withSpring(1.2, { damping: 8, stiffness: 220 }),
+      withDelay(350, withTiming(0, { duration: 200 }))
+    );
+    heartOpacity.value = withSequence(
+      withTiming(1, { duration: 80 }),
+      withDelay(400, withTiming(0, { duration: 200 }))
+    );
+  }, []);
+
+  const heartOverlayStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: heartScale.value }],
+    opacity: heartOpacity.value,
+  }));
 
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
     if (viewableItems && viewableItems.length > 0) {
@@ -65,20 +105,42 @@ export default function MediaCarousel({
     length: width,
     offset: width * index,
     index,
-  }), []);
+  }), [width]);
 
   const renderItem = ({ item, index }: { item: string, index: number }) => {
-    const type = mediaTypes ? mediaTypes[index] : (item.toLowerCase().endsWith('.mp4') ? 'video' : 'image');
+    const type = mediaTypes ? mediaTypes[index] : (item && item.toLowerCase().endsWith('.mp4') ? 'video' : 'image');
     const isVideo = type === 'video';
 
     const handleMediaPress = () => {
-      if (onPress) {
-        onPress();
-      } else {
-        setFullScreenIndex(index);
-        setFullScreenVisible(true);
-        onFullScreenChange?.(true);
+      const now = Date.now();
+      const DOUBLE_TAP_DELAY = 280;
+
+      if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+        if (singleTapTimeoutRef.current) {
+          clearTimeout(singleTapTimeoutRef.current);
+          singleTapTimeoutRef.current = null;
+        }
+        lastTapRef.current = 0;
+        triggerHeartAnimation();
+        onDoubleTap?.();
+        return;
       }
+
+      lastTapRef.current = now;
+      if (singleTapTimeoutRef.current) {
+        clearTimeout(singleTapTimeoutRef.current);
+      }
+
+      singleTapTimeoutRef.current = setTimeout(() => {
+        singleTapTimeoutRef.current = null;
+        if (onPress) {
+          onPress();
+        } else {
+          setFullScreenIndex(index);
+          setFullScreenVisible(true);
+          onFullScreenChange?.(true);
+        }
+      }, DOUBLE_TAP_DELAY);
     };
 
     return (
@@ -165,6 +227,10 @@ export default function MediaCarousel({
         </View>
       )}
 
+      <Animated.View pointerEvents="none" style={[styles.heartOverlay, heartOverlayStyle]}>
+        <Heart size={84} color="#FF1493" fill="#FF1493" />
+      </Animated.View>
+
       <FullscreenMediaViewer
         visible={fullScreenVisible}
         onClose={() => {
@@ -246,5 +312,10 @@ const styles = StyleSheet.create({
     height: s(6),
     borderRadius: ms(3),
   },
-
+  heartOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 30,
+  },
 });

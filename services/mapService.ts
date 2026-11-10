@@ -29,10 +29,11 @@ export const mapService = {
   /**
    * Calcula a cor do marcador baseada no status
    */
-  getMarkerColor(status: 'happening' | 'starting-soon' | 'upcoming'): string {
+  getMarkerColor(status: 'happening' | 'starting-soon' | 'upcoming' | 'finished' | string): string {
     switch (status) {
       case 'happening': return '#34C759'; // Green
       case 'starting-soon': return '#FF9500'; // Orange
+      case 'finished': return '#8E8E93'; // Gray
       default: return '#00d9ff'; // Cyan
     }
   },

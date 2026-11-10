@@ -226,8 +226,8 @@ export default function UserProfile() {
       setFollowingCount(followingData.count || 0);
       setIsFollowing(!!followData.data);
       setHasRequestPending(!!requestData.data);
-      setEventsCount(eventsData.count || 0);
-      setPosts(postsRes.data || []);
+      const mediaPosts = (postsRes.data || []).filter((p: any) => !!p.image_url);
+      setPosts(mediaPosts);
       setProfileStats(statsRes.data);
 
       // Carregar memórias: fotos que o usuário postou nos eventos (via EventStoriesBar)
@@ -676,36 +676,46 @@ export default function UserProfile() {
             <View style={styles.tabsWrapper}>
               <View style={[styles.tabsTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
                 <Animated.View style={[styles.tabIndicator, { backgroundColor: backgroundSecondary, transform: [{ translateX: tabIndicatorPos }] }]} />
-                <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('posts'); }}><Grid3X3 size={18} color={activeTab === 'posts' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'posts' ? textPrimary : textSecondary }]}>Mural</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('events'); }}><Calendar size={18} color={activeTab === 'events' ? accent : textSecondary} /><Text style={[styles.tabBtnText, { color: activeTab === 'events' ? textPrimary : textSecondary }]}>Experiências</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('posts'); }}>
+                  <Grid3X3 size={18} color={activeTab === 'posts' ? accent : textSecondary} />
+                  <Text style={[styles.tabBtnText, { color: activeTab === 'posts' ? textPrimary : textSecondary }]}>
+                    Mural {posts.length > 0 ? `(${posts.length})` : ''}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.tabBtn} onPress={() => { hapticFeedback.selection(); setActiveTab('events'); }}>
+                  <Calendar size={18} color={activeTab === 'events' ? accent : textSecondary} />
+                  <Text style={[styles.tabBtnText, { color: activeTab === 'events' ? textPrimary : textSecondary }]}>
+                    Experiências {events.length > 0 ? `(${events.length})` : ''}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.listContainer}>
               {activeTab === 'posts' && (
                 <View style={styles.postsGrid}>
-                  {memories.length > 0 ? (
-                    memories.map((memory, idx) => (
+                  {posts.length > 0 ? (
+                    posts.map((post, idx) => (
                       <TouchableOpacity
-                        key={memory.id}
+                        key={post.id}
                         style={styles.postThumbnail}
                         activeOpacity={0.9}
                         onPress={() => {
-                          setSelectedMemoryIdx(idx);
-                          setIsMemoryViewerVisible(true);
+                          setSelectedPostIdx(idx);
+                          setIsPostViewerVisible(true);
                         }}
                       >
-                        <Image source={{ uri: memory.image_url }} style={styles.thumbnailImg} />
+                        <Image source={{ uri: post.image_url }} style={styles.thumbnailImg} resizeMode="cover" />
                         <View style={styles.gridIconOverlay}>
-                          <Grid3X3 size={12} color="#FFF" />
+                          <Grid3X3 size={11} color="#FFF" />
                         </View>
                       </TouchableOpacity>
                     ))
                   ) : (
                     <View style={styles.emptyContent}>
-                      <Heart size={48} color={textSecondary} strokeWidth={1} />
-                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem Memórias</Text>
-                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma memória compartilhada ainda.</Text>
+                      <Heart size={44} color={textSecondary} strokeWidth={1.5} />
+                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Mural Vazio</Text>
+                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma publicação com foto compartilhada ainda.</Text>
                     </View>
                   )}
                 </View>
@@ -724,21 +734,32 @@ export default function UserProfile() {
                           onPress={() => router.push(`/event/${event.id}`)}
                         >
                           {imageUri ? (
-                            <Image source={{ uri: imageUri }} style={styles.thumbnailImg} />
+                            <Image source={{ uri: imageUri }} style={styles.thumbnailImg} resizeMode="cover" />
                           ) : (
-                            <View style={[styles.thumbnailImg, { backgroundColor: '#444' }]} />
+                            <LinearGradient
+                              colors={isDark ? ['#242436', '#14141e'] : ['#f1f5f9', '#e2e8f0']}
+                              style={[styles.thumbnailImg, { justifyContent: 'center', alignItems: 'center' }]}
+                            >
+                              <Text style={{ fontSize: 24 }}>{event.categories?.icon || '🎉'}</Text>
+                            </LinearGradient>
                           )}
+                          <LinearGradient
+                            colors={['transparent', 'rgba(0,0,0,0.85)']}
+                            style={styles.eventGridGradient}
+                          >
+                            <Text style={styles.eventGridTitle} numberOfLines={1}>{event.title}</Text>
+                          </LinearGradient>
                           <View style={styles.gridIconOverlay}>
-                            <Calendar size={12} color="#FFF" />
+                            <Calendar size={11} color="#FFF" />
                           </View>
                         </TouchableOpacity>
                       )
                     })
                   ) : (
                     <View style={styles.emptyContent}>
-                      <Calendar size={48} color={textSecondary} strokeWidth={1} />
-                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Nenhum evento</Text>
-                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma experiência criada por este usuário.</Text>
+                      <Calendar size={44} color={textSecondary} strokeWidth={1.5} />
+                      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Sem Experiências</Text>
+                      <Text style={[styles.emptySubtitle, { color: textSecondary }]}>Nenhuma experiência criada por este usuário ainda.</Text>
                     </View>
                   )}
                   {events.length > visibleEvents && activeTab === 'events' && (
@@ -884,9 +905,12 @@ const styles = StyleSheet.create({
   postThumbnail: { 
     width: (SCREEN_WIDTH - 32 - 16) / 3, 
     height: (SCREEN_WIDTH - 32 - 16) / 3,
-    backgroundColor: '#333',
-    borderRadius: 16,
+    backgroundColor: '#1E1E24',
+    borderRadius: 14,
     overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)'
   },
   thumbnailImg: { 
     width: '100%', 
@@ -894,11 +918,26 @@ const styles = StyleSheet.create({
   },
   gridIconOverlay: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    padding: 6,
-    borderRadius: 10,
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    padding: 4,
+    borderRadius: 7,
+  },
+  eventGridGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '50%',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 6,
+    paddingBottom: 6
+  },
+  eventGridTitle: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700'
   },
   eventsList: { 
     paddingHorizontal: 20,

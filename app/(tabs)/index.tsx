@@ -389,7 +389,7 @@ export default function Feed() {
           *,
           profiles:user_id (id, username, full_name, avatar_url),
           events:event_id (
-            id, title, description, image_url, image_urls, media_types, event_date, event_time, 
+            id, creator_id, type, title, description, image_url, image_urls, media_types, event_date, event_time, 
             location_name, latitude, longitude, max_participants, is_paid, price, 
             category_id, subcategory_id, created_at,
             categories:category_id (name, icon),
@@ -602,69 +602,72 @@ export default function Feed() {
     itemVisiblePercentThreshold: 50, // O item é considerado visível se 50% dele aparecer
   }), []);
 
+  const likingIdsRef = useRef<Set<string>>(new Set());
+
   const handleLike = async (id: string, isLiked: boolean) => {
     if (!user) return;
+    if (likingIdsRef.current.has(id)) return;
+    likingIdsRef.current.add(id);
 
-    // Detect if it's an event or a post
-    const targetPost = posts.find(p => p.id === id || p.events?.id === id);
-    const isEvent = !!targetPost?.events && targetPost.events.id === id;
+    try {
+      // Detect if it's an event or a post
+      const targetPost = posts.find(p => p.id === id || p.events?.id === id);
+      const isEvent = !!targetPost?.events && targetPost.events.id === id;
 
-    if (isEvent) {
-      if (isLiked) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        await supabase.from('event_likes').delete().eq('event_id', id).eq('user_id', user.id);
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await supabase.from('event_likes').insert({ event_id: id, user_id: user.id });
-        
-        // Notificar o criador do evento
-        if (targetPost?.events) {
-          notifyEventLike(
-            id, 
-            user.id, 
-            (targetPost.events as any).creator_id, 
-            (targetPost.events as any).title
-          );
-        }
-      }
-
-    } else {
-      if (isLiked) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        await supabase.from('post_likes').delete().eq('post_id', id).eq('user_id', user.id);
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await supabase.from('post_likes').insert({ post_id: id, user_id: user.id });
-      }
-    }
-
-    setPosts(posts.map(p => {
-      if (isEvent && p.events?.id === id) {
-        const isLikedNow = !isLiked;
-      
-        // Feedback Tátil Premium
-        if (isLikedNow) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }
-        return {
-          ...p,
-          events: {
-            ...p.events,
+      // Optimistic UI update
+      setPosts(prev => prev.map(p => {
+        if (isEvent && p.events?.id === id) {
+          return {
+            ...p,
+            events: {
+              ...p.events,
+              is_liked: !isLiked,
+              likes_count: isLiked ? Math.max(0, (p.events.likes_count || 1) - 1) : (p.events.likes_count || 0) + 1
+            }
+          };
+        } else if (!isEvent && p.id === id) {
+          return {
+            ...p,
             is_liked: !isLiked,
-            likes_count: isLiked ? (p.events.likes_count || 1) - 1 : (p.events.likes_count || 0) + 1
+            likes_count: isLiked ? Math.max(0, (p.likes_count || 1) - 1) : (p.likes_count || 0) + 1
+          };
+        }
+        return p;
+      }));
+
+      if (isEvent) {
+        if (isLiked) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          await supabase.from('event_likes').delete().eq('event_id', id).eq('user_id', user.id);
+        } else {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          await supabase.from('event_likes').insert({ event_id: id, user_id: user.id });
+          
+          // Notificar o criador do evento
+          const creatorId = (targetPost?.events as any)?.creator_id || targetPost?.events?.profiles?.id;
+          if (targetPost?.events && creatorId) {
+            notifyEventLike(
+              id, 
+              user.id, 
+              creatorId, 
+              (targetPost.events as any).title
+            );
           }
-        };
-      } else if (!isEvent && p.id === id) {
-        return {
-          ...p,
-          is_liked: !isLiked,
-          likes_count: isLiked ? (p.likes_count || 1) - 1 : (p.likes_count || 0) + 1
-        };
+        }
+      } else {
+        if (isLiked) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          await supabase.from('post_likes').delete().eq('post_id', id).eq('user_id', user.id);
+        } else {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          await supabase.from('post_likes').insert({ post_id: id, user_id: user.id });
+        }
       }
-      return p;
-    }));
+    } catch (error) {
+      console.error('Error handling like:', error);
+    } finally {
+      likingIdsRef.current.delete(id);
+    }
   };
 
   const renderItem = ({ item, index }: { item: ExtendedPost; index: number }) => {
@@ -777,7 +780,7 @@ export default function Feed() {
         viewabilityConfig={viewabilityConfig}
         windowSize={3}
         initialNumToRender={5}
-        removeClippedSubviews={Platform.OS === 'android'}
+        removeClippedSubviews={false}
         maxToRenderPerBatch={5}
         refreshControl={
           <RefreshControl 

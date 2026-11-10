@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Image, Platform, Animated, Easing } from 'react-native';
 import { Marker } from 'react-native-maps';
+import { getEventMarkerIcon } from '@/utils/categoryIcons';
 
 interface EventMarkerProps {
   event: any;
@@ -71,7 +72,7 @@ const EventMarker = ({ event, markerColor, onPress, isSelected }: EventMarkerPro
   const lat = parseFloat(String(event.latitude));
   const lng = parseFloat(String(event.longitude));
   
-  const icon = event?.categories?.icon || '📍';
+  const icon = getEventMarkerIcon(event);
   const isImageUrl = typeof icon === 'string' && (icon.startsWith('http') || icon.startsWith('https'));
 
   if (isNaN(lat) || isNaN(lng)) return null;

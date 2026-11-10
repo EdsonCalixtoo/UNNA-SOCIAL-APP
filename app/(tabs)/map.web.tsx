@@ -18,6 +18,7 @@ import { showError } from '@/components/ErrorDisplay';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { s, vs, ms } from '@/utils/responsive';
+import { getEventMarkerIcon } from '@/utils/categoryIcons';
 
 let MapView: any = null;
 let Marker: any = null;
@@ -37,7 +38,7 @@ const EventMarker = ({ event, markerColor, onPress }: { event: any; markerColor:
   const lng = parseFloat(String(event.longitude));
   if (isNaN(lat) || isNaN(lng)) return null;
 
-  const icon = event?.categories?.icon || '📍';
+  const icon = getEventMarkerIcon(event);
   const isImageUrl = typeof icon === 'string' && (icon.startsWith('http') || icon.startsWith('https'));
 
   return (

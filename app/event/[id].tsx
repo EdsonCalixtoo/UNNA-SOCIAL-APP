@@ -10,7 +10,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { 
   Calendar, Clock, MapPin, ArrowLeft,
   MessageCircle, Edit3, Share2, Navigation2,
-  ChevronRight, Users, Trash2, Flag, Ticket, Scan
+  ChevronRight, Users, Trash2, Flag, Ticket, Scan,
+  CheckCircle2, Sparkles, CalendarPlus
 } from 'lucide-react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +25,7 @@ import { EventPresenceList } from '@/components/EventPresenceList';
 import { EventStoriesBar } from '@/components/EventStoriesBar';
 import { QRScannerModal } from '@/components/QRScannerModal';
 import { ActionFeedback } from '@/components/ActionFeedback';
+import RSVPConfirmationModal from '@/components/RSVPConfirmationModal';
 import { offlineService } from '@/services/offlineService';
 import Animated, { 
   useSharedValue, useAnimatedStyle, useAnimatedScrollHandler,
@@ -96,6 +98,7 @@ export default function EventDetails() {
   const accent = eventAccent; // Override local accent with dynamic one
   const [loading, setLoading] = useState(true);
   const [rsvpStatus, setRsvpStatus] = useState<'going' | null>(null);
+  const [showRSVPSuccessModal, setShowRSVPSuccessModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [feedback, setFeedback] = useState({ visible: false, type: 'success' as any, title: '', message: '' });
   const [shareModalVisible, setShareModalVisible] = useState(false);
@@ -159,12 +162,12 @@ export default function EventDetails() {
     if (data) setRsvpStatus('going');
   };
 
-  const addEventToCalendar = async () => {
+  const addEventToCalendar = async (silent: boolean = false): Promise<boolean> => {
     try {
       const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permissão negada', 'Precisamos de acesso ao calendário para adicionar o evento.');
-        return;
+        Alert.alert('Permissão necessária', 'Precisamos de acesso ao calendário para adicionar o evento.');
+        return false;
       }
 
       const calendars = await ExpoCalendar.getCalendarsAsync(ExpoCalendar.EntityTypes.EVENT);
@@ -176,7 +179,7 @@ export default function EventDetails() {
 
       if (!defaultCal) {
         Alert.alert('Erro', 'Nenhum calendário editável encontrado no seu dispositivo.');
-        return;
+        return false;
       }
 
       // Build start/end Date from event fields
@@ -201,10 +204,16 @@ export default function EventDetails() {
         alarms: [{ relativeOffset: -60 }, { relativeOffset: -15 }], // 1h e 15min antes
       });
 
-      Alert.alert('✅ Adicionado!', 'O evento foi salvo na sua agenda com lembretes 1h e 15min antes.');
+      if (!silent) {
+        Alert.alert('✅ Adicionado!', 'O evento foi salvo na sua agenda com lembretes 1h e 15min antes.');
+      }
+      return true;
     } catch (err) {
       console.error('Calendar error:', err);
-      Alert.alert('Erro', 'Não foi possível adicionar o evento à agenda.');
+      if (!silent) {
+        Alert.alert('Erro', 'Não foi possível adicionar o evento à agenda.');
+      }
+      return false;
     }
   };
 
@@ -212,17 +221,24 @@ export default function EventDetails() {
     if (!user) { Alert.alert('Login necessário'); return; }
     try {
       if (rsvpStatus === 'going') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        await supabase.from('event_participants').delete().eq('event_id', id).eq('user_id', user.id);
-        setRsvpStatus(null); 
-        setFeedback({
-          visible: true,
-          type: 'success',
-          title: 'Presença Removida',
-          message: 'Sua presença foi cancelada com sucesso.'
-        });
+        Alert.alert(
+          'Cancelar Presença?',
+          'Deseja remover sua confirmação neste evento?',
+          [
+            { text: 'Voltar', style: 'cancel' },
+            { 
+              text: 'Sim, cancelar', 
+              style: 'destructive',
+              onPress: async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                await supabase.from('event_participants').delete().eq('event_id', id).eq('user_id', user.id);
+                setRsvpStatus(null);
+              }
+            }
+          ]
+        );
       } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await supabase.from('event_participants').insert({ event_id: id as string, user_id: user.id });
         
         // Notificar dono do evento e os seguidores (FOMO)
@@ -230,34 +246,15 @@ export default function EventDetails() {
 
         setRsvpStatus('going'); 
         soundService.play('success');
-        setFeedback({
-          visible: true,
-          type: 'success',
-          title: event.type === 'event' ? 'Presença Confirmada! 🎉' : 'Interesse Registrado!',
-          message: event.type === 'event' ? 'Você confirmou sua presença neste evento. Prepare o look e nos vemos lá!' : 'O autor foi notificado do seu interesse.'
-        });
 
-        // Offer to add to native calendar
+        // Exibe o modal moderno comemorativo com opção de salvar na agenda em 1 toque
         if (event.type === 'event') {
-          setTimeout(() => {
-            Alert.alert(
-              '📅 Adicionar à Agenda?',
-              `Quer salvar "${event.title}" na agenda do seu celular com lembretes automáticos?`,
-              [
-                { text: 'Agora não', style: 'cancel' },
-                { text: 'Sim, adicionar!', onPress: addEventToCalendar }
-              ]
-            );
-          }, 800);
+          setShowRSVPSuccessModal(true);
         }
       }
     } catch (error) {
-      setFeedback({
-        visible: true,
-        type: 'error',
-        title: 'Ops!',
-        message: 'Não foi possível completar esta ação. Tente novamente.'
-      });
+      console.error('RSVP error:', error);
+      Alert.alert('Ops!', 'Não foi possível completar esta ação. Tente novamente.');
     }
   };
 
@@ -541,12 +538,10 @@ export default function EventDetails() {
                   {mediaTypes?.[i] === 'video' ? (
                     <Video source={{ uri: url }} style={styles.media} resizeMode={ResizeMode.COVER} shouldPlay isLooping isMuted />
                   ) : (
-                    <Animated.Image 
+                    <Image 
                       source={{ uri: url }} 
                       style={styles.media} 
                       resizeMode="cover" 
-                      // @ts-ignore
-                      sharedTransitionTag={`event-image-${id}-${i}`}
                     />
                   )}
                   <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent', 'rgba(0,0,0,0.9)']} style={StyleSheet.absoluteFill} />
@@ -651,13 +646,13 @@ export default function EventDetails() {
                         </View>
                         <Navigation2 size={18} color={accent} />
                       </View>
-                      {event.latitude && event.longitude && (
+                      {event.latitude && event.longitude && !isNaN(Number(event.latitude)) && !isNaN(Number(event.longitude)) && (
                         <View style={{ width: '100%', height: 120, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }} pointerEvents="none">
                           <MapView
                             style={{ flex: 1 }}
                             initialRegion={{
-                              latitude: event.latitude,
-                              longitude: event.longitude,
+                              latitude: Number(event.latitude),
+                              longitude: Number(event.longitude),
                               latitudeDelta: 0.005,
                               longitudeDelta: 0.005,
                             }}
@@ -668,7 +663,7 @@ export default function EventDetails() {
                             userInterfaceStyle={isDark ? "dark" : "light"}
                           >
                             <Marker 
-                              coordinate={{ latitude: event.latitude, longitude: event.longitude }}
+                              coordinate={{ latitude: Number(event.latitude), longitude: Number(event.longitude) }}
                               pinColor={accent}
                             />
                           </MapView>
@@ -794,23 +789,60 @@ export default function EventDetails() {
               </>
             ) : (
               <>
-                <TouchableOpacity onPress={handleRSVP} style={[styles.mainBtn, { backgroundColor: rsvpStatus === 'going' ? '#34C759' : accent }]}>
-                  {event.type === 'event' ? <Users size={20} color="#fff" /> : <MessageCircle size={20} color="#fff" />}
+                <TouchableOpacity 
+                  onPress={handleRSVP} 
+                  activeOpacity={0.85}
+                  style={[
+                    styles.mainBtn, 
+                    rsvpStatus === 'going' 
+                      ? styles.mainBtnGoing 
+                      : { backgroundColor: accent }
+                  ]}
+                >
+                  {rsvpStatus === 'going' ? (
+                    <CheckCircle2 size={20} color="#fff" strokeWidth={2.5} />
+                  ) : event.type === 'event' ? (
+                    <Sparkles size={20} color="#fff" />
+                  ) : (
+                    <MessageCircle size={20} color="#fff" />
+                  )}
                   <Text style={styles.btnText}>
                     {rsvpStatus === 'going' 
-                      ? (event.type === 'event' ? 'Confirmado' : 'Tenho Interesse') 
+                      ? (event.type === 'event' ? 'Confirmado 🎉' : 'Interesse Registrado ✨') 
                       : (event.type === 'event' ? 'Confirmar Presença' : 'Tenho Interesse')}
                   </Text>
                 </TouchableOpacity>
-                
-                {/* Ticket modal button removed per user request */}
 
-                <TouchableOpacity style={styles.chatBtn} onPress={() => router.push(`/event/${id}/chat`)}><MessageCircle size={24} color={accent} /></TouchableOpacity>
+                {/* Botão Rápido de Sincronizar com Agenda (Quando confirmado) */}
+                {rsvpStatus === 'going' && event.type === 'event' && (
+                  <TouchableOpacity 
+                    style={[styles.calendarQuickBtn, { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }]}
+                    onPress={() => addEventToCalendar(false)}
+                    activeOpacity={0.8}
+                  >
+                    <CalendarPlus size={22} color="#10B981" />
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity 
+                  style={[styles.chatBtn, { borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]} 
+                  onPress={() => router.push(`/event/${id}/chat`)}
+                >
+                  <MessageCircle size={24} color={accent} />
+                </TouchableOpacity>
               </>
             )}
           </Animated.View>
         </View>
 
+        {/* Modal de Confirmação Moderno */}
+        <RSVPConfirmationModal
+          visible={showRSVPSuccessModal}
+          onClose={() => setShowRSVPSuccessModal(false)}
+          event={event}
+          onAddToCalendar={() => addEventToCalendar(true)}
+          onOpenChat={() => router.push(`/event/${id}/chat`)}
+        />
       </View>
     </GestureHandlerRootView>
   );
@@ -846,6 +878,25 @@ const styles = StyleSheet.create({
   desc: { fontSize: 16, lineHeight: 28, flexWrap: 'wrap' },
   bottomBar: { padding: 20, paddingBottom: Platform.OS === 'ios' ? 34 : 20, flexDirection: 'row', gap: 12, borderTopWidth: 1 },
   mainBtn: { flex: 1, height: 60, borderRadius: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  mainBtnGoing: {
+    backgroundColor: '#10B981',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  calendarQuickBtn: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
   chatBtn: { width: 60, height: 60, borderRadius: 30, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.05)', justifyContent: 'center', alignItems: 'center' },
   pagination: { position: 'absolute', top: 120, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6, zIndex: 10 },

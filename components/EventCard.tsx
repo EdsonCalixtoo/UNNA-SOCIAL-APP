@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Platform } from 'react-native';
 import { MoreVertical, Heart, MessageCircle, MapPin, Sparkles, Users } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
 import MediaCarousel from './MediaCarousel';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, withSequence } from 'react-native-reanimated';
 import { hapticFeedback } from '@/utils/haptics';
 import { soundService } from '@/utils/soundService';
 import { mapService } from '@/services/mapService';
@@ -38,6 +38,7 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
   
   const likeScale = useSharedValue(1);
   const [distanceKm, setDistanceKm] = useState<string | null>(null);
+  const isNavigatingRef = useRef(false);
 
   useEffect(() => {
     // Calculate distance
@@ -58,6 +59,12 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
   }, [event.latitude, event.longitude]);
 
   const handlePress = () => {
+    if (isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 800);
+
     if (onPress) onPress();
     else router.push(`/event/${event.id}`);
   };
@@ -70,9 +77,22 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
     hapticFeedback.light();
     soundService.play('pop');
     onLike && onLike(event.id, event.is_liked);
-    likeScale.value = withSpring(1.5, { damping: 2, stiffness: 200 }, () => {
-      likeScale.value = withSpring(1, { damping: 10, stiffness: 100 });
-    });
+    likeScale.value = withSequence(
+      withSpring(1.4, { damping: 8, stiffness: 200 }),
+      withSpring(1, { damping: 10, stiffness: 150 })
+    );
+  };
+
+  const handleDoubleTapLike = () => {
+    hapticFeedback.medium();
+    soundService.play('pop');
+    if (!event.is_liked) {
+      onLike && onLike(event.id, false);
+    }
+    likeScale.value = withSequence(
+      withSpring(1.4, { damping: 8, stiffness: 200 }),
+      withSpring(1, { damping: 10, stiffness: 150 })
+    );
   };
 
   const isPublication = event.type === 'publication' || !event.event_date || !event.event_time;
@@ -205,6 +225,7 @@ export default function EventCard({ event, onPress, isVisible = true, onLike, on
               isVisible={isVisible}
               eventId={event.id}
               onPress={handlePress}
+              onDoubleTap={handleDoubleTapLike}
             />
             
             {/* Date Badge */}

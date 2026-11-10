@@ -239,6 +239,10 @@ export default function EditEvent() {
 
   const handleUpdate = async () => {
     if (!user || !id) return;
+    if (!title || !selectedCategory) return Alert.alert('Atenção', 'Título e categoria são obrigatórios.');
+    if (contentType === 'event' && subcategories.length > 0 && !selectedSubcategory) {
+      return Alert.alert('Atenção', 'Escolha uma subcategoria para o evento.');
+    }
     setLoading(true);
     try {
       const uploadedUrls: string[] = [];

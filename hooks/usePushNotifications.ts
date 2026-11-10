@@ -57,13 +57,6 @@ export const usePushNotifications = () => {
           console.warn('[Push] Erro ao limpar badge count:', e);
         }
 
-        // 3. Registrar para notificações apenas se for um dispositivo físico real (não simulador)
-        // Isso evita falhas nativas catastróficas ao tentar se registrar no APNs em ambientes sem suporte
-        if (Platform.OS === 'ios' && !Constants.isDevice) {
-          console.log('[Push] Ignorando registro de token push no simulador iOS.');
-          return;
-        }
-
         if (Platform.OS === 'android') {
           await Notifications.setNotificationChannelAsync('default', {
             name: 'default',
@@ -114,7 +107,15 @@ export const usePushNotifications = () => {
     notificationListener.current = Notifications.addNotificationReceivedListener(
       (notification: Notifications.Notification) => {
         console.log('[Push-DEBUG] Notificação Push recebida (Foreground):', JSON.stringify(notification.request.content, null, 2));
-        
+
+        const { title, body, data } = notification.request.content;
+        showNotification({
+          title: title || 'UNNA',
+          message: body || '',
+          type: (data?.type as any) || 'info',
+          data: data || {},
+        });
+
         if (Platform.OS === 'android') {
           // Dispensa imediatamente a notificação da barra de status no Android para evitar a duplicidade visual
           Notifications.dismissNotificationAsync(notification.request.identifier).catch((e) => {

@@ -6,6 +6,7 @@ import { ArrowLeft, ChevronRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { s, vs, ms } from '@/utils/responsive';
+import { getSubcategoryIcon } from '@/utils/categoryIcons';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = width - 40;
@@ -94,6 +95,8 @@ export default function Subcategories() {
 
     const gradient = colors[index % colors.length];
 
+    const subIcon = getSubcategoryIcon(item.name, categoryName as string);
+
     return (
       <TouchableOpacity
         style={styles.subcategoryCard}
@@ -107,7 +110,12 @@ export default function Subcategories() {
           style={styles.subcategoryGradient}
         >
           <View style={styles.subcategoryContent}>
-            <Text style={styles.subcategoryName}>{item.name}</Text>
+            <View style={styles.subcategoryLeft}>
+              <View style={styles.subcategoryIconBadge}>
+                <Text style={styles.subcategoryEmoji}>{subIcon}</Text>
+              </View>
+              <Text style={styles.subcategoryName}>{item.name}</Text>
+            </View>
             <View style={styles.iconContainer}>
               <ChevronRight size={24} color="#fff" />
             </View>
@@ -221,8 +229,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  subcategoryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  subcategoryIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  subcategoryEmoji: {
+    fontSize: 22,
+  },
   subcategoryName: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#fff',
     flex: 1,

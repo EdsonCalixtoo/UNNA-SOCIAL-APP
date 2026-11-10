@@ -96,22 +96,23 @@ export function InAppNotificationProvider({ children }: { children: React.ReactN
       }
     }
 
-    // Deduplicação: bloquear apenas notificações IDÊNTICAS em menos de 1s
+    // Deduplicação: bloquear notificações idênticas em menos de 4s (evita duplicidade entre Realtime e Push Foreground)
     const now = Date.now();
-    const dedupeKey = `${notif.title}|${notif.message}|${notif.data?.conversation_id || ''}`;
+    const formattedMsg = formatNotificationMessage(notif.message || '');
+    const dedupeKey = `${notif.title}|${formattedMsg}|${notif.data?.conversation_id || ''}`;
     if (
       lastNotificationRef.current &&
       lastNotificationRef.current.title === dedupeKey &&
-      now - lastNotificationRef.current.time < 1000
+      now - lastNotificationRef.current.time < 4000
     ) {
       console.log('[InAppNotification] Deduplicando notificação idêntica:', notif.title);
       return;
     }
 
-    lastNotificationRef.current = { title: dedupeKey, message: notif.message, time: now };
+    lastNotificationRef.current = { title: dedupeKey, message: formattedMsg, time: now };
     
     const id = now.toString();
-    const newNotif = { ...notif, id, created_at: now };
+    const newNotif = { ...notif, message: formattedMsg, id, created_at: now };
     
     // Tocar som e haptic
     if (Platform.OS !== 'web') {
@@ -169,7 +170,7 @@ export function InAppNotificationProvider({ children }: { children: React.ReactN
           console.log('[Realtime-DEBUG] Nova notificação na tabela notifications:', JSON.stringify(payload.new, null, 2));
           const newNotif = payload.new as any;
           // Exibir banner in-app para todos os tipos, inclusive new_message (mensagens do chat)
-          if (newNotif && newNotif.type !== 'message' && newNotif.title !== 'Nova mensagem') {
+          if (newNotif) {
             showNotification({
               title: newNotif.title || 'UNNA',
               message: formatNotificationMessage(newNotif.message || ''),

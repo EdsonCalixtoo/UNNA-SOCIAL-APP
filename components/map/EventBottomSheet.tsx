@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ms, vs, s } from '@/utils/responsive';
 import { eventService } from '@/services/eventService';
+import { getEventMarkerIcon } from '@/utils/categoryIcons';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.52; // Aumentei um pouco a altura total para o card subir mais
@@ -103,7 +104,9 @@ const EventBottomSheet = ({ event, isVisible, onClose, onViewEvent, onNavigate, 
               <View style={styles.infoColumn}>
                 <Text style={[styles.title, { color: textPrimary }]} numberOfLines={1}>{event.title}</Text>
                 <View style={styles.metaRow}>
-                  <Text style={[styles.category, { color: accent }]}>{event.categories?.name}</Text>
+                  <Text style={[styles.category, { color: accent }]}>
+                    {getEventMarkerIcon(event)} {event.subcategories?.name || event.categories?.name}
+                  </Text>
                   <Text style={[styles.dot, { color: textSecondary }]}> • </Text>
                   <Text style={[styles.distance, { color: textSecondary }]}>{distance || '...'}</Text>
                 </View>
